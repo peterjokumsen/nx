@@ -1,18 +1,12 @@
 import { ExecutorContext, names } from '@nx/devkit';
-import { join, resolve as pathResolve } from 'path';
 import { ChildProcess, fork } from 'child_process';
+import { existsSync } from 'node:fs';
 import { platform } from 'os';
-import { existsSync } from 'fs-extra';
+import { join, resolve as pathResolve } from 'path';
 
-import { ensureNodeModulesSymlink } from '../../utils/ensure-node-modules-symlink';
-import {
-  displayNewlyAddedDepsMessage,
-  syncDeps,
-} from '../sync-deps/sync-deps.impl';
 import { ExpoRunOptions } from './schema';
 import { prebuildAsync } from '../prebuild/prebuild.impl';
 import { podInstall } from '../../utils/pod-install-task';
-import { installAsync } from '../install/install.impl';
 
 export interface ExpoRunOutput {
   success: boolean;
@@ -39,7 +33,10 @@ export default async function* runExecutor(
   }
 
   if (options.install) {
-    await installAsync(context.root, {});
+    const {
+      installAsync,
+    } = require('@expo/cli/build/src/install/installAsync');
+    await installAsync([], {});
     if (options.platform === 'ios') {
       podInstall(join(context.root, projectRoot, 'ios'));
     }
@@ -88,7 +85,7 @@ function runCliRun(
   });
 }
 
-const nxOptions = ['sync', 'platform', 'install', 'clean'];
+const nxOptions = ['platform', 'clean'];
 const iOSOptions = ['xcodeConfiguration', 'schema'];
 const androidOptions = ['variant'];
 /*

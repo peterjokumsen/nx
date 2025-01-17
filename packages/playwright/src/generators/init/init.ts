@@ -1,21 +1,34 @@
 import {
   addDependenciesToPackageJson,
-  convertNxGenerator,
+  createProjectGraphAsync,
   formatFiles,
   GeneratorCallback,
-  getPackageManagerCommand,
-  output,
+  readNxJson,
   runTasksInSerial,
   Tree,
-  updateJson,
-  workspaceRoot,
 } from '@nx/devkit';
-import { InitGeneratorSchema } from './schema';
+import { addPlugin } from '@nx/devkit/src/utils/add-plugin';
+import { createNodesV2 } from '../../plugins/plugin';
 import { nxVersion, playwrightVersion } from '../../utils/versions';
-import { execSync } from 'child_process';
+import { InitGeneratorSchema } from './schema';
 
-export async function initGenerator(tree: Tree, options: InitGeneratorSchema) {
+export function initGenerator(tree: Tree, options: InitGeneratorSchema) {
+  return initGeneratorInternal(tree, { addPlugin: false, ...options });
+}
+
+export async function initGeneratorInternal(
+  tree: Tree,
+  options: InitGeneratorSchema
+) {
   const tasks: GeneratorCallback[] = [];
+
+  const nxJson = readNxJson(tree);
+  const addPluginDefault =
+    process.env.NX_ADD_PLUGINS !== 'false' &&
+    nxJson.useInferencePlugins !== false;
+
+  options.addPlugin ??= addPluginDefault;
+
   if (!options.skipPackageJson) {
     tasks.push(
       addDependenciesToPackageJson(
@@ -24,50 +37,29 @@ export async function initGenerator(tree: Tree, options: InitGeneratorSchema) {
         {
           '@nx/playwright': nxVersion,
           '@playwright/test': playwrightVersion,
-        }
+        },
+        undefined,
+        options.keepExistingVersions
       )
     );
   }
+
+  if (options.addPlugin) {
+    await addPlugin(
+      tree,
+      await createProjectGraphAsync(),
+      '@nx/playwright/plugin',
+      createNodesV2,
+      { targetName: ['e2e', 'playwright:e2e', 'playwright-e2e'] },
+      options.updatePackageScripts
+    );
+  }
+
   if (!options.skipFormat) {
     await formatFiles(tree);
-  }
-
-  if (tree.exists('.vscode/extensions.json')) {
-    updateJson(tree, '.vscode/extensions.json', (json) => {
-      json.recommendations ??= [];
-
-      const recs = new Set(json.recommendations);
-      recs.add('ms-playwright.playwright');
-
-      json.recommendations = Array.from(recs);
-      return json;
-    });
-  } else {
-    tree.write(
-      '.vscode/extensions.json',
-      JSON.stringify(
-        {
-          recommendations: ['ms-playwright.playwright'],
-        },
-        null,
-        2
-      )
-    );
-  }
-
-  if (!options.skipInstall) {
-    tasks.push(() => {
-      output.log({
-        title: 'Ensuring Playwright is installed.',
-        bodyLines: ['use --skipInstall to skip installation.'],
-      });
-      const pmc = getPackageManagerCommand();
-      execSync(`${pmc.exec} playwright install`, { cwd: workspaceRoot });
-    });
   }
 
   return runTasksInSerial(...tasks);
 }
 
 export default initGenerator;
-export const initSchematic = convertNxGenerator(initGenerator);

@@ -1,110 +1,71 @@
-import { TypeScriptImportLocator } from './typescript-import-locator';
-import { TargetProjectLocator } from './target-project-locator';
-import {
-  DependencyType,
-  ProjectFileMap,
-  ProjectGraph,
-} from '../../../../config/project-graph';
 import { join, relative } from 'path';
+import { DependencyType } from '../../../../config/project-graph';
+import { ProjectConfiguration } from '../../../../config/workspace-json-project-json';
+import { CreateDependenciesContext } from '../../../../project-graph/plugins';
+import {
+  RawProjectGraphDependency,
+  validateDependency,
+} from '../../../../project-graph/project-graph-builder';
+import { normalizePath } from '../../../../utils/path';
 import { workspaceRoot } from '../../../../utils/workspace-root';
+import { TargetProjectLocator } from './target-project-locator';
 
-export type ExplicitDependency = {
-  sourceProjectName: string;
-  targetProjectName: string;
-  sourceProjectFile: string;
-  type?: DependencyType.static | DependencyType.dynamic;
-};
-
-export function buildExplicitTypeScriptDependencies(
-  graph: ProjectGraph,
-  filesToProcess: ProjectFileMap
-): ExplicitDependency[] {
-  let results: ExplicitDependency[];
-  if (process.env.NX_NATIVE_TS_DEPS !== 'false') {
-    results = buildExplicitTypeScriptDependenciesWithSwc(filesToProcess, graph);
-  } else {
-    results = buildExplicitTypeScriptDependenciesWithTs(filesToProcess, graph);
-  }
-  if (
-    process.env.NX_NATIVE_TS_DEPS &&
-    process.env.NX_NATIVE_TS_DEPS === 'debug'
-  ) {
-    const tsResults = buildExplicitTypeScriptDependenciesWithTs(
-      filesToProcess,
-      graph
-    );
-
-    const set = new Set<string>();
-
-    for (const dep of results) {
-      set.add(
-        `+ ${dep.sourceProjectName} -> ${dep.targetProjectName} (${dep.sourceProjectFile})`
-      );
-    }
-    for (const dep of tsResults) {
-      set.delete(
-        `+ ${dep.sourceProjectName} -> ${dep.targetProjectName} (${dep.sourceProjectFile})`
-      );
-      set.add(
-        `- ${dep.sourceProjectName} -> ${dep.targetProjectName} (${dep.sourceProjectFile})`
-      );
-    }
-    for (const dep of results) {
-      set.delete(
-        `- ${dep.sourceProjectName} -> ${dep.targetProjectName} (${dep.sourceProjectFile})`
-      );
-    }
-    set.forEach((s) => console.log(s));
-  }
-  return results;
-}
-
-function isRoot(graph: ProjectGraph, projectName: string): boolean {
-  return graph.nodes[projectName]?.data?.root === '.';
+function isRoot(
+  projects: Record<string, ProjectConfiguration>,
+  projectName: string
+): boolean {
+  return projects[projectName]?.root === '.';
 }
 
 function convertImportToDependency(
   importExpr: string,
-  file: string,
-  sourceProject: string,
-  type: ExplicitDependency['type'],
+  sourceFile: string,
+  source: string,
+  type: RawProjectGraphDependency['type'],
   targetProjectLocator: TargetProjectLocator
-): ExplicitDependency {
-  const target = targetProjectLocator.findProjectWithImport(importExpr, file);
-  let targetProjectName;
-  if (target) {
-    targetProjectName = target;
-  } else {
-    // treat all unknowns as npm packages, they can be eiher
-    // - mistyped local import, which has to be fixed manually
-    // - node internals, which should still be tracked as a dependency
-    // - npm packages, which are not yet installed but should be tracked
-    targetProjectName = `npm:${importExpr}`;
+): RawProjectGraphDependency | undefined {
+  const target = targetProjectLocator.findProjectFromImport(
+    importExpr,
+    sourceFile
+  );
+  if (!target) {
+    return;
   }
-
   return {
-    sourceProjectName: sourceProject,
-    targetProjectName,
-    sourceProjectFile: file,
+    source,
+    target,
+    sourceFile,
     type,
   };
 }
 
-function buildExplicitTypeScriptDependenciesWithSwc(
-  projectFileMap: ProjectFileMap,
-  graph: ProjectGraph
-): ExplicitDependency[] {
-  const targetProjectLocator = new TargetProjectLocator(
-    graph.nodes as any,
-    graph.externalNodes
-  );
-  const res: ExplicitDependency[] = [];
+export function buildExplicitTypeScriptDependencies(
+  ctx: CreateDependenciesContext,
+  targetProjectLocator: TargetProjectLocator
+): RawProjectGraphDependency[] {
+  const res: RawProjectGraphDependency[] = [];
 
   const filesToProcess: Record<string, string[]> = {};
 
-  const moduleExtensions = ['.ts', '.js', '.tsx', '.jsx', '.mts', '.mjs'];
+  const moduleExtensions = [
+    '.ts',
+    '.js',
+    '.tsx',
+    '.jsx',
+    '.mts',
+    '.mjs',
+    '.cjs',
+    '.cts',
+  ];
 
-  for (const [project, fileData] of Object.entries(projectFileMap)) {
+  // TODO: This can be removed when vue is stable
+  if (isVuePluginInstalled()) {
+    moduleExtensions.push('.vue');
+  }
+
+  for (const [project, fileData] of Object.entries(
+    ctx.fileMap.projectFileMap
+  )) {
     filesToProcess[project] ??= [];
     for (const { file } of fileData) {
       if (moduleExtensions.some((ext) => file.endsWith(ext))) {
@@ -123,18 +84,24 @@ function buildExplicitTypeScriptDependenciesWithSwc(
     staticImportExpressions,
     dynamicImportExpressions,
   } of imports) {
+    const normalizedFilePath = normalizePath(relative(workspaceRoot, file));
+
     for (const importExpr of staticImportExpressions) {
       const dependency = convertImportToDependency(
         importExpr,
-        relative(workspaceRoot, file),
+        normalizedFilePath,
         sourceProject,
         DependencyType.static,
         targetProjectLocator
       );
+      if (!dependency) {
+        continue;
+      }
+
       // TODO: These edges technically should be allowed but we need to figure out how to separate config files out from root
       if (
-        isRoot(graph, dependency.sourceProjectName) ||
-        !isRoot(graph, dependency.targetProjectName)
+        isRoot(ctx.projects, dependency.source) ||
+        !isRoot(ctx.projects, dependency.target)
       ) {
         res.push(dependency);
       }
@@ -142,16 +109,21 @@ function buildExplicitTypeScriptDependenciesWithSwc(
     for (const importExpr of dynamicImportExpressions) {
       const dependency = convertImportToDependency(
         importExpr,
-        relative(workspaceRoot, file),
+        normalizedFilePath,
         sourceProject,
         DependencyType.dynamic,
         targetProjectLocator
       );
+      if (!dependency) {
+        continue;
+      }
+
       // TODO: These edges technically should be allowed but we need to figure out how to separate config files out from root
       if (
-        isRoot(graph, dependency.sourceProjectName) ||
-        !isRoot(graph, dependency.targetProjectName)
+        isRoot(ctx.projects, dependency.source) ||
+        !isRoot(ctx.projects, dependency.target)
       ) {
+        validateDependency(dependency, ctx);
         res.push(dependency);
       }
     }
@@ -160,54 +132,12 @@ function buildExplicitTypeScriptDependenciesWithSwc(
   return res;
 }
 
-function buildExplicitTypeScriptDependenciesWithTs(
-  filesToProcess: ProjectFileMap,
-  graph: ProjectGraph
-): ExplicitDependency[] {
-  const importLocator = new TypeScriptImportLocator();
-  const targetProjectLocator = new TargetProjectLocator(
-    graph.nodes as any,
-    graph.externalNodes
-  );
-  const res: ExplicitDependency[] = [];
-  Object.keys(filesToProcess).forEach((source) => {
-    Object.values(filesToProcess[source]).forEach((f) => {
-      importLocator.fromFile(
-        f.file,
-        (
-          importExpr: string,
-          filePath: string,
-          type: DependencyType.static | DependencyType.dynamic
-        ) => {
-          const target = targetProjectLocator.findProjectWithImport(
-            importExpr,
-            f.file
-          );
-          let targetProjectName;
-          if (target) {
-            if (!isRoot(graph, source) && isRoot(graph, target)) {
-              // TODO: These edges technically should be allowed but we need to figure out how to separate config files out from root
-              return;
-            }
-
-            targetProjectName = target;
-          } else {
-            // treat all unknowns as npm packages, they can be eiher
-            // - mistyped local import, which has to be fixed manually
-            // - node internals, which should still be tracked as a dependency
-            // - npm packages, which are not yet installed but should be tracked
-            targetProjectName = `npm:${importExpr}`;
-          }
-
-          res.push({
-            sourceProjectName: source,
-            targetProjectName,
-            sourceProjectFile: f.file,
-            type,
-          });
-        }
-      );
-    });
-  });
-  return res;
+function isVuePluginInstalled() {
+  try {
+    // nx-ignore-next-line
+    require.resolve('@nx/vue');
+    return true;
+  } catch {
+    return false;
+  }
 }

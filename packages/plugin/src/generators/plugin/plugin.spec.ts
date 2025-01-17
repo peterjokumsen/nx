@@ -1,12 +1,15 @@
+import 'nx/src/internal-testing-utils/mock-project-graph';
+
 import {
   getProjects,
   joinPathFragments,
   readJson,
   readProjectConfiguration,
   Tree,
+  updateJson,
 } from '@nx/devkit';
 import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
-import { Linter } from '@nx/linter';
+import { Linter } from '@nx/eslint';
 import { PackageJson } from 'nx/src/utils/package-json';
 import { pluginGenerator } from './plugin';
 import { Schema } from './schema';
@@ -14,7 +17,7 @@ import { Schema } from './schema';
 const getSchema: (overrides?: Partial<Schema>) => Schema = (
   overrides = {}
 ) => ({
-  name: 'my-plugin',
+  directory: 'my-plugin',
   compiler: 'tsc',
   skipTsConfig: false,
   skipFormat: false,
@@ -34,61 +37,37 @@ describe('NxPlugin Plugin Generator', () => {
   it('should update the project configuration', async () => {
     await pluginGenerator(tree, getSchema());
     const project = readProjectConfiguration(tree, 'my-plugin');
-    expect(project.root).toEqual('libs/my-plugin');
+    expect(project.root).toEqual('my-plugin');
     expect(project.targets.build).toEqual({
       executor: '@nx/js:tsc',
       outputs: ['{options.outputPath}'],
       options: {
-        outputPath: 'dist/libs/my-plugin',
-        tsConfig: 'libs/my-plugin/tsconfig.lib.json',
-        main: 'libs/my-plugin/src/index.ts',
+        outputPath: 'dist/my-plugin',
+        tsConfig: 'my-plugin/tsconfig.lib.json',
+        main: 'my-plugin/src/index.ts',
         assets: [
-          'libs/my-plugin/*.md',
+          'my-plugin/*.md',
           {
-            input: './libs/my-plugin/src',
+            input: './my-plugin/src',
             glob: '**/!(*.ts)',
             output: './src',
           },
           {
-            input: './libs/my-plugin/src',
+            input: './my-plugin/src',
             glob: '**/*.d.ts',
             output: './src',
           },
           {
-            input: './libs/my-plugin',
+            input: './my-plugin',
             glob: 'generators.json',
             output: '.',
           },
           {
-            input: './libs/my-plugin',
+            input: './my-plugin',
             glob: 'executors.json',
             output: '.',
           },
         ],
-      },
-    });
-    expect(project.targets.lint).toEqual({
-      executor: '@nx/linter:eslint',
-      outputs: ['{options.outputFile}'],
-      options: {
-        lintFilePatterns: expect.arrayContaining([
-          'libs/my-plugin/**/*.ts',
-          'libs/my-plugin/package.json',
-        ]),
-      },
-    });
-    expect(project.targets.test).toEqual({
-      executor: '@nx/jest:jest',
-      outputs: ['{workspaceRoot}/coverage/{projectRoot}'],
-      options: {
-        jestConfig: 'libs/my-plugin/jest.config.ts',
-        passWithNoTests: true,
-      },
-      configurations: {
-        ci: {
-          ci: true,
-          codeCoverage: true,
-        },
       },
     });
   });
@@ -97,14 +76,14 @@ describe('NxPlugin Plugin Generator', () => {
     await pluginGenerator(
       tree,
       getSchema({
-        name: 'myPlugin',
-        directory: 'plugins',
+        name: 'my-plugin',
+        directory: 'plugins/my-plugin',
       })
     );
-    const project = readProjectConfiguration(tree, 'plugins-my-plugin');
-    const projectE2e = readProjectConfiguration(tree, 'plugins-my-plugin-e2e');
-    expect(project.root).toEqual('libs/plugins/my-plugin');
-    expect(projectE2e.root).toEqual('apps/plugins/my-plugin-e2e');
+    const project = readProjectConfiguration(tree, 'my-plugin');
+    const projectE2e = readProjectConfiguration(tree, 'my-plugin-e2e');
+    expect(project.root).toEqual('plugins/my-plugin');
+    expect(projectE2e.root).toEqual('plugins/my-plugin-e2e');
   });
 
   describe('asset paths', () => {
@@ -112,30 +91,30 @@ describe('NxPlugin Plugin Generator', () => {
       await pluginGenerator(
         tree,
         getSchema({
-          name: 'myPlugin',
+          directory: 'my-plugin',
         })
       );
       const project = readProjectConfiguration(tree, 'my-plugin');
       const assets = project.targets.build.options.assets;
       expect(assets).toEqual([
-        'libs/my-plugin/*.md',
+        'my-plugin/*.md',
         {
-          input: './libs/my-plugin/src',
+          input: './my-plugin/src',
           glob: '**/!(*.ts)',
           output: './src',
         },
         {
-          input: './libs/my-plugin/src',
+          input: './my-plugin/src',
           glob: '**/*.d.ts',
           output: './src',
         },
         {
-          input: './libs/my-plugin',
+          input: './my-plugin',
           glob: 'generators.json',
           output: '.',
         },
         {
-          input: './libs/my-plugin',
+          input: './my-plugin',
           glob: 'executors.json',
           output: '.',
         },
@@ -146,8 +125,8 @@ describe('NxPlugin Plugin Generator', () => {
       await pluginGenerator(
         tree,
         getSchema({
-          name: 'myPlugin',
-          rootProject: true,
+          name: 'my-plugin',
+          directory: '.',
         })
       );
       const project = readProjectConfiguration(tree, 'my-plugin');
@@ -184,18 +163,70 @@ describe('NxPlugin Plugin Generator', () => {
         await pluginGenerator(
           tree,
           getSchema({
-            name: 'myPlugin',
+            directory: 'my-plugin',
             unitTestRunner: 'none',
           })
         );
 
-        ['libs/my-plugin/jest.config.ts'].forEach((path) =>
+        ['my-plugin/jest.config.ts'].forEach((path) =>
+          expect(tree.exists(path)).toBeFalsy()
+        );
+
+        ['my-plugin/vite.config.ts'].forEach((path) =>
           expect(tree.exists(path)).toBeFalsy()
         );
 
         expect(
           readProjectConfiguration(tree, 'my-plugin').targets.test
         ).not.toBeDefined();
+      });
+    });
+
+    describe('jest', () => {
+      it('should generate test files with jest.config.ts', async () => {
+        await pluginGenerator(
+          tree,
+          getSchema({
+            directory: 'my-plugin',
+            unitTestRunner: 'jest',
+          })
+        );
+
+        ['my-plugin/jest.config.ts'].forEach((path) =>
+          expect(tree.exists(path)).toBeTruthy()
+        );
+
+        const projectTargets = readProjectConfiguration(
+          tree,
+          'my-plugin'
+        ).targets;
+
+        expect(projectTargets.test).toBeDefined();
+        expect(projectTargets.test?.executor).toEqual('@nx/jest:jest');
+      });
+    });
+
+    describe('vitest', () => {
+      it('should generate test files with vite.config.ts', async () => {
+        await pluginGenerator(
+          tree,
+          getSchema({
+            directory: 'my-plugin',
+            unitTestRunner: 'vitest',
+          })
+        );
+
+        ['my-plugin/vite.config.ts'].forEach((path) =>
+          expect(tree.exists(path)).toBeTruthy()
+        );
+
+        const projectTargets = readProjectConfiguration(
+          tree,
+          'my-plugin'
+        ).targets;
+
+        expect(projectTargets.test).toBeDefined();
+        expect(projectTargets.test?.executor).toEqual('@nx/vite:test');
       });
     });
   });
@@ -242,10 +273,10 @@ describe('NxPlugin Plugin Generator', () => {
     });
 
     it('should correctly setup npmScope less workspaces', async () => {
-      // remove the npmScope from nx.json
-      const nxJson = JSON.parse(tree.read('nx.json')!.toString());
-      delete nxJson.npmScope;
-      tree.write('nx.json', JSON.stringify(nxJson));
+      updateJson(tree, 'package.json', (j) => {
+        j.name = 'source';
+        return j;
+      });
 
       await pluginGenerator(tree, getSchema());
 
@@ -278,7 +309,7 @@ describe('NxPlugin Plugin Generator', () => {
     it('should allow the e2e project to be skipped', async () => {
       await pluginGenerator(tree, getSchema({ e2eTestRunner: 'none' }));
       const projects = getProjects(tree);
-      expect(projects.has('plugins-my-plugin-e2e')).toBe(false);
+      expect(projects.has('my-plugin-e2e')).toBe(false);
     });
   });
 });

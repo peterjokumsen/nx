@@ -1,31 +1,36 @@
-import { extractLayoutDirectory, Tree } from '@nx/devkit';
-import { getWorkspaceLayout, joinPathFragments, names } from '@nx/devkit';
-import { Linter } from '@nx/linter';
+import { Tree, readNxJson } from '@nx/devkit';
+import {
+  determineProjectNameAndRootOptions,
+  ensureProjectName,
+} from '@nx/devkit/src/generators/project-name-and-root-utils';
+import { Linter } from '@nx/eslint';
 import type { Schema as NodeApplicationGeneratorOptions } from '@nx/node/src/generators/application/schema';
 import type { ApplicationGeneratorOptions, NormalizedOptions } from '../schema';
 
-export function normalizeOptions(
+export async function normalizeOptions(
   tree: Tree,
   options: ApplicationGeneratorOptions
-): NormalizedOptions {
-  const { layoutDirectory, projectDirectory } = extractLayoutDirectory(
-    options.directory
-  );
+): Promise<NormalizedOptions> {
+  await ensureProjectName(tree, options, 'application');
+  const { projectName: appProjectName, projectRoot: appProjectRoot } =
+    await determineProjectNameAndRootOptions(tree, {
+      name: options.name,
+      projectType: 'application',
+      directory: options.directory,
+      rootProject: options.rootProject,
+    });
+  options.rootProject = appProjectRoot === '.';
 
-  const appDirectory = projectDirectory
-    ? `${names(projectDirectory).fileName}/${names(options.name).fileName}`
-    : names(options.name).fileName;
-
-  const appProjectRoot = options.rootProject
-    ? '.'
-    : joinPathFragments(
-        layoutDirectory ?? getWorkspaceLayout(tree).appsDir,
-        appDirectory
-      );
+  const nxJson = readNxJson(tree);
+  const addPlugin =
+    process.env.NX_ADD_PLUGINS !== 'false' &&
+    nxJson.useInferencePlugins !== false;
 
   return {
+    addPlugin,
     ...options,
     strict: options.strict ?? false,
+    appProjectName,
     appProjectRoot,
     linter: options.linter ?? Linter.EsLint,
     unitTestRunner: options.unitTestRunner ?? 'jest',
@@ -51,5 +56,6 @@ export function toNodeApplicationGeneratorOptions(
     rootProject: options.rootProject,
     bundler: 'webpack', // Some features require webpack plugins such as TS transformers
     isNest: true,
+    addPlugin: options.addPlugin,
   };
 }

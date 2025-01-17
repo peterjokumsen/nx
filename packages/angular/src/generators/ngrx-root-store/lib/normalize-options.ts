@@ -35,7 +35,8 @@ export function normalizeOptions(
     project.sourceRoot,
     'app/app.config.ts'
   );
-  const appMainPath = project.targets.build.options.main;
+  const appMainPath =
+    project.targets.build.options.main ?? project.targets.build.options.browser;
 
   /** If NgModule App
    * -> Use App Module
@@ -44,11 +45,16 @@ export function normalizeOptions(
    * --> If so, use that
    * --> If not, use main.ts
    */
-  const parent = !isStandalone
-    ? joinPathFragments(project.sourceRoot, 'app/app.module.ts')
-    : tree.exists(appConfigPath)
-    ? appConfigPath
-    : appMainPath;
+  const ngModulePath = joinPathFragments(
+    project.sourceRoot,
+    'app/app.module.ts'
+  );
+  const parent =
+    !isStandalone && tree.exists(ngModulePath)
+      ? ngModulePath
+      : tree.exists(appConfigPath)
+      ? appConfigPath
+      : appMainPath;
 
   options.directory = options.directory ?? '+state';
 

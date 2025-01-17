@@ -1,93 +1,100 @@
+import { ChildProcess } from 'child_process';
 import {
-  checkFilesExist,
-  cleanupProject,
-  expectTestsPass,
-  getPackageManagerCommand,
-  killPorts,
-  newProject,
-  promisifiedTreeKill,
-  readJson,
-  readResolvedConfiguration,
   runCLI,
-  runCLIAsync,
-  runCommand,
-  runCommandUntil,
+  cleanupProject,
+  newProject,
   uniq,
+  readJson,
+  runCommandUntil,
+  killProcessAndPorts,
+  checkFilesExist,
   updateFile,
-  updateJson,
-} from '@nx/e2e/utils';
+  runCLIAsync,
+  runE2ETests,
+  killPorts,
+  createFile,
+  removeFile,
+} from 'e2e/utils';
 import { join } from 'path';
 
-describe('expo', () => {
-  let proj: string;
-  let appName = uniq('my-app');
-  let libName = uniq('lib');
+describe('@nx/expo', () => {
+  let appName: string;
 
   beforeAll(() => {
-    proj = newProject();
-    // we create empty preset above which skips creation of `production` named input
-    updateJson('nx.json', (nxJson) => {
-      nxJson.namedInputs = {
-        default: ['{projectRoot}/**/*', 'sharedGlobals'],
-        production: ['default'],
-        sharedGlobals: [],
-      };
-      nxJson.targetDefaults.build.inputs = ['production', '^production'];
-      return nxJson;
-    });
-    runCLI(`generate @nx/expo:application ${appName} --no-interactive`);
+    newProject();
+    appName = uniq('app');
     runCLI(
-      `generate @nx/expo:library ${libName} --buildable --publishable --importPath=${proj}/${libName}`
+      `generate @nx/expo:app ${appName} --no-interactive --unitTestRunner=jest --linter=eslint`
     );
   });
+
   afterAll(() => cleanupProject());
 
-  it('should test and lint', async () => {
-    const componentName = uniq('component');
-
-    runCLI(
-      `generate @nx/expo:component ${componentName} --project=${libName} --export --no-interactive`
+  it('nx.json should contain plugin configuration', () => {
+    const nxJson = readJson('nx.json');
+    const expoPlugin = nxJson.plugins.find(
+      (plugin) => plugin.plugin === '@nx/expo/plugin'
     );
-
-    updateFile(`apps/${appName}/src/app/App.tsx`, (content) => {
-      let updated = `// eslint-disable-next-line @typescript-eslint/no-unused-vars\nimport {${componentName}} from '${proj}/${libName}';\n${content}`;
-      return updated;
-    });
-
-    expectTestsPass(await runCLIAsync(`test ${appName}`));
-    expectTestsPass(await runCLIAsync(`test ${libName}`));
-
-    const appLintResults = await runCLIAsync(`lint ${appName}`);
-    expect(appLintResults.combinedOutput).toContain('All files pass linting.');
-
-    const libLintResults = await runCLIAsync(`lint ${libName}`);
-    expect(libLintResults.combinedOutput).toContain('All files pass linting.');
+    expect(expoPlugin).toBeDefined();
+    expect(expoPlugin.options).toBeDefined();
+    expect(expoPlugin.options.exportTargetName).toEqual('export');
+    expect(expoPlugin.options.startTargetName).toEqual('start');
   });
 
-  it('should export', async () => {
-    const exportResults = await runCLIAsync(
-      `export ${appName} --no-interactive`
+  it('should export the app', async () => {
+    const result = runCLI(`export ${appName}`);
+    checkFilesExist(
+      `${appName}/dist/index.html`,
+      `${appName}/dist/metadata.json`
     );
-    expect(exportResults.combinedOutput).toContain(
-      'Export was successful. Your exported files can be found'
+
+    expect(result).toContain(
+      `Successfully ran target export for project ${appName}`
     );
-    checkFilesExist(`dist/apps/${appName}/metadata.json`);
+  }, 200_000);
+
+  it('should start the app', async () => {
+    let process: ChildProcess;
+    const port = 8088;
+
+    try {
+      process = await runCommandUntil(
+        `start ${appName} -- --port=${port}`,
+        (output) => output.includes(`http://localhost:8088`)
+      );
+    } catch (err) {
+      console.error(err);
+    }
+
+    // port and process cleanup
+    if (process && process.pid) {
+      await killProcessAndPorts(process.pid, port);
+    }
   });
 
-  it('should export-web', async () => {
-    expect(() => {
-      runCLI(`export-web ${appName}`);
-      checkFilesExist(`apps/${appName}/dist/index.html`);
-      checkFilesExist(`apps/${appName}/dist/metadata.json`);
-    }).not.toThrow();
+  it('should serve the app', async () => {
+    let process: ChildProcess;
+    const port = 8071;
+
+    try {
+      process = await runCommandUntil(
+        `serve ${appName} -- --port=${port}`,
+        (output) => output.includes(`http://localhost:8071`)
+      );
+    } catch (err) {
+      console.error(err);
+    }
+
+    // port and process cleanup
+    if (process && process.pid) {
+      await killProcessAndPorts(process.pid, port);
+    }
   });
 
   it('should prebuild', async () => {
     // run prebuild command with git check disable
     // set a mock package name for ios and android in expo's app.json
-    const workspace = readResolvedConfiguration();
-    const root = workspace.projects[appName].root;
-    const appJsonPath = join(root, `app.json`);
+    const appJsonPath = join(appName, `app.json`);
     const appJson = await readJson(appJsonPath);
     if (appJson.expo.ios) {
       appJson.expo.ios.bundleIdentifier = 'nx.test';
@@ -102,57 +109,70 @@ describe('expo', () => {
     const prebuildResult = await runCLIAsync(
       `prebuild ${appName} --no-interactive --install=false`
     );
-    expect(prebuildResult.combinedOutput).toContain('Config synced');
+    expect(prebuildResult.combinedOutput).toContain(
+      'Successfully ran target prebuild for project'
+    );
   });
 
   it('should install', async () => {
     // run install command
-    const installResults = await runCLIAsync(
-      `install ${appName} --no-interactive`
+    let installResults = await runCLIAsync(
+      `install ${appName} --force --no-interactive`
     );
     expect(installResults.combinedOutput).toContain(
       'Successfully ran target install'
     );
+
+    installResults = await runCLIAsync(
+      `install ${appName} --force --packages=@react-native-async-storage/async-storage,react-native-image-picker --no-interactive`
+    );
+    expect(installResults.combinedOutput).toContain(
+      'Successfully ran target install'
+    );
+    const packageJson = readJson(join(appName, 'package.json'));
+    expect(packageJson).toMatchObject({
+      dependencies: {
+        '@react-native-async-storage/async-storage': '*',
+        'react-native-image-picker': '*',
+      },
+    });
   });
 
-  it('should start', async () => {
-    // run start command
-    const startProcess = await runCommandUntil(
-      `start ${appName} -- --port=8081`,
-      (output) =>
-        output.includes(`Packager is ready at http://localhost:8081`) ||
-        output.includes(`Web is waiting on http://localhost:8081`)
-    );
+  it('should run e2e for cypress', async () => {
+    if (runE2ETests()) {
+      const results = runCLI(`e2e ${appName}-e2e`);
+      expect(results).toContain('Successfully ran target e2e');
 
-    // port and process cleanup
-    try {
-      await promisifiedTreeKill(startProcess.pid, 'SIGKILL');
-      await killPorts(8081);
-    } catch (err) {
-      expect(err).toBeFalsy();
+      // port and process cleanup
+      try {
+        await killPorts(4200);
+      } catch (err) {
+        expect(err).toBeFalsy();
+      }
     }
   });
 
-  it('should build publishable library', async () => {
-    expect(() => {
-      runCLI(`build ${libName}`);
-      checkFilesExist(`dist/libs/${libName}/index.esm.js`);
-      checkFilesExist(`dist/libs/${libName}/src/index.d.ts`);
-    }).not.toThrow();
+  it('should create storybook with application', async () => {
+    runCLI(
+      `generate @nx/react:storybook-configuration ${appName} --generateStories --no-interactive --unitTestRunner=jest --linter=eslint`
+    );
+    checkFilesExist(
+      `${appName}/.storybook/main.ts`,
+      `${appName}/src/app/App.stories.tsx`
+    );
   });
 
-  it('should tsc app', async () => {
-    expect(() => {
-      const pmc = getPackageManagerCommand();
-      runCommand(
-        `${pmc.runUninstalledPackage} tsc -p apps/${appName}/tsconfig.app.json`
-      );
-      checkFilesExist(
-        `dist/out-tsc/apps/${appName}/src/app/App.js`,
-        `dist/out-tsc/apps/${appName}/src/app/App.d.ts`,
-        `dist/out-tsc/libs/${libName}/src/index.js`,
-        `dist/out-tsc/libs/${libName}/src/index.d.ts`
-      );
-    }).not.toThrow();
+  it('should work with app.config.ts', () => {
+    const appJson = join(appName, `app.json`);
+    const appJsonContent = readJson(appJson);
+    removeFile(appJson);
+    createFile(
+      join(appName, 'app.config.ts'),
+      `export default { expo: { name: 'my-app', slug: 'my-app' } };`
+    );
+    const result = runCLI(`show project ${appName} --json false`);
+    expect(result).toContain('start:');
+    expect(result).toContain('serve:');
+    createFile(appJson, JSON.stringify(appJsonContent));
   });
 });

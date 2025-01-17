@@ -1,19 +1,19 @@
 export interface Schema {
-  name: string;
-  project: string;
-  path?: string;
+  path: string;
+  name?: string;
   skipTests?: boolean;
   inlineScam?: boolean;
-  flat?: boolean;
   export?: boolean;
+  skipFormat?: boolean;
 }
 
 export interface NormalizedSchema extends Schema {
+  name: string;
   directory: string;
   export: boolean;
   fileName: string;
   filePath: string;
-  flat: boolean;
   inlineScam: boolean;
-  path: string;
+  projectName: string;
+  symbolName: string;
 }

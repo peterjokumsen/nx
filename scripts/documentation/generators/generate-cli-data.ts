@@ -17,7 +17,17 @@ import {
 
 const importFresh = require('import-fresh');
 
-const sharedCommands = ['generate', 'run'];
+// Docs for these commands are inside docs/shared/cli - they are not dynamically generated.
+const sharedCommands = ['generate', 'exec'];
+
+// These commands are hidden from the documentation.
+const hiddenCommands = [
+  '$0',
+  // These commands are only applicable to powerpack users
+  // TODO: Introduce custom formatting for such commands, instead of hiding them
+  'conformance',
+  'conformance:check',
+];
 
 export async function generateCliDocumentation(
   commandsOutputDirectory: string
@@ -70,10 +80,13 @@ description: "${command.description}"
       templateLines.push(h2('Subcommands'));
       for (const subcommand of command.subcommands) {
         templateLines.push(
-          h3(subcommand.name),
+          h3(subcommand.name.replace('$0', 'Base Command Options')),
           formatDescription(subcommand.description, subcommand.deprecated),
           codeBlock(
-            `nx ${command.commandString} ${subcommand.commandString}`,
+            `nx ${command.commandString} ${subcommand.commandString.replace(
+              '$0 ',
+              ''
+            )}`,
             'shell'
           ),
           generateOptionsMarkdown(subcommand, 2)
@@ -94,8 +107,15 @@ description: "${command.description}"
   const nxCommands = getCommands(commandsObject);
   await Promise.all(
     Object.keys(nxCommands)
-      .filter((name) => !sharedCommands.includes(name))
-      .filter((name) => nxCommands[name].description)
+      .filter(
+        (name) =>
+          !sharedCommands.includes(name) &&
+          !hiddenCommands.includes(name) &&
+          // These are all supported yargs fields for description
+          (nxCommands[name].description ||
+            nxCommands[name].describe ||
+            nxCommands[name].desc)
+      )
       .map((name) => parseCommand(name, nxCommands[name]))
       .map(async (command) => generateMarkdown(await command))
       .map(async (templateObject) =>

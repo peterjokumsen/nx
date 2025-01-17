@@ -3,7 +3,6 @@
 exports[`angularStories generator: applications should generate stories file for inline scam component 1`] = `
 "import type { Meta, StoryObj } from '@storybook/angular';
 import { MyScamComponent } from './my-scam.component';
-
 import { within } from '@storybook/testing-library';
 import { expect } from '@storybook/jest';
 
@@ -15,11 +14,13 @@ export default meta;
 type Story = StoryObj<MyScamComponent>;
 
 export const Primary: Story = {
-  args: {},
+  args: {
+  },
 };
 
 export const Heading: Story = {
-  args: {},
+  args: {
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     expect(canvas.getByText(/my-scam works!/gi)).toBeTruthy();
@@ -31,7 +32,6 @@ export const Heading: Story = {
 exports[`angularStories generator: applications should generate stories file with interaction tests 1`] = `
 "import type { Meta, StoryObj } from '@storybook/angular';
 import { AppComponent } from './app.component';
-
 import { within } from '@storybook/testing-library';
 import { expect } from '@storybook/jest';
 
@@ -59,7 +59,6 @@ export const Heading: Story = {
 exports[`angularStories generator: applications should ignore a path that has a nested component, but still generate nested component stories 1`] = `
 "import type { Meta, StoryObj } from '@storybook/angular';
 import { ComponentBComponent } from './component-b.component';
-
 import { within } from '@storybook/testing-library';
 import { expect } from '@storybook/jest';
 
@@ -71,11 +70,13 @@ export default meta;
 type Story = StoryObj<ComponentBComponent>;
 
 export const Primary: Story = {
-  args: {},
+  args: {
+  },
 };
 
 export const Heading: Story = {
-  args: {},
+  args: {
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     expect(canvas.getByText(/component-b works!/gi)).toBeTruthy();
@@ -87,7 +88,6 @@ export const Heading: Story = {
 exports[`angularStories generator: applications should ignore a path when using a routing module 1`] = `
 "import type { Meta, StoryObj } from '@storybook/angular';
 import { ComponentComponent } from './component.component';
-
 import { within } from '@storybook/testing-library';
 import { expect } from '@storybook/jest';
 
@@ -99,11 +99,13 @@ export default meta;
 type Story = StoryObj<ComponentComponent>;
 
 export const Primary: Story = {
-  args: {},
+  args: {
+  },
 };
 
 export const Heading: Story = {
-  args: {},
+  args: {
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     expect(canvas.getByText(/component works!/gi)).toBeTruthy();

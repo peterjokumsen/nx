@@ -1,14 +1,16 @@
 import {
   joinPathFragments,
+  normalizePath,
   ProjectGraph,
   readCachedProjectGraph,
+  targetToTargetString,
 } from '@nx/devkit';
 import type { DependentBuildableProjectNode } from '@nx/js/src/utils/buildable-libs-utils';
 import { WebpackNxBuildCoordinationPlugin } from '@nx/webpack/src/plugins/webpack-nx-build-coordination-plugin';
 import { existsSync } from 'fs';
-import { readNxJson } from 'nx/src/config/configuration';
 import { isNpmProject } from 'nx/src/project-graph/operators';
 import { getDependencyConfigs } from 'nx/src/tasks-runner/utils';
+import { relative } from 'path';
 import { from, Observable } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 import { createTmpTsConfigForBuildableLibs } from '../utilities/buildable-libs';
@@ -17,24 +19,25 @@ import {
   resolveIndexHtmlTransformer,
 } from '../utilities/webpack';
 import type { BrowserBuilderSchema } from './schema';
-import { validateOptions } from './validate-options';
 
 function shouldSkipInitialTargetRun(
   projectGraph: ProjectGraph,
   project: string,
   target: string
 ): boolean {
-  const nxJson = readNxJson();
-  const defaultDependencyConfigs = Object.entries(
-    nxJson.targetDefaults ?? {}
-  ).reduce((acc, [targetName, dependencyConfig]) => {
-    acc[targetName] = dependencyConfig.dependsOn;
-    return acc;
-  }, {});
+  const allTargetNames = new Set<string>();
+  for (const projectName in projectGraph.nodes) {
+    const project = projectGraph.nodes[projectName];
+    for (const targetName in project.data.targets ?? {}) {
+      allTargetNames.add(targetName);
+    }
+  }
+
   const projectDependencyConfigs = getDependencyConfigs(
     { project, target },
-    defaultDependencyConfigs,
-    projectGraph
+    {},
+    projectGraph,
+    Array.from(allTargetNames)
   );
 
   // if the task runner already ran the target, skip the initial run
@@ -47,15 +50,18 @@ export function executeWebpackBrowserBuilder(
   options: BrowserBuilderSchema,
   context: import('@angular-devkit/architect').BuilderContext
 ): Observable<import('@angular-devkit/architect').BuilderOutput> {
-  validateOptions(options);
   options.buildLibsFromSource ??= true;
 
   const {
     buildLibsFromSource,
     customWebpackConfig,
+    indexHtmlTransformer,
     indexFileTransformer,
     ...delegateBuilderOptions
   } = options;
+
+  process.env.NX_BUILD_LIBS_FROM_SOURCE = `${buildLibsFromSource}`;
+  process.env.NX_BUILD_TARGET = targetToTargetString({ ...context.target });
 
   const pathToWebpackConfig =
     customWebpackConfig?.path &&
@@ -66,9 +72,11 @@ export function executeWebpackBrowserBuilder(
     );
   }
 
+  const normalizedIndexHtmlTransformer =
+    indexHtmlTransformer ?? indexFileTransformer;
   const pathToIndexFileTransformer =
-    indexFileTransformer &&
-    joinPathFragments(context.workspaceRoot, indexFileTransformer);
+    normalizedIndexHtmlTransformer &&
+    joinPathFragments(context.workspaceRoot, normalizedIndexHtmlTransformer);
   if (pathToIndexFileTransformer && !existsSync(pathToIndexFileTransformer)) {
     throw new Error(
       `File containing Index File Transformer function Not Found!\n Please ensure the path to the file containing the function is correct: \n${pathToIndexFileTransformer}`
@@ -86,7 +94,9 @@ export function executeWebpackBrowserBuilder(
         { projectGraph }
       );
     dependencies = foundDependencies;
-    delegateBuilderOptions.tsConfig = tsConfigPath;
+    delegateBuilderOptions.tsConfig = normalizePath(
+      relative(context.workspaceRoot, tsConfigPath)
+    );
   }
 
   return from(import('@angular-devkit/build-angular')).pipe(

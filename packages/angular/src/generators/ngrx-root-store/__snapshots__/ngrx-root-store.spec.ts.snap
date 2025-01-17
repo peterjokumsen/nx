@@ -18,7 +18,8 @@ import { UsersFacade } from './+state/users.facade';
   declarations: [AppComponent, NxWelcomeComponent],
   imports: [
     BrowserModule,
-    RouterModule.forRoot(appRoutes, { initialNavigation: 'enabledBlocking' }),
+    RouterModule.forRoot(appRoutes),
+    EffectsModule.forRoot([]),
     StoreModule.forRoot(
       {},
       {
@@ -29,7 +30,6 @@ import { UsersFacade } from './+state/users.facade';
         },
       }
     ),
-    EffectsModule.forRoot([]),
     StoreRouterConnectingModule.forRoot(),
     StoreModule.forFeature(fromUsers.USERS_FEATURE_KEY, fromUsers.usersReducer),
     EffectsModule.forFeature([UsersEffects]),
@@ -89,7 +89,8 @@ import { UsersEffects } from './+state/users.effects';
   declarations: [AppComponent, NxWelcomeComponent],
   imports: [
     BrowserModule,
-    RouterModule.forRoot(appRoutes, { initialNavigation: 'enabledBlocking' }),
+    RouterModule.forRoot(appRoutes),
+    EffectsModule.forRoot([]),
     StoreModule.forRoot(
       {},
       {
@@ -100,7 +101,6 @@ import { UsersEffects } from './+state/users.effects';
         },
       }
     ),
-    EffectsModule.forRoot([]),
     StoreRouterConnectingModule.forRoot(),
     StoreModule.forFeature(fromUsers.USERS_FEATURE_KEY, fromUsers.usersReducer),
     EffectsModule.forFeature([UsersEffects]),
@@ -372,18 +372,15 @@ import { StoreRouterConnectingModule } from '@ngrx/router-store';
   declarations: [AppComponent, NxWelcomeComponent],
   imports: [
     BrowserModule,
-    RouterModule.forRoot(appRoutes, { initialNavigation: 'enabledBlocking' }),
-    StoreModule.forRoot(
-      {},
-      {
-        metaReducers: [],
-        runtimeChecks: {
-          strictActionImmutability: true,
-          strictStateImmutability: true,
-        },
-      }
-    ),
+    RouterModule.forRoot(appRoutes),
     EffectsModule.forRoot([]),
+    StoreModule.forRoot({}, {
+      metaReducers: [],
+      runtimeChecks: {
+        strictActionImmutability: true,
+        strictStateImmutability: true
+      }
+    }),
     StoreRouterConnectingModule.forRoot(),
   ],
   providers: [],
@@ -402,27 +399,24 @@ import { appRoutes } from './app.routes';
 import { NxWelcomeComponent } from './nx-welcome.component';
 import { StoreModule } from '@ngrx/store';
 import { EffectsModule } from '@ngrx/effects';
-import { StoreRouterConnectingModule } from '@ngrx/router-store';
 import { StoreDevtoolsModule } from '@ngrx/store-devtools';
+import { StoreRouterConnectingModule } from '@ngrx/router-store';
 
 @NgModule({
   declarations: [AppComponent, NxWelcomeComponent],
   imports: [
     BrowserModule,
-    RouterModule.forRoot(appRoutes, { initialNavigation: 'enabledBlocking' }),
-    StoreModule.forRoot(
-      {},
-      {
-        metaReducers: [],
-        runtimeChecks: {
-          strictActionImmutability: true,
-          strictStateImmutability: true,
-        },
-      }
-    ),
+    RouterModule.forRoot(appRoutes),
     EffectsModule.forRoot([]),
-    StoreRouterConnectingModule.forRoot(),
     StoreDevtoolsModule.instrument({ logOnly: !isDevMode() }),
+    StoreModule.forRoot({}, {
+      metaReducers: [],
+      runtimeChecks: {
+        strictActionImmutability: true,
+        strictStateImmutability: true
+      }
+    }),
+    StoreRouterConnectingModule.forRoot(),
   ],
   providers: [],
   bootstrap: [AppComponent],
@@ -432,11 +426,8 @@ export class AppModule {}
 `;
 
 exports[`NgRxRootStoreGenerator Standalone APIs should add a facade when --facade=true 1`] = `
-"import { ApplicationConfig } from '@angular/core';
-import {
-  provideRouter,
-  withEnabledBlockingInitialNavigation,
-} from '@angular/router';
+"import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
+import { provideRouter } from '@angular/router';
 import { appRoutes } from './app.routes';
 import { provideStore, provideState } from '@ngrx/store';
 import { provideEffects } from '@ngrx/effects';
@@ -445,14 +436,7 @@ import { UsersEffects } from './+state/users.effects';
 import { UsersFacade } from './+state/users.facade';
 
 export const appConfig: ApplicationConfig = {
-  providers: [
-    provideEffects(UsersEffects),
-    provideState(fromUsers.USERS_FEATURE_KEY, fromUsers.usersReducer),
-    UsersFacade,
-    provideEffects(),
-    provideStore(),
-    provideRouter(appRoutes, withEnabledBlockingInitialNavigation()),
-  ],
+  providers: [provideEffects(UsersEffects),provideState(fromUsers.USERS_FEATURE_KEY, fromUsers.usersReducer),UsersFacade,provideStore(),provideEffects(),provideZoneChangeDetection({ eventCoalescing: true }), provideRouter(appRoutes) ]
 };
 "
 `;
@@ -489,11 +473,8 @@ export class UsersFacade {
 `;
 
 exports[`NgRxRootStoreGenerator Standalone APIs should add a root module and root state when --minimal=false 1`] = `
-"import { ApplicationConfig } from '@angular/core';
-import {
-  provideRouter,
-  withEnabledBlockingInitialNavigation,
-} from '@angular/router';
+"import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
+import { provideRouter } from '@angular/router';
 import { appRoutes } from './app.routes';
 import { provideStore, provideState } from '@ngrx/store';
 import { provideEffects } from '@ngrx/effects';
@@ -501,13 +482,7 @@ import * as fromUsers from './+state/users.reducer';
 import { UsersEffects } from './+state/users.effects';
 
 export const appConfig: ApplicationConfig = {
-  providers: [
-    provideEffects(UsersEffects),
-    provideState(fromUsers.USERS_FEATURE_KEY, fromUsers.usersReducer),
-    provideEffects(),
-    provideStore(),
-    provideRouter(appRoutes, withEnabledBlockingInitialNavigation()),
-  ],
+  providers: [provideEffects(UsersEffects),provideState(fromUsers.USERS_FEATURE_KEY, fromUsers.usersReducer),provideStore(),provideEffects(),provideZoneChangeDetection({ eventCoalescing: true }), provideRouter(appRoutes) ]
 };
 "
 `;
@@ -516,7 +491,9 @@ exports[`NgRxRootStoreGenerator Standalone APIs should add a root module and roo
 "import { createAction, props } from '@ngrx/store';
 import { UsersEntity } from './users.models';
 
-export const initUsers = createAction('[Users Page] Init');
+export const initUsers = createAction(
+  '[Users Page] Init'
+);
 
 export const loadUsersSuccess = createAction(
   '[Users/API] Load Users Success',
@@ -541,16 +518,15 @@ import * as UsersFeature from './users.reducer';
 export class UsersEffects {
   private actions$ = inject(Actions);
 
-  init$ = createEffect(() =>
-    this.actions$.pipe(
-      ofType(UsersActions.initUsers),
-      switchMap(() => of(UsersActions.loadUsersSuccess({ users: [] }))),
-      catchError((error) => {
+  init$ = createEffect(() => this.actions$.pipe(
+    ofType(UsersActions.initUsers),
+    switchMap(() => of(UsersActions.loadUsersSuccess({ users: [] }))),
+    catchError((error) => {
         console.error('Error', error);
         return of(UsersActions.loadUsersFailure({ error }));
-      })
+      }
     )
-  );
+  ));
 }
 "
 `;
@@ -576,7 +552,7 @@ describe('UsersEffects', () => {
       providers: [
         UsersEffects,
         provideMockActions(() => actions),
-        provideMockStore(),
+        provideMockStore()
       ],
     });
 
@@ -587,9 +563,7 @@ describe('UsersEffects', () => {
     it('should work', () => {
       actions = hot('-a-|', { a: UsersActions.initUsers() });
 
-      const expected = hot('-a-|', {
-        a: UsersActions.loadUsersSuccess({ users: [] }),
-      });
+      const expected = hot('-a-|', { a: UsersActions.loadUsersSuccess({ users: [] }) });
 
       expect(effects.init$).toBeObservable(expected);
     });
@@ -617,25 +591,24 @@ export interface UsersPartialState {
   readonly [USERS_FEATURE_KEY]: UsersState;
 }
 
-export const usersAdapter: EntityAdapter<UsersEntity> =
-  createEntityAdapter<UsersEntity>();
+export const usersAdapter: EntityAdapter<UsersEntity> = createEntityAdapter<UsersEntity>();
 
 export const initialUsersState: UsersState = usersAdapter.getInitialState({
   // set initial required properties
-  loaded: false,
+  loaded: false
 });
 
 const reducer = createReducer(
   initialUsersState,
-  on(UsersActions.initUsers, (state) => ({
-    ...state,
-    loaded: false,
-    error: null,
-  })),
-  on(UsersActions.loadUsersSuccess, (state, { users }) =>
-    usersAdapter.setAll(users, { ...state, loaded: true })
+  on(UsersActions.initUsers,
+    state => ({ ...state, loaded: false, error: null })
   ),
-  on(UsersActions.loadUsersFailure, (state, { error }) => ({ ...state, error }))
+  on(UsersActions.loadUsersSuccess,
+    (state, { users }) => usersAdapter.setAll(users, { ...state, loaded: true })
+  ),
+  on(UsersActions.loadUsersFailure,
+    (state, { error }) => ({ ...state, error })
+  ),
 );
 
 export function usersReducer(state: UsersState | undefined, action: Action) {
@@ -649,8 +622,7 @@ exports[`NgRxRootStoreGenerator Standalone APIs should add a root module and roo
 import { USERS_FEATURE_KEY, UsersState, usersAdapter } from './users.reducer';
 
 // Lookup the 'Users' feature state managed by NgRx
-export const selectUsersState =
-  createFeatureSelector<UsersState>(USERS_FEATURE_KEY);
+export const selectUsersState = createFeatureSelector<UsersState>(USERS_FEATURE_KEY);
 
 const { selectAll, selectEntities } = usersAdapter.getSelectors();
 
@@ -689,39 +661,31 @@ export const selectEntity = createSelector(
 
 exports[`NgRxRootStoreGenerator Standalone APIs should add a root module and root state when --minimal=false 7`] = `
 "import { UsersEntity } from './users.models';
-import {
-  usersAdapter,
-  UsersPartialState,
-  initialUsersState,
-} from './users.reducer';
+import { usersAdapter, UsersPartialState, initialUsersState } from './users.reducer';
 import * as UsersSelectors from './users.selectors';
 
 describe('Users Selectors', () => {
   const ERROR_MSG = 'No Error Available';
   const getUsersId = (it: UsersEntity) => it.id;
-  const createUsersEntity = (id: string, name = '') =>
-    ({
-      id,
-      name: name || \`name-\${id}\`,
-    } as UsersEntity);
+  const createUsersEntity = (id: string, name = '') => ({
+    id,
+    name: name || \`name-\${id}\`
+  }) as UsersEntity;
 
   let state: UsersPartialState;
 
   beforeEach(() => {
     state = {
-      users: usersAdapter.setAll(
-        [
-          createUsersEntity('PRODUCT-AAA'),
-          createUsersEntity('PRODUCT-BBB'),
-          createUsersEntity('PRODUCT-CCC'),
-        ],
-        {
-          ...initialUsersState,
-          selectedId: 'PRODUCT-BBB',
-          error: ERROR_MSG,
-          loaded: true,
-        }
-      ),
+      users: usersAdapter.setAll([
+        createUsersEntity('PRODUCT-AAA'),
+        createUsersEntity('PRODUCT-BBB'),
+        createUsersEntity('PRODUCT-CCC')
+      ], {
+        ...initialUsersState,
+        selectedId: 'PRODUCT-BBB',
+        error: ERROR_MSG,
+        loaded: true
+      })
     };
   });
 
@@ -758,43 +722,28 @@ describe('Users Selectors', () => {
 `;
 
 exports[`NgRxRootStoreGenerator Standalone APIs should add an empty root module when --minimal=true 1`] = `
-"import { ApplicationConfig } from '@angular/core';
-import {
-  provideRouter,
-  withEnabledBlockingInitialNavigation,
-} from '@angular/router';
+"import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
+import { provideRouter } from '@angular/router';
 import { appRoutes } from './app.routes';
 import { provideStore } from '@ngrx/store';
 import { provideEffects } from '@ngrx/effects';
 
 export const appConfig: ApplicationConfig = {
-  providers: [
-    provideEffects(),
-    provideStore(),
-    provideRouter(appRoutes, withEnabledBlockingInitialNavigation()),
-  ],
+  providers: [provideStore(),provideEffects(),provideZoneChangeDetection({ eventCoalescing: true }), provideRouter(appRoutes) ]
 };
 "
 `;
 
 exports[`NgRxRootStoreGenerator Standalone APIs should instrument the store devtools when "addDevTools: true" 1`] = `
-"import { ApplicationConfig, isDevMode } from '@angular/core';
-import {
-  provideRouter,
-  withEnabledBlockingInitialNavigation,
-} from '@angular/router';
+"import { ApplicationConfig, provideZoneChangeDetection, isDevMode } from '@angular/core';
+import { provideRouter } from '@angular/router';
 import { appRoutes } from './app.routes';
 import { provideStore } from '@ngrx/store';
 import { provideEffects } from '@ngrx/effects';
 import { provideStoreDevtools } from '@ngrx/store-devtools';
 
 export const appConfig: ApplicationConfig = {
-  providers: [
-    provideStoreDevtools({ logOnly: !isDevMode() }),
-    provideEffects(),
-    provideStore(),
-    provideRouter(appRoutes, withEnabledBlockingInitialNavigation()),
-  ],
+  providers: [provideStore(),provideStoreDevtools({ logOnly: !isDevMode() }),provideEffects(),provideZoneChangeDetection({ eventCoalescing: true }), provideRouter(appRoutes) ]
 };
 "
 `;

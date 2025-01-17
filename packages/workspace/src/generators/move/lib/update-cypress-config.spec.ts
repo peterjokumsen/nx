@@ -1,3 +1,5 @@
+import 'nx/src/internal-testing-utils/mock-project-graph';
+
 import {
   ProjectConfiguration,
   readJson,
@@ -24,11 +26,13 @@ describe('updateCypressConfig', () => {
       importPath: '@proj/my-destination',
       updateImportPath: true,
       newProjectName: 'my-destination',
-      relativeToRootDestination: 'libs/my-destination',
+      relativeToRootDestination: 'my-destination',
     };
 
     tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
-    await libraryGenerator(tree, { name: 'my-lib' });
+    await libraryGenerator(tree, {
+      directory: 'my-lib',
+    });
     projectConfig = readProjectConfiguration(tree, 'my-lib');
   });
 
@@ -46,18 +50,18 @@ describe('updateCypressConfig', () => {
       pluginsFile: './src/plugins/index',
       supportFile: false,
       video: true,
-      videosFolder: '../../dist/cypress/libs/my-lib/videos',
-      screenshotsFolder: '../../dist/cypress/libs/my-lib/screenshots',
+      videosFolder: '../../dist/cypress/my-lib/videos',
+      screenshotsFolder: '../../dist/cypress/my-lib/screenshots',
       chromeWebSecurity: false,
     };
-    writeJson(tree, '/libs/my-destination/cypress.json', cypressJson);
+    writeJson(tree, 'my-destination/cypress.json', cypressJson);
 
     updateCypressConfig(tree, schema, projectConfig);
 
-    expect(readJson(tree, '/libs/my-destination/cypress.json')).toEqual({
+    expect(readJson(tree, 'my-destination/cypress.json')).toEqual({
       ...cypressJson,
-      videosFolder: '../../dist/cypress/libs/my-destination/videos',
-      screenshotsFolder: '../../dist/cypress/libs/my-destination/screenshots',
+      videosFolder: '../../dist/cypress/my-destination/videos',
+      screenshotsFolder: '../../dist/cypress/my-destination/screenshots',
     });
   });
 
@@ -71,42 +75,37 @@ describe('updateCypressConfig', () => {
       video: false,
       chromeWebSecurity: false,
     };
-    writeJson(tree, '/libs/my-destination/cypress.json', cypressJson);
+    writeJson(tree, 'my-destination/cypress.json', cypressJson);
 
     updateCypressConfig(tree, schema, projectConfig);
 
-    expect(readJson(tree, '/libs/my-destination/cypress.json')).toEqual(
-      cypressJson
-    );
+    expect(readJson(tree, 'my-destination/cypress.json')).toEqual(cypressJson);
   });
 
   it('should handle updating cypress.config.ts', async () => {
     tree.write(
-      '/libs/my-destination/cypress.config.ts',
+      'my-destination/cypress.config.ts',
       `
 import { defineConfig } from 'cypress';
 import { nxE2EPreset } from '@nx/cypress/plugins/cypress-preset';
 
 export default defineConfig({
   e2e: {
-    nxE2EPreset(__dirname),
-    videosFolder: '../../dist/cypress/libs/my-lib/videos',
-    screenshotsFolder: '../../dist/cypress/libs/my-lib/screenshots',
+    ...nxE2EPreset(__dirname),
+    videosFolder: '../../dist/cypress/my-lib/videos',
+    screenshotsFolder: '../../dist/cypress/my-lib/screenshots',
   }
 });
     `
     );
 
     updateCypressConfig(tree, schema, projectConfig);
-    const fileContent = tree.read(
-      '/libs/my-destination/cypress.config.ts',
-      'utf-8'
+    const fileContent = tree.read('my-destination/cypress.config.ts', 'utf-8');
+    expect(fileContent).toContain(
+      `videosFolder: '../../dist/cypress/my-destination/videos'`
     );
     expect(fileContent).toContain(
-      `videosFolder: '../../dist/cypress/libs/my-destination/videos'`
-    );
-    expect(fileContent).toContain(
-      `screenshotsFolder: '../../dist/cypress/libs/my-destination/screenshots'`
+      `screenshotsFolder: '../../dist/cypress/my-destination/screenshots'`
     );
   });
 });

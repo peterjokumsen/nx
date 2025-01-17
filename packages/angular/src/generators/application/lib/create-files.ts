@@ -1,19 +1,43 @@
 import type { Tree } from '@nx/devkit';
 import { generateFiles, joinPathFragments } from '@nx/devkit';
-import type { NormalizedSchema } from './normalized-schema';
 import { getRelativePathToRootTsConfig, getRootTsConfigFileName } from '@nx/js';
-import { createTsConfig } from '../../utils/create-ts-config';
+import { lt } from 'semver';
 import { UnitTestRunner } from '../../../utils/test-runners';
+import { validateHtmlSelector } from '../../utils/selector';
+import { updateProjectRootTsConfig } from '../../utils/update-project-root-tsconfig';
 import { getInstalledAngularVersionInfo } from '../../utils/version-utils';
+import type { NormalizedSchema } from './normalized-schema';
+import {
+  getNxCloudAppOnBoardingUrl,
+  createNxCloudOnboardingURLForWelcomeApp,
+} from 'nx/src/nx-cloud/utilities/onboarding';
 
 export async function createFiles(
   tree: Tree,
   options: NormalizedSchema,
   rootOffset: string
 ) {
-  const installedAngularInfo = getInstalledAngularVersionInfo(tree);
+  const { major: angularMajorVersion, version: angularVersion } =
+    getInstalledAngularVersionInfo(tree);
+  const isUsingApplicationBuilder = options.bundler === 'esbuild';
+  const disableModernClassFieldsBehavior = lt(angularVersion, '18.1.0-rc.0');
+
+  const rootSelector = `${options.prefix}-root`;
+  validateHtmlSelector(rootSelector);
+  const nxWelcomeSelector = `${options.prefix}-nx-welcome`;
+  validateHtmlSelector(nxWelcomeSelector);
+
+  const onBoardingStatus = await createNxCloudOnboardingURLForWelcomeApp(
+    tree,
+    options.nxCloudToken
+  );
+
+  const connectCloudUrl =
+    onBoardingStatus === 'unclaimed' &&
+    (await getNxCloudAppOnBoardingUrl(options.nxCloudToken));
+
   const substitutions = {
-    rootSelector: `${options.prefix}-root`,
+    rootSelector,
     appName: options.name,
     inlineStyle: options.inlineStyle,
     inlineTemplate: options.inlineTemplate,
@@ -22,12 +46,25 @@ export async function createFiles(
     unitTesting: options.unitTestRunner !== UnitTestRunner.None,
     routing: options.routing,
     minimal: options.minimal,
-    nxWelcomeSelector: `${options.prefix}-nx-welcome`,
+    nxWelcomeSelector,
     rootTsConfig: joinPathFragments(rootOffset, getRootTsConfigFileName(tree)),
-    installedAngularInfo,
+    angularMajorVersion,
     rootOffset,
+    isUsingApplicationBuilder,
+    disableModernClassFieldsBehavior,
+    useEventCoalescing: angularMajorVersion >= 18,
+    useRouterTestingModule: angularMajorVersion < 18,
+    // Angular v19 or higher defaults to true, while v18 or lower defaults to false
+    setStandaloneFalse: angularMajorVersion >= 19,
+    setStandaloneTrue: angularMajorVersion < 19,
+    connectCloudUrl,
+    tutorialUrl: options.standalone
+      ? 'https://nx.dev/getting-started/tutorials/angular-standalone-tutorial?utm_source=nx-project'
+      : 'https://nx.dev/getting-started/tutorials/angular-monorepo-tutorial?utm_source=nx-project',
     tpl: '',
   };
+
+  const angularAppType = options.standalone ? 'standalone' : 'ng-module';
 
   generateFiles(
     tree,
@@ -36,10 +73,17 @@ export async function createFiles(
     substitutions
   );
 
-  if (installedAngularInfo.major === 14) {
+  if (angularMajorVersion >= 18) {
     generateFiles(
       tree,
-      joinPathFragments(__dirname, '../files/v14'),
+      joinPathFragments(__dirname, '../files/base-18+'),
+      options.appProjectRoot,
+      substitutions
+    );
+  } else {
+    generateFiles(
+      tree,
+      joinPathFragments(__dirname, '../files/base-pre18'),
       options.appProjectRoot,
       substitutions
     );
@@ -53,7 +97,7 @@ export async function createFiles(
       substitutions
     );
   } else {
-    await generateFiles(
+    generateFiles(
       tree,
       joinPathFragments(__dirname, '../files/ng-module'),
       options.appProjectRoot,
@@ -61,12 +105,23 @@ export async function createFiles(
     );
   }
 
-  createTsConfig(
+  generateFiles(
+    tree,
+    joinPathFragments(
+      __dirname,
+      '../files/nx-welcome',
+      onBoardingStatus,
+      angularAppType
+    ),
+    options.appProjectRoot,
+    substitutions
+  );
+
+  updateProjectRootTsConfig(
     tree,
     options.appProjectRoot,
-    'app',
-    options,
-    getRelativePathToRootTsConfig(tree, options.appProjectRoot)
+    getRelativePathToRootTsConfig(tree, options.appProjectRoot),
+    options.rootProject
   );
 
   if (!options.routing) {

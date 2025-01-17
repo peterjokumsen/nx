@@ -439,7 +439,6 @@
               "outputPath": "build/packages/create-nx-workspace",
               "tsConfig": "packages/create-nx-workspace/tsconfig.lib.json",
               "main": "packages/create-nx-workspace/bin/create-nx-workspace.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/create-nx-workspace",
@@ -800,7 +799,6 @@
               "outputPath": "build/packages/create-nx-plugin",
               "tsConfig": "packages/create-nx-plugin/tsconfig.lib.json",
               "main": "packages/create-nx-plugin/bin/create-nx-plugin.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/create-nx-plugin",
@@ -1072,7 +1070,6 @@
               "outputPath": "build/packages/eslint-plugin-nx",
               "tsConfig": "packages/eslint-plugin-nx/tsconfig.lib.json",
               "main": "packages/eslint-plugin-nx/src/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/eslint-plugin-nx",
@@ -3020,7 +3017,6 @@
               "outputPath": "build/packages/react-native",
               "tsConfig": "packages/react-native/tsconfig.lib.json",
               "main": "packages/react-native/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 "packages/react-native/*.md",
                 {
@@ -3035,7 +3031,7 @@
                 },
                 {
                   "input": "packages/react-native/src",
-                  "glob": "**/*.!(ts)",
+                  "glob": "**/!(*.ts)",
                   "output": "/src"
                 },
                 {
@@ -3946,7 +3942,6 @@
               "outputPath": "build/packages/nx-plugin",
               "tsConfig": "packages/nx-plugin/tsconfig.lib.json",
               "main": "packages/nx-plugin/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/nx-plugin",
@@ -4525,7 +4520,6 @@
               "outputPath": "build/packages/storybook",
               "tsConfig": "packages/storybook/tsconfig.lib.json",
               "main": "packages/storybook/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/storybook",
@@ -5936,7 +5930,6 @@
               "tsConfig": "packages/workspace/tsconfig.lib.json",
               "packageJson": "packages/workspace/package.json",
               "main": "packages/workspace/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/workspace",
@@ -8189,24 +8182,6 @@
             "hash": "ce0a0a44c5560369c7eccc27cb3397bec7044b84"
           },
           {
-            "file": "packages/angular/src/generators/convert-tslint-to-eslint/__snapshots__/convert-tslint-to-eslint.spec.ts.snap",
-            "hash": "88a46d8d249b5e8cacbcee62b34eaafa179fe072"
-          },
-          {
-            "file": "packages/angular/src/generators/convert-tslint-to-eslint/convert-tslint-to-eslint.spec.ts",
-            "hash": "d9ef5aa20defb703c8cd0d007141e973c15ece74",
-            "deps": ["devkit", "linter"]
-          },
-          {
-            "file": "packages/angular/src/generators/convert-tslint-to-eslint/convert-tslint-to-eslint.ts",
-            "hash": "cbbde4fcdf3983aafd4d3ec1a7f50cf4b90e22a2",
-            "deps": ["cypress", "devkit", "linter", "npm:eslint"]
-          },
-          {
-            "file": "packages/angular/src/generators/convert-tslint-to-eslint/schema.json",
-            "hash": "c3b47a2dee7b256b9d74c6ae11a24f7fe31bcf18"
-          },
-          {
             "file": "packages/angular/src/generators/cypress-component-configuration/__snapshots__/cypress-component-configuration.spec.ts.snap",
             "hash": "cde7951d23c9c688fae6926d6c72eaeabb30b0f1"
           },
@@ -10440,7 +10415,6 @@
               "outputPath": "build/packages/angular",
               "tsConfig": "packages/angular/tsconfig.lib.json",
               "main": "packages/angular/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/angular",
@@ -10555,10 +10529,6 @@
             "hash": "095268b213f109e89f2c5681c9039e70ef144552"
           },
           {
-            "file": "packages/cypress/docs/cypress-project-examples.md",
-            "hash": "3eee4b9890863e77ce86617424f154b4532ad96b"
-          },
-          {
             "file": "packages/cypress/executors.json",
             "hash": "f04e75ca738d26fcf1d4524f2fa5e3af81ee7c93"
           },
@@ -10641,24 +10611,6 @@
           {
             "file": "packages/cypress/src/executors/cypress/schema.json",
             "hash": "1e62f9dc2fb140c35dd41cde710ecbe39bedb0ea"
-          },
-          {
-            "file": "packages/cypress/src/generators/convert-tslint-to-eslint/__snapshots__/convert-tslint-to-eslint.spec.ts.snap",
-            "hash": "9eae619b87c6e22815cde69073bc0bb1471355da"
-          },
-          {
-            "file": "packages/cypress/src/generators/convert-tslint-to-eslint/convert-tslint-to-eslint.spec.ts",
-            "hash": "6748869ec5c7c6f4e794d75b43308125c364ca2c",
-            "deps": ["devkit", "linter"]
-          },
-          {
-            "file": "packages/cypress/src/generators/convert-tslint-to-eslint/convert-tslint-to-eslint.ts",
-            "hash": "da0dd512554fc7ac8e0119675af3093a1e7db20c",
-            "deps": ["devkit", "linter", "npm:eslint"]
-          },
-          {
-            "file": "packages/cypress/src/generators/convert-tslint-to-eslint/schema.json",
-            "hash": "a17853c7974502253b2d0c70644281b896396924"
           },
           {
             "file": "packages/cypress/src/generators/cypress-component-project/__snapshots__/cypress-component-project.spec.ts.snap",
@@ -11004,7 +10956,6 @@
               "outputPath": "build/packages/cypress",
               "tsConfig": "packages/cypress/tsconfig.lib.json",
               "main": "packages/cypress/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/cypress",
@@ -11279,7 +11230,6 @@
               "outputPath": "build/packages/esbuild",
               "tsConfig": "packages/esbuild/tsconfig.lib.json",
               "main": "packages/esbuild/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/esbuild",
@@ -11480,7 +11430,6 @@
               "outputPath": "build/packages/express",
               "tsConfig": "packages/express/tsconfig.lib.json",
               "main": "packages/express/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/express",
@@ -12016,7 +11965,6 @@
               "outputPath": "build/packages/webpack",
               "tsConfig": "packages/webpack/tsconfig.lib.json",
               "main": "packages/webpack/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/webpack",
@@ -12549,7 +12497,6 @@
               "outputPath": "build/packages/devkit",
               "tsConfig": "packages/devkit/tsconfig.lib.json",
               "main": "packages/devkit/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/devkit",
@@ -12906,66 +12853,6 @@
             "deps": ["devkit", "workspace"]
           },
           {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/__snapshots__/convert-to-eslint-config.spec.ts.snap",
-            "hash": "a2c28519469336f0570d45d89e19b45bb21a246c"
-          },
-          {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/__snapshots__/project-converter.spec.ts.snap",
-            "hash": "2977c64472b0117a1dfe68578a364c1e9dd62c25"
-          },
-          {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/convert-nx-enforce-module-boundaries-rule.spec.ts",
-            "hash": "044ca66897f1760b5880dbd919f6cb03eea3997a"
-          },
-          {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/convert-nx-enforce-module-boundaries-rule.ts",
-            "hash": "fcc7325c70e5f771bbaf57fd941323cdb500191e",
-            "deps": ["npm:tslint-to-eslint-config"]
-          },
-          {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/convert-to-eslint-config.spec.ts",
-            "hash": "673ab6bce04f69e7a83c3e61f396f6737f29a04a",
-            "deps": ["devkit"]
-          },
-          {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/convert-to-eslint-config.ts",
-            "hash": "3c72b9cba9d5239bd29d85b3558db71c940fe1fb",
-            "deps": [
-              "devkit",
-              "npm:eslint",
-              "npm:tmp",
-              "npm:tslint-to-eslint-config"
-            ]
-          },
-          {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/example-tslint-configs.ts",
-            "hash": "2c4123c381aaa6c18eebb53871e346600247d198"
-          },
-          {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/index.ts",
-            "hash": "cc95094649634a3a38643aef1808f95c7b1ec24f"
-          },
-          {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/project-converter.spec.ts",
-            "hash": "b38af0e8a1a5c83d1bd4938d132b4d1159796471",
-            "deps": ["devkit"]
-          },
-          {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/project-converter.ts",
-            "hash": "fb446fabddcfbc205ffd21b879d465f4b966a235",
-            "deps": ["devkit", "npm:eslint"]
-          },
-          {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/utils.spec.ts",
-            "hash": "6b1b4492c31d634d109988e63140add48db58ba0",
-            "deps": ["npm:eslint"]
-          },
-          {
-            "file": "packages/linter/src/utils/convert-tslint-to-eslint/utils.ts",
-            "hash": "cbb058ac8381c33b77e769a258d6bdbdb7142e26",
-            "deps": ["devkit", "npm:eslint", "npm:tslint-to-eslint-config"]
-          },
-          {
             "file": "packages/linter/src/utils/rules-requiring-type-checking.ts",
             "hash": "a5bb99e79b0d1b5b736419bcc42157197179cd66",
             "deps": ["npm:eslint", "npm:@typescript-eslint/eslint-plugin"]
@@ -13018,7 +12905,6 @@
               "outputPath": "build/packages/linter",
               "tsConfig": "packages/linter/tsconfig.lib.json",
               "main": "packages/linter/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/linter",
@@ -13342,7 +13228,6 @@
               "outputPath": "build/packages/rollup",
               "tsConfig": "packages/rollup/tsconfig.lib.json",
               "main": "packages/rollup/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/rollup",
@@ -14144,7 +14029,6 @@
               "outputPath": "build/packages/detox",
               "tsConfig": "packages/detox/tsconfig.lib.json",
               "main": "packages/detox/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/detox",
@@ -15422,7 +15306,6 @@
               "outputPath": "build/packages/react",
               "tsConfig": "packages/react/tsconfig.lib.json",
               "main": "packages/react/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/react",
@@ -17364,7 +17247,6 @@
               "tsConfig": "packages/expo/tsconfig.lib.json",
               "packageJson": "packages/expo/package.json",
               "main": "packages/expo/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 "packages/expo/*.md",
                 {
@@ -17852,7 +17734,6 @@
               "outputPath": "build/packages/jest",
               "tsConfig": "packages/jest/tsconfig.lib.json",
               "main": "packages/jest/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/jest",
@@ -18073,24 +17954,6 @@
           {
             "file": "packages/nest/src/generators/controller/schema.json",
             "hash": "a93969679f0b96aaaf2f59207e2c602bfb8df262"
-          },
-          {
-            "file": "packages/nest/src/generators/convert-tslint-to-eslint/__snapshots__/convert-tslint-to-eslint.spec.ts.snap",
-            "hash": "39896d5381137e79eb91c543f9a68e2458e174b3"
-          },
-          {
-            "file": "packages/nest/src/generators/convert-tslint-to-eslint/convert-tslint-to-eslint.spec.ts",
-            "hash": "e3aa199189251121c4ddf3a103f9f75339320279",
-            "deps": ["devkit", "linter"]
-          },
-          {
-            "file": "packages/nest/src/generators/convert-tslint-to-eslint/convert-tslint-to-eslint.ts",
-            "hash": "a1751f46b20f03f5bb0c31c8ca03fcbc4eecfe16",
-            "deps": ["devkit", "linter", "node", "workspace", "npm:eslint"]
-          },
-          {
-            "file": "packages/nest/src/generators/convert-tslint-to-eslint/schema.json",
-            "hash": "b728083f6ebb1ea27b7c055df547bebafcbbd8f9"
           },
           {
             "file": "packages/nest/src/generators/decorator/decorator.spec.ts",
@@ -18453,7 +18316,6 @@
               "outputPath": "build/packages/nest",
               "tsConfig": "packages/nest/tsconfig.lib.json",
               "main": "packages/nest/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/nest",
@@ -18632,11 +18494,6 @@
             "file": "packages/next/plugins/with-nx.ts",
             "hash": "d750a6f13f1172e9c033370ead717b3f16d9f93b",
             "deps": ["npm:next", "devkit", "npm:@nrwl/next"]
-          },
-          {
-            "file": "packages/next/plugins/with-stylus.ts",
-            "hash": "f3a6bbd478d02c0e9940e4ebe3ab662456b53ebe",
-            "deps": ["npm:webpack-merge", "npm:next"]
           },
           {
             "file": "packages/next/project.json",
@@ -19143,7 +19000,6 @@
               "outputPath": "build/packages/next",
               "tsConfig": "packages/next/tsconfig.lib.json",
               "main": "packages/next/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/next",
@@ -19513,7 +19369,6 @@
               "outputPath": "build/packages/node",
               "tsConfig": "packages/node/tsconfig.lib.json",
               "main": "packages/node/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/node",
@@ -19887,7 +19742,6 @@
               "outputPath": "build/packages/vite",
               "tsConfig": "packages/vite/tsconfig.lib.json",
               "main": "packages/vite/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/vite",
@@ -20854,7 +20708,6 @@
               "outputPath": "build/packages/cli",
               "tsConfig": "packages/cli/tsconfig.lib.json",
               "main": "packages/cli/bin/nx.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/cli",
@@ -21045,7 +20898,6 @@
               "outputPath": "build/packages/tao",
               "tsConfig": "packages/tao/tsconfig.lib.json",
               "main": "packages/tao/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/tao",
@@ -21584,7 +21436,6 @@
               "outputPath": "build/packages/web",
               "tsConfig": "packages/web/tsconfig.lib.json",
               "main": "packages/web/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/web",
@@ -22540,7 +22391,6 @@
               "outputPath": "build/packages/js",
               "tsConfig": "packages/js/tsconfig.lib.json",
               "main": "packages/js/src/index.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/js",
@@ -23939,7 +23789,6 @@
               "tsConfig": "packages/nx/tsconfig.lib.json",
               "packageJson": "packages/nx/package.json",
               "main": "packages/nx/bin/nx.ts",
-              "updateBuildableProjectDepsInPackageJson": false,
               "assets": [
                 {
                   "input": "packages/nx",
@@ -25138,10 +24987,6 @@
             "hash": "c602609d311a8f3b028cdde9d83a1bd860a53870"
           },
           {
-            "file": "docs/generated/cli/workspace-lint.md",
-            "hash": "c5bc40d3a8198ca5eebdcd851dff5e85d9ce3912"
-          },
-          {
             "file": "docs/generated/devkit/index.md",
             "hash": "0d2ed5a146246b4ead2e2ed41f1fccb36f744f2b"
           },
@@ -25330,203 +25175,203 @@
             "hash": "2fe6ceb807628d7cbafb7edc964ab091cbb51f50"
           },
           {
-            "file": "docs/nx-cloud/private/images/admin_hidden_login.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/admin_hidden_login.png",
             "hash": "a2fbd4488b6b38f4c04101444b0a01cc33d27b33"
           },
           {
-            "file": "docs/nx-cloud/private/images/bitbucket_1.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/bitbucket_1.png",
             "hash": "744c93850fe889fd0063041ea14920862efe1ef9"
           },
           {
-            "file": "docs/nx-cloud/private/images/bitbucket_2.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/bitbucket_2.png",
             "hash": "febde873790a4701eea045bc921b2911ea4d9305"
           },
           {
-            "file": "docs/nx-cloud/private/images/bitbucket_3.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/bitbucket_3.png",
             "hash": "c1628cebbd1cafa841a20679c36a431de119c507"
           },
           {
-            "file": "docs/nx-cloud/private/images/bitbucket_4.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/bitbucket_4.png",
             "hash": "f6c7959083ef31dc93d0494df7b56fb1e506df8c"
           },
           {
-            "file": "docs/nx-cloud/private/images/bitbucket_5.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/bitbucket_5.png",
             "hash": "ef04cc67127fb230aa6211a8bbb4ee01b28b8693"
           },
           {
-            "file": "docs/nx-cloud/private/images/bitbucket_6.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/bitbucket_6.png",
             "hash": "5400b205c7eccfebaa571133cd57d3db8ca229a4"
           },
           {
-            "file": "docs/nx-cloud/private/images/github_auth_step_1.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/github_auth_step_1.png",
             "hash": "aab0b76bf8ff0f310212e9b48c677f58b214fb50"
           },
           {
-            "file": "docs/nx-cloud/private/images/github_auth_step_2.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/github_auth_step_2.png",
             "hash": "b692beb0af8fe62c9f24257da1d078c150168399"
           },
           {
-            "file": "docs/nx-cloud/private/images/github_auth_step_3.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/github_auth_step_3.png",
             "hash": "ed380e172e65e22fef748dc49eadac5f1822227d"
           },
           {
-            "file": "docs/nx-cloud/private/images/github_auth_step_4.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/github_auth_step_4.png",
             "hash": "a9e7efb684f638531859335d04015c1c2efb5f4c"
           },
           {
-            "file": "docs/nx-cloud/private/images/github_auth_step_5.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/github_auth_step_5.png",
             "hash": "1bdb10946021e179e93f7d644f4eed1af472e98c"
           },
           {
-            "file": "docs/nx-cloud/private/images/github_auth_step_6.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/github_auth_step_6.png",
             "hash": "b8e7912726397121efb1c7d7dbe4a351f722171f"
           },
           {
-            "file": "docs/nx-cloud/private/images/github_auth_step_7.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/github_auth_step_7.png",
             "hash": "017f221fa731020e901da4903e02e330412bf184"
           },
           {
-            "file": "docs/nx-cloud/private/images/github-username.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/github-username.png",
             "hash": "8075d6b794e44784525a5a70d3f545c8e117c604"
           },
           {
-            "file": "docs/nx-cloud/private/images/gitlab_step_1.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/gitlab_step_1.png",
             "hash": "fef273c0dcc3ca6b26371cfcb85d3ba466bfb0e5"
           },
           {
-            "file": "docs/nx-cloud/private/images/gitlab_step_2.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/gitlab_step_2.png",
             "hash": "a1726555864bfbc70b22673e67b17cc99e5bc96a"
           },
           {
-            "file": "docs/nx-cloud/private/images/gitlab_step_3.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/gitlab_step_3.png",
             "hash": "308937ac1b03a1c290e7cf4093dcebe52f274ab4"
           },
           {
-            "file": "docs/nx-cloud/private/images/gitlab_step_4.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/gitlab_step_4.png",
             "hash": "adb4473c0316f99103dfe5e6b20f331f913e7701"
           },
           {
-            "file": "docs/nx-cloud/private/images/gitlab_step_5.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/gitlab_step_5.png",
             "hash": "5119326eec8e04bf93a0ec2e70970a9f6a1fbcbd"
           },
           {
-            "file": "docs/nx-cloud/private/images/gitlab-username.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/gitlab-username.png",
             "hash": "b264bf3f64e066efaf92875a935ce02248b08bef"
           },
           {
-            "file": "docs/nx-cloud/private/images/invite_members.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/invite_members.png",
             "hash": "2d38d859b8ff9f40f0dd8d3b943ccd139b5b37be"
           },
           {
-            "file": "docs/nx-cloud/private/images/main_user_login.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/main_user_login.png",
             "hash": "7083d89f9687448db362542b850160bba0133eef"
           },
           {
-            "file": "docs/nx-cloud/private/images/private-cloud-github-integration-add-webhook.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/private-cloud-github-integration-add-webhook.png",
             "hash": "3c8d90333938bd4c52bf831eb8cb37b888356073"
           },
           {
-            "file": "docs/nx-cloud/private/images/private-cloud-github-integration-generate-token.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/private-cloud-github-integration-generate-token.png",
             "hash": "f330e3fc735f60d5e1b314339c2acd09ff7c0b7c"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_1.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_1.png",
             "hash": "dc48d010ef8a5d86099f10318cdc0fc5da43a25b"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_10.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_10.png",
             "hash": "9b683623751a05cc30efc85160197980c738288c"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_11.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_11.png",
             "hash": "eb90517fa62d143ff6c02d63b5495d0177dd43c8"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_12.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_12.png",
             "hash": "621fe56e81811675898269797e716304806a0f56"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_13.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_13.png",
             "hash": "ee60bbb6f0095382c1e2787de137194ecae026b8"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_2.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_2.png",
             "hash": "9b24d4ffe4d88480189f9e2456fc0337ed946436"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_3.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_3.png",
             "hash": "ea1527b4343e1020eb7a246394c8397693ff771d"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_4.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_4.png",
             "hash": "acd2537beeca2bea6c72099bd980404754a6c83b"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_5.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_5.png",
             "hash": "ac2568a83ae5c4f98d00a5229e45997cf6e9cab8"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_6.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_6.png",
             "hash": "137818b3c798cfc18149863a371ae22c2b4202e1"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_7.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_7.png",
             "hash": "2dd4b088f296fd12f27a91ad0e3fa6f29b9881e3"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_8.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_8.png",
             "hash": "026b01d3baced7835c07b88fd59415134f0398f1"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/azure_9.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/azure_9.png",
             "hash": "6128887c5e23b457094664d3cd31703fa8a3a18c"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/okta_1.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/okta_1.png",
             "hash": "cab14353a5025e89bc998e3950b056667dc0b631"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/okta_10.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/okta_10.png",
             "hash": "47f51224de579a00c85dbbd1466c268f21f83922"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/okta_2.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/okta_2.png",
             "hash": "ae6f2ee8e362317c693eecebdc989b5929c63832"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/okta_3.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/okta_3.png",
             "hash": "7a0446a2c35b2f87e8a41de9fd484577478514f1"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/okta_4.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/okta_4.png",
             "hash": "c2b4d622902ec71562014bd1eb4fadb296b3f921"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/okta_5.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/okta_5.png",
             "hash": "b50338567a5f0c34833d46c6bc9382fe497e454d"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/okta_6.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/okta_6.png",
             "hash": "65fa2b43bd0ebf19fe86978be61d0e24dd5ab336"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/okta_7.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/okta_7.png",
             "hash": "b1e122c2cb6fa7b0df0a7dab97a816fec7619b90"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/okta_8.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/okta_8.png",
             "hash": "361603f392c3bfe76572293360944cb557d450a4"
           },
           {
-            "file": "docs/nx-cloud/private/images/saml/okta_9.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/saml/okta_9.png",
             "hash": "76cc172c20023b655cb35dbfb7ca3eb7a68fd3df"
           },
           {
-            "file": "docs/nx-cloud/private/images/webhook-trigger-events.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/webhook-trigger-events.png",
             "hash": "f84c6c92dd42f4a16eb8fd796ec7203ac3d9d7d9"
           },
           {
-            "file": "docs/nx-cloud/private/images/webhook-trigger-pull-requests.png",
+            "file": "docs/nx-cloud/enterprise/on-premise/images/webhook-trigger-pull-requests.png",
             "hash": "f917c7056c2b13fed490199a95f329d46fa3ae92"
           },
           {
@@ -25576,10 +25421,6 @@
           {
             "file": "docs/nx-cloud/set-up/record-report.png",
             "hash": "53bc7135364d69e45ba9c9c03ae5dc369ff8770f"
-          },
-          {
-            "file": "docs/nx-cloud/set-up/record-workspace-lint.png",
-            "hash": "c5f64a0d41f8e206e0ba69f3aa256fd418dbb9c5"
           },
           {
             "file": "docs/packages.json",
@@ -25754,35 +25595,35 @@
             "hash": "7ddbbe458aa28ac3d300aa3290a008e3b3ce7aa6"
           },
           {
-            "file": "docs/shared/core-features/automate-updating-dependencies.md",
+            "file": "docs/shared/features/automate-updating-dependencies.md",
             "hash": "32f1e2e43f7cf7ef9c2f162e5ad63ccf15f9c658"
           },
           {
-            "file": "docs/shared/core-features/cache-task-results.md",
+            "file": "docs/shared/features/cache-task-results.md",
             "hash": "7e692804ac1e438bf36f214f1284eb5e6c49d660"
           },
           {
-            "file": "docs/shared/core-features/distribute-task-execution.md",
+            "file": "docs/shared/features/distribute-task-execution.md",
             "hash": "2a7d639f85a227a7b4d06f987076a3524b57ddc6"
           },
           {
-            "file": "docs/shared/core-features/enforce-project-boundaries.md",
+            "file": "docs/shared/features/enforce-project-boundaries.md",
             "hash": "abe5cb6c8134b9f86b448ae09dc6626c395caf95"
           },
           {
-            "file": "docs/shared/core-features/explore-graph.md",
+            "file": "docs/shared/features/explore-graph.md",
             "hash": "57082bdf506236cbaea7f156d1ea12645934ece4"
           },
           {
-            "file": "docs/shared/core-features/integrate-with-editors.md",
+            "file": "docs/shared/getting-started/editor-setup.md",
             "hash": "eb249de959b95a89756a17dd6619fcb35a732755"
           },
           {
-            "file": "docs/shared/core-features/run-tasks.md",
+            "file": "docs/shared/features/run-tasks.md",
             "hash": "5bd43a870de93b1f61b70cbb1205e0ed91acc373"
           },
           {
-            "file": "docs/shared/core-features/share-your-cache.md",
+            "file": "docs/shared/features/share-your-cache.md",
             "hash": "ad3cfb6248f290bd318e49e8e1adc5d9642d9fbe"
           },
           {
@@ -25890,7 +25731,7 @@
             "hash": "f038fe0b5e4a2b942c3b46519b847306125f0127"
           },
           {
-            "file": "docs/shared/extending-nx/project-inference-plugins.md",
+            "file": "docs/shared/extending-nx/project-graph-plugins.md",
             "hash": "309aa493244edc1907fb5dcd1bbc953bdcc47020"
           },
           {
@@ -26330,14 +26171,6 @@
             "hash": "15ebd87a435dad1352e54e14821eab2b4d263b45"
           },
           {
-            "file": "docs/shared/migration/migration-angularjs-unit-tests-passing.png",
-            "hash": "53414ab08cb6659ac6e5506f9c351ad343075064"
-          },
-          {
-            "file": "docs/shared/migration/migration-angularjs.md",
-            "hash": "cc6399f1ab8ee3f3b50927a043d0b612b41b9266"
-          },
-          {
             "file": "docs/shared/migration/migration-cra.md",
             "hash": "3f7ddcd0014a9aec9e0b94f4884d48f314081a52"
           },
@@ -26454,11 +26287,11 @@
             "hash": "a4e80b452e842221db731af4c12a60126b7944a0"
           },
           {
-            "file": "docs/shared/plugin-features/use-code-generators.md",
+            "file": "docs/shared/plugin-features/generate-code.md",
             "hash": "3b17ca24ace1ab26e45bf26274a67142c7c3ddfa"
           },
           {
-            "file": "docs/shared/plugin-features/use-task-executors.md",
+            "file": "docs/shared/plugin-features/enhance-tooling.md",
             "hash": "fd1b51d3ff445b16f65599e7c160e221a1eb7c9a"
           },
           {
@@ -27184,7 +27017,6 @@
               "npm:ts-node",
               "npm:tsconfig-paths",
               "npm:tsconfig-paths-webpack-plugin",
-              "npm:tslint-to-eslint-config",
               "npm:typedoc",
               "npm:typedoc-plugin-markdown",
               "npm:typescript",

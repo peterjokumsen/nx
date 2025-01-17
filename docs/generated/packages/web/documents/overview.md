@@ -4,26 +4,49 @@ The Nx Plugin for Web Components contains generators for managing Web Component 
 - Scaffolding for creating buildable libraries that can be published to npm.
 - Utilities for automatic workspace refactoring.
 
-## Setting Up Web
+## Setting Up @nx/web
 
-To create a new workspace with web, run `npx create-nx-workspace@latest --preset=web-components`.
+### Generating a new Workspace
 
-To add the web plugin to an existing workspace, run one of the following:
+To create a new workspace with React, run `npx create-nx-workspace@latest --preset=web-components`.
+
+### Installation
+
+{% callout type="note" title="Keep Nx Package Versions In Sync" %}
+Make sure to install the `@nx/web` version that matches the version of `nx` in your repository. If the version numbers get out of sync, you can encounter some difficult to debug errors. You can [fix Nx version mismatches with this recipe](/recipes/tips-n-tricks/keep-nx-versions-in-sync).
+{% /callout %}
+
+In any Nx workspace, you can install `@nx/web` by running the following command:
+
+{% tabs %}
+{% tab label="Nx 18+" %}
+
+```shell {% skipRescope=true %}
+nx add @nx/web
+```
+
+This will install the correct version of `@nx/web`.
+
+{% /tab %}
+{% tab label="Nx < 18" %}
+
+Install the `@nx/web` package with your package manager.
 
 ```shell
-# For npm users
-npm install -D @nx/web
-
-# For yarn users
-yarn add -D @nx/web
+npm add -D @nx/web
 ```
+
+{% /tab %}
+{% /tabs %}
+
+## Using the @nx/web Plugin
 
 ### Creating Applications
 
 You can add a new application with the following:
 
 ```shell
-nx g @nx/web:app my-new-app
+nx g @nx/web:app apps/my-new-app
 ```
 
 The application uses no framework and generates with web components. You can add any framework you want on top of the default setup.
@@ -31,18 +54,18 @@ The application uses no framework and generates with web components. You can add
 To start the application in development mode, run `nx serve my-new-app`.
 
 {% callout type="note" title="React" %}
-If you are looking to add a React application, check out the [React plugin](/packages/react).
+If you are looking to add a React application, check out the [React plugin](/nx-api/react).
 {% /callout %}
 
 ### Creating Libraries
 
-To create a generic TypeScript library (i.e. non-framework specific), use the [`@nx/js`](/packages/js) plugin.
+To create a generic TypeScript library (i.e. non-framework specific), use the [`@nx/js`](/nx-api/js) plugin.
 
 ```shell
-nx g @nx/js:lib my-new-lib
+nx g @nx/js:lib libs/my-new-lib
 
 # If you want the library to be publishable to npm
-nx g @nx/js:lib my-new-lib \
+nx g @nx/js:lib libs/my-new-lib \
 --publishable \
 --importPath=@myorg/my-new-lib
 ```
@@ -94,5 +117,5 @@ The library in `dist` is publishable to npm or a private registry.
 
 ## More Documentation
 
-- [Using Cypress](/packages/cypress)
-- [Using Jest](/packages/jest)
+- [Using Cypress](/nx-api/cypress)
+- [Using Jest](/nx-api/jest)

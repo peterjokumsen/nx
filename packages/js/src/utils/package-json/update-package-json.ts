@@ -7,30 +7,32 @@ import {
 import { createPackageJson } from 'nx/src/plugins/js/package-json/create-package-json';
 
 import {
+  detectPackageManager,
   ExecutorContext,
   getOutputsForTargetAndConfiguration,
   joinPathFragments,
+  logger,
   ProjectFileMap,
+  ProjectGraph,
+  ProjectGraphExternalNode,
   ProjectGraphProjectNode,
   readJsonFile,
   workspaceRoot,
   writeJsonFile,
 } from '@nx/devkit';
 import { DependentBuildableProjectNode } from '../buildable-libs-utils';
-import { basename, join, parse, relative } from 'path';
-import { writeFileSync } from 'fs-extra';
-import { isNpmProject } from 'nx/src/project-graph/operators';
+import { existsSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, parse, relative } from 'path';
 import { fileExists } from 'nx/src/utils/fileutils';
 import type { PackageJson } from 'nx/src/utils/package-json';
-import { existsSync } from 'fs';
-import { readProjectFileMapCache } from 'nx/src/project-graph/nx-deps-cache';
-import * as fastGlob from 'fast-glob';
+import { readFileMapCache } from 'nx/src/project-graph/nx-deps-cache';
 
 import { getRelativeDirectoryToProjectRoot } from '../get-main-file-dir';
 
 export type SupportedFormat = 'cjs' | 'esm';
 
 export interface UpdatePackageJsonOption {
+  rootDir?: string;
   projectRoot: string;
   main: string;
   additionalEntryPoints?: string[];
@@ -45,6 +47,7 @@ export interface UpdatePackageJsonOption {
   updateBuildableProjectDepsInPackageJson?: boolean;
   buildableProjectDepsInPackageJsonType?: 'dependencies' | 'peerDependencies';
   generateLockfile?: boolean;
+  packageJsonPath?: string;
 }
 
 export function updatePackageJson(
@@ -56,7 +59,7 @@ export function updatePackageJson(
 ): void {
   let packageJson: PackageJson;
   if (fileMap == null) {
-    fileMap = readProjectFileMapCache()?.projectFileMap || {};
+    fileMap = readFileMapCache()?.fileMap?.projectFileMap || {};
   }
 
   if (options.updateBuildableProjectDepsInPackageJson) {
@@ -93,6 +96,22 @@ export function updatePackageJson(
       : { name: context.projectName, version: '0.0.1' };
   }
 
+  if (packageJson.type === 'module') {
+    if (options.format?.includes('cjs')) {
+      logger.warn(
+        `Package type is set to "module" but "cjs" format is included. Going to use "esm" format instead. You can change the package type to "commonjs" or remove type in the package.json file.`
+      );
+    }
+    options.format = ['esm'];
+  } else if (packageJson.type === 'commonjs') {
+    if (options.format?.includes('esm')) {
+      logger.warn(
+        `Package type is set to "commonjs" but "esm" format is included. Going to use "cjs" format instead. You can change the package type to "module" or remove type in the package.json file.`
+      );
+    }
+    options.format = ['cjs'];
+  }
+
   // update package specific settings
   packageJson = getUpdatedPackageJsonContent(packageJson, options);
 
@@ -100,16 +119,51 @@ export function updatePackageJson(
   writeJsonFile(`${options.outputPath}/package.json`, packageJson);
 
   if (options.generateLockfile) {
-    const lockFile = createLockFile(packageJson);
-    writeFileSync(`${options.outputPath}/${getLockFileName()}`, lockFile, {
-      encoding: 'utf-8',
-    });
+    const packageManager = detectPackageManager(context.root);
+    if (packageManager === 'bun') {
+      logger.warn(
+        `Bun lockfile generation is unsupported. Remove "generateLockfile" option or set it to false.`
+      );
+    } else {
+      const lockFile = createLockFile(
+        packageJson,
+        context.projectGraph,
+        packageManager
+      );
+      writeFileSync(
+        `${options.outputPath}/${getLockFileName(packageManager)}`,
+        lockFile,
+        {
+          encoding: 'utf-8',
+        }
+      );
+    }
   }
+}
+
+function isNpmNode(
+  node: ProjectGraphProjectNode | ProjectGraphExternalNode,
+  graph: ProjectGraph
+): node is ProjectGraphExternalNode {
+  return !!(graph.externalNodes[node.name]?.type === 'npm');
+}
+
+function isWorkspaceProject(
+  node: ProjectGraphProjectNode | ProjectGraphExternalNode,
+  graph: ProjectGraph
+): node is ProjectGraphProjectNode {
+  return !!graph.nodes[node.name];
 }
 
 function addMissingDependencies(
   packageJson: PackageJson,
-  { projectName, targetName, configurationName, root }: ExecutorContext,
+  {
+    projectName,
+    targetName,
+    configurationName,
+    root,
+    projectGraph,
+  }: ExecutorContext,
   dependencies: DependentBuildableProjectNode[],
   propType: 'dependencies' | 'peerDependencies' = 'dependencies'
 ) {
@@ -117,7 +171,7 @@ function addMissingDependencies(
     joinPathFragments(workspaceRoot, 'package.json')
   );
   dependencies.forEach((entry) => {
-    if (isNpmProject(entry.node)) {
+    if (isNpmNode(entry.node, projectGraph)) {
       const { packageName, version } = entry.node.data;
       if (
         packageJson.dependencies?.[packageName] ||
@@ -132,21 +186,24 @@ function addMissingDependencies(
 
       packageJson[propType] ??= {};
       packageJson[propType][packageName] = version;
-    } else {
+    } else if (isWorkspaceProject(entry.node, projectGraph)) {
       const packageName = entry.name;
+      if (!!workspacePackageJson.devDependencies?.[packageName]) {
+        return;
+      }
+
       if (
         !packageJson.dependencies?.[packageName] &&
+        !packageJson.devDependencies?.[packageName] &&
         !packageJson.peerDependencies?.[packageName]
       ) {
         const outputs = getOutputsForTargetAndConfiguration(
           {
-            overrides: {},
-            target: {
-              project: projectName,
-              target: targetName,
-              configuration: configurationName,
-            },
+            project: projectName,
+            target: targetName,
+            configuration: configurationName,
           },
+          {},
           entry.node
         );
 
@@ -172,19 +229,23 @@ interface Exports {
 export function getExports(
   options: Pick<
     UpdatePackageJsonOption,
-    'main' | 'projectRoot' | 'outputFileName' | 'additionalEntryPoints'
+    | 'main'
+    | 'rootDir'
+    | 'projectRoot'
+    | 'outputFileName'
+    | 'additionalEntryPoints'
+    | 'outputPath'
+    | 'packageJsonPath'
   > & {
     fileExt: string;
   }
 ): Exports {
+  const outputDir = getOutputDir(options);
   const mainFile = options.outputFileName
-    ? options.outputFileName.replace(/\.[tj]s$/, '')
+    ? basename(options.outputFileName).replace(/\.[tj]s$/, '')
     : basename(options.main).replace(/\.[tj]s$/, '');
-  const relativeMainFileDir = options.outputFileName
-    ? './'
-    : getRelativeDirectoryToProjectRoot(options.main, options.projectRoot);
   const exports: Exports = {
-    '.': relativeMainFileDir + mainFile + options.fileExt,
+    '.': outputDir + mainFile + options.fileExt,
   };
 
   if (options.additionalEntryPoints) {
@@ -197,8 +258,13 @@ export function getExports(
         options.projectRoot
       );
       const sourceFilePath = relativeDir + fileName;
-      const entryFilepath = sourceFilePath.replace(/^\.\/src\//, './');
+      const entryRelativeDir = relativeDir.replace(/^\.\/src\//, './');
+      const entryFilepath = entryRelativeDir + fileName;
       const isJsFile = jsRegex.test(fileExt);
+      if (isJsFile && fileName === 'index') {
+        const barrelEntry = entryRelativeDir.replace(/\/$/, '');
+        exports[barrelEntry] = sourceFilePath + options.fileExt;
+      }
       exports[isJsFile ? entryFilepath : entryFilepath + fileExt] =
         sourceFilePath + (isJsFile ? options.fileExt : fileExt);
     }
@@ -216,9 +282,27 @@ export function getUpdatedPackageJsonContent(
   const hasEsmFormat = options.format?.includes('esm');
 
   if (options.generateExportsField) {
-    packageJson.exports =
+    packageJson.exports ??=
       typeof packageJson.exports === 'string' ? {} : { ...packageJson.exports };
-    packageJson.exports['./package.json'] = './package.json';
+    packageJson.exports['./package.json'] ??= './package.json';
+  }
+
+  if (!options.skipTypings) {
+    const mainFile = basename(options.main).replace(/\.[tj]s$/, '');
+    const outputDir = getOutputDir(options);
+    const typingsFile = `${outputDir}${mainFile}.d.ts`;
+    packageJson.types ??= typingsFile;
+
+    if (options.generateExportsField) {
+      if (!packageJson.exports['.']) {
+        packageJson.exports['.'] = { types: typingsFile };
+      } else if (
+        typeof packageJson.exports['.'] === 'object' &&
+        !packageJson.exports['.'].types
+      ) {
+        packageJson.exports['.'].types = typingsFile;
+      }
+    }
   }
 
   if (hasEsmFormat) {
@@ -227,18 +311,25 @@ export function getUpdatedPackageJsonContent(
       fileExt: options.outputFileExtensionForEsm ?? '.js',
     });
 
-    packageJson.module = esmExports['.'];
+    packageJson.module ??= esmExports['.'];
 
     if (!hasCjsFormat) {
-      packageJson.type = 'module';
+      packageJson.type ??= 'module';
       packageJson.main ??= esmExports['.'];
     }
 
     if (options.generateExportsField) {
       for (const [exportEntry, filePath] of Object.entries(esmExports)) {
-        packageJson.exports[exportEntry] = hasCjsFormat
-          ? { import: filePath }
-          : filePath;
+        if (!packageJson.exports[exportEntry]) {
+          packageJson.exports[exportEntry] ??= hasCjsFormat
+            ? { import: filePath }
+            : filePath;
+        } else if (typeof packageJson.exports[exportEntry] === 'object') {
+          packageJson.exports[exportEntry].import ??= filePath;
+          if (!hasCjsFormat) {
+            packageJson.exports[exportEntry].default ??= filePath;
+          }
+        }
       }
     }
   }
@@ -252,31 +343,46 @@ export function getUpdatedPackageJsonContent(
       fileExt: options.outputFileExtensionForCjs ?? '.js',
     });
 
-    packageJson.main = cjsExports['.'];
+    packageJson.main ??= cjsExports['.'];
     if (!hasEsmFormat) {
-      packageJson.type = 'commonjs';
+      packageJson.type ??= 'commonjs';
     }
 
     if (options.generateExportsField) {
       for (const [exportEntry, filePath] of Object.entries(cjsExports)) {
-        if (hasEsmFormat) {
-          packageJson.exports[exportEntry]['default'] ??= filePath;
-        } else {
-          packageJson.exports[exportEntry] = filePath;
+        if (!packageJson.exports[exportEntry]) {
+          packageJson.exports[exportEntry] ??= hasEsmFormat
+            ? { default: filePath }
+            : filePath;
+        } else if (typeof packageJson.exports[exportEntry] === 'object') {
+          packageJson.exports[exportEntry].default ??= filePath;
         }
       }
     }
   }
 
-  if (!options.skipTypings) {
-    const mainFile = basename(options.main).replace(/\.[tj]s$/, '');
-    const relativeMainFileDir = getRelativeDirectoryToProjectRoot(
-      options.main,
-      options.projectRoot
-    );
-    const typingsFile = `${relativeMainFileDir}${mainFile}.d.ts`;
-    packageJson.types = packageJson.types ?? typingsFile;
-  }
-
   return packageJson;
+}
+
+export function getOutputDir(
+  options: Pick<
+    UpdatePackageJsonOption,
+    | 'main'
+    | 'rootDir'
+    | 'projectRoot'
+    | 'outputFileName'
+    | 'outputPath'
+    | 'packageJsonPath'
+  >
+): string {
+  const packageJsonDir = options.packageJsonPath
+    ? dirname(options.packageJsonPath)
+    : options.outputPath;
+  const relativeOutputPath = relative(packageJsonDir, options.outputPath);
+  const relativeMainDir = options.outputFileName
+    ? dirname(options.outputFileName)
+    : relative(options.rootDir ?? options.projectRoot, dirname(options.main));
+  const outputDir = joinPathFragments(relativeOutputPath, relativeMainDir);
+
+  return outputDir === '.' ? `./` : `./${outputDir}/`;
 }

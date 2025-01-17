@@ -1,15 +1,15 @@
-import 'dotenv/config';
 import {
+  detectPackageManager,
   ExecutorContext,
+  joinPathFragments,
   logger,
+  offsetFromRoot,
   stripIndents,
   writeJsonFile,
 } from '@nx/devkit';
-import { build, InlineConfig, mergeConfig } from 'vite';
 import {
   getProjectTsConfigPath,
-  getViteBuildOptions,
-  getViteSharedConfig,
+  normalizeViteConfigFilePath,
 } from '../../utils/options-utils';
 import { ViteBuildExecutorOptions } from './schema';
 import {
@@ -19,51 +19,106 @@ import {
   getLockFileName,
 } from '@nx/js';
 import { existsSync, writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { relative, resolve } from 'path';
 import { createAsyncIterable } from '@nx/devkit/src/utils/async-iterable';
 import {
   createBuildableTsConfig,
+  loadViteDynamicImport,
   validateTypes,
 } from '../../utils/executor-utils';
+import { type Plugin } from 'vite';
+import { isUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
 
 export async function* viteBuildExecutor(
-  options: ViteBuildExecutorOptions,
+  options: Record<string, any> & ViteBuildExecutorOptions,
   context: ExecutorContext
 ) {
+  process.env.VITE_CJS_IGNORE_WARNING = 'true';
+  // Allows ESM to be required in CJS modules. Vite will be published as ESM in the future.
+  const { mergeConfig, build, resolveConfig } = await loadViteDynamicImport();
   const projectRoot =
     context.projectsConfigurations.projects[context.projectName].root;
-
-  createBuildableTsConfig(projectRoot, options, context);
-
-  const normalizedOptions = normalizeOptions(options);
-
-  const buildConfig = mergeConfig(
-    getViteSharedConfig(normalizedOptions, false, context),
-    {
-      build: getViteBuildOptions(normalizedOptions, context),
-    }
+  const tsConfigForBuild = createBuildableTsConfig(
+    projectRoot,
+    options,
+    context
   );
 
-  if (!options.skipTypeCheck) {
+  const viteConfigPath = normalizeViteConfigFilePath(
+    context.root,
+    projectRoot,
+    options.configFile
+  );
+  const root =
+    projectRoot === '.'
+      ? process.cwd()
+      : relative(context.cwd, joinPathFragments(context.root, projectRoot));
+
+  const { buildOptions, otherOptions } = await getBuildExtraArgs(options);
+  const defaultMode = otherOptions?.mode ?? 'production';
+
+  const resolved = await resolveConfig(
+    {
+      configFile: viteConfigPath,
+      mode: defaultMode,
+    },
+    'build',
+    defaultMode,
+    process.env.NODE_ENV ?? defaultMode
+  );
+
+  const outDir =
+    joinPathFragments(offsetFromRoot(projectRoot), options.outputPath) ??
+    resolved?.build?.outDir;
+
+  const buildConfig = mergeConfig(
+    {
+      // This should not be needed as it's going to be set in vite.config.ts
+      // but leaving it here in case someone did not migrate correctly
+      root: resolved.root ?? root,
+      configFile: viteConfigPath,
+    },
+    {
+      build: {
+        outDir,
+        ...buildOptions,
+      },
+      ...otherOptions,
+    }
+  );
+  // New TS Solution already has a typecheck target
+  if (!options.skipTypeCheck && !isUsingTsSolutionSetup()) {
     await validateTypes({
       workspaceRoot: context.root,
-      projectRoot: projectRoot,
-      tsconfig: getProjectTsConfigPath(projectRoot),
+      tsconfig: tsConfigForBuild,
+      isVueProject: Boolean(
+        resolved.plugins?.find(
+          (plugin: Plugin) =>
+            typeof plugin === 'object' && plugin?.name === 'vite:vue'
+        )
+      ),
     });
   }
 
-  const watcherOrOutput = await runInstance(buildConfig);
+  const watcherOrOutput = await build(buildConfig);
 
   const libraryPackageJson = resolve(projectRoot, 'package.json');
   const rootPackageJson = resolve(context.root, 'package.json');
-  const distPackageJson = resolve(normalizedOptions.outputPath, 'package.json');
+
+  // Here, we want the outdir relative to the workspace root.
+  // So, we calculate the relative path from the workspace root to the outdir.
+  const outDirRelativeToWorkspaceRoot = outDir.replaceAll('../', '');
+  const distPackageJson = resolve(
+    outDirRelativeToWorkspaceRoot,
+    'package.json'
+  );
 
   // Generate a package.json if option has been set.
   if (options.generatePackageJson) {
     if (context.projectGraph.nodes[context.projectName].type !== 'app') {
       logger.warn(
         stripIndents`The project ${context.projectName} is using the 'generatePackageJson' option which is deprecated for library projects. It should only be used for applications.
-        For libraries, configure the project to use the '@nx/dependency-checks' ESLint rule instead (https://nx.dev/packages/eslint-plugin/documents/dependency-checks).`
+        For libraries, configure the project to use the '@nx/dependency-checks' ESLint rule instead (https://nx.dev/nx-api/eslint-plugin/documents/dependency-checks).`
       );
     }
 
@@ -74,27 +129,42 @@ export async function* viteBuildExecutor(
         target: context.targetName,
         root: context.root,
         isProduction: !options.includeDevDependenciesInPackageJson, // By default we remove devDependencies since this is a production build.
+        skipOverrides: options.skipOverrides,
+        skipPackageManager: options.skipPackageManager,
       }
     );
 
-    builtPackageJson.type = 'module';
+    builtPackageJson.type ??= 'module';
 
-    writeJsonFile(`${options.outputPath}/package.json`, builtPackageJson);
+    writeJsonFile(
+      `${outDirRelativeToWorkspaceRoot}/package.json`,
+      builtPackageJson
+    );
+    const packageManager = detectPackageManager(context.root);
 
-    const lockFile = createLockFile(builtPackageJson);
-    writeFileSync(`${options.outputPath}/${getLockFileName()}`, lockFile, {
-      encoding: 'utf-8',
-    });
+    const lockFile = createLockFile(
+      builtPackageJson,
+      context.projectGraph,
+      packageManager
+    );
+    writeFileSync(
+      `${outDirRelativeToWorkspaceRoot}/${getLockFileName(packageManager)}`,
+      lockFile,
+      {
+        encoding: 'utf-8',
+      }
+    );
   }
   // For buildable libs, copy package.json if it exists.
   else if (
+    options.generatePackageJson !== false &&
     !existsSync(distPackageJson) &&
     existsSync(libraryPackageJson) &&
     rootPackageJson !== libraryPackageJson
   ) {
     await copyAssets(
       {
-        outputPath: normalizedOptions.outputPath,
+        outputPath: outDirRelativeToWorkspaceRoot,
         assets: [
           {
             input: projectRoot,
@@ -120,7 +190,7 @@ export async function* viteBuildExecutor(
         }
         // result must be closed when present.
         // see https://rollupjs.org/guide/en/#rollupwatch
-        if ('result' in event) {
+        if ('result' in event && event.result) {
           event.result.close();
         }
       });
@@ -129,28 +199,71 @@ export async function* viteBuildExecutor(
   } else {
     const output = watcherOrOutput?.['output'] || watcherOrOutput?.[0]?.output;
     const fileName = output?.[0]?.fileName || 'main.cjs';
-    const outfile = resolve(normalizedOptions.outputPath, fileName);
+    const outfile = resolve(outDirRelativeToWorkspaceRoot, fileName);
     yield { success: true, outfile };
   }
 }
 
-function runInstance(options: InlineConfig) {
-  return build({
-    ...options,
-  });
-}
-
-function normalizeOptions(options: ViteBuildExecutorOptions) {
-  const normalizedOptions = { ...options };
-
-  // coerce watch to null or {} to match with Vite's watch config
-  if (options.watch === false) {
-    normalizedOptions.watch = null;
-  } else if (options.watch === true) {
-    normalizedOptions.watch = {};
+export async function getBuildExtraArgs(
+  options: ViteBuildExecutorOptions
+): Promise<{
+  // vite BuildOptions
+  buildOptions: Record<string, unknown>;
+  otherOptions: Record<string, any>;
+}> {
+  // support passing extra args to vite cli
+  const schema = await import('./schema.json');
+  const extraArgs = {};
+  for (const key of Object.keys(options)) {
+    if (!schema.properties[key]) {
+      extraArgs[key] = options[key];
+    }
   }
 
-  return normalizedOptions;
+  const buildOptions = {};
+  const buildSchemaKeys = [
+    'target',
+    'polyfillModulePreload',
+    'modulePreload',
+    'outDir',
+    'assetsDir',
+    'assetsInlineLimit',
+    'cssCodeSplit',
+    'cssTarget',
+    'cssMinify',
+    'sourcemap',
+    'minify',
+    'terserOptions',
+    'rollupOptions',
+    'commonjsOptions',
+    'dynamicImportVarsOptions',
+    'write',
+    'emptyOutDir',
+    'copyPublicDir',
+    'manifest',
+    'lib',
+    'ssr',
+    'ssrManifest',
+    'ssrEmitAssets',
+    'reportCompressedSize',
+    'chunkSizeWarningLimit',
+    'watch',
+  ];
+  const otherOptions = {};
+  for (const key of Object.keys(extraArgs)) {
+    if (buildSchemaKeys.includes(key)) {
+      buildOptions[key] = extraArgs[key];
+    } else {
+      otherOptions[key] = extraArgs[key];
+    }
+  }
+
+  buildOptions['watch'] = options.watch ?? undefined;
+
+  return {
+    buildOptions,
+    otherOptions,
+  };
 }
 
 export default viteBuildExecutor;

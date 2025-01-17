@@ -1,4 +1,5 @@
 use colored::Colorize;
+use std::io::IsTerminal;
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::fmt::{format, FmtContext, FormatEvent, FormatFields, FormattedFields};
 use tracing_subscriber::registry::LookupSpan;
@@ -18,17 +19,32 @@ where
     ) -> std::fmt::Result {
         // Format values from the event's's metadata:
         let metadata = event.metadata();
+        let level = *metadata.level();
 
-        if metadata.level() != &Level::WARN && metadata.level() != &Level::TRACE {
-            write!(&mut writer, "\n{} {} ", ">".cyan(), "NX".bold().cyan())?;
-        }
+        match level {
+            Level::TRACE => {
+                write!(
+                    &mut writer,
+                    "{} {}: ",
+                    format!("{}", metadata.level()).bold().red(),
+                    metadata.target()
+                )?;
+            }
+            Level::DEBUG => {
+                write!(
+                    &mut writer,
+                    "{} {}: ",
+                    format!("{}", metadata.level()).bold().bright_blue(),
+                    metadata.target()
+                )?;
+            }
 
-        if metadata.level() == &Level::TRACE {
-            write!(
-                &mut writer,
-                "{}: ",
-                format!("{}", metadata.level()).bold().red()
-            )?;
+            Level::WARN => {
+                write!(&mut writer, "\n{} {} ", ">".yellow(), "NX".bold().yellow())?;
+            }
+            _ => {
+                write!(&mut writer, "\n{} {} ", ">".cyan(), "NX".bold().cyan())?;
+            }
         }
 
         // Format all the spans in the event's span context.
@@ -57,15 +73,27 @@ where
         // Write fields on the event
         ctx.field_format().format_fields(writer.by_ref(), event)?;
 
+        if !(matches!(level, Level::TRACE)) && !(matches!(level, Level::DEBUG)) {
+            writeln!(&mut writer)?;
+        }
+
         writeln!(writer)
     }
 }
 
+/// Enable logging for the native module
+/// You can set log levels and different logs by setting the `NX_NATIVE_LOGGING` environment variable
+/// Examples:
+/// - `NX_NATIVE_LOGGING=trace|warn|debug|error|info` - enable all logs for all crates and modules
+/// - `NX_NATIVE_LOGGING=nx=trace` - enable all logs for the `nx` (this) crate
+/// - `NX_NATIVE_LOGGING=nx::native::tasks::hashers::hash_project_files=trace` - enable all logs for the `hash_project_files` module
+/// - `NX_NATIVE_LOGGING=[{project_name=project}]` - enable logs that contain the project in its span
 pub(crate) fn enable_logger() {
     let env_filter =
         EnvFilter::try_from_env("NX_NATIVE_LOGGING").unwrap_or_else(|_| EnvFilter::new("ERROR"));
     _ = tracing_subscriber::fmt()
         .with_env_filter(env_filter)
+        .with_ansi(std::io::stdout().is_terminal())
         .event_format(NxLogFormatter)
         .try_init()
         .ok();

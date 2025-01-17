@@ -43,6 +43,10 @@ export function generateManifests(workspace: string): Promise<void[]> {
   console.log(`${chalk.blue('i')} Generating Manifests`);
   const documentationPath = resolve(workspace, 'docs');
   const generatedDocumentationPath = resolve(documentationPath, 'generated');
+  const generatedExternalDocumentationPath = resolve(
+    documentationPath,
+    'external-generated'
+  );
   const targetFolder: string = resolve(generatedDocumentationPath, 'manifests');
   const documents: Partial<DocumentMetadata>[] = readJsonSync(
     `${documentationPath}/map.json`,
@@ -50,12 +54,17 @@ export function generateManifests(workspace: string): Promise<void[]> {
       encoding: 'utf8',
     }
   ).content;
-  const packages: PackageMetadata[] = readJsonSync(
-    `${generatedDocumentationPath}/packages-metadata.json`,
-    {
+  const packages: PackageMetadata[] = [
+    ...readJsonSync(`${generatedDocumentationPath}/packages-metadata.json`, {
       encoding: 'utf8',
-    }
-  );
+    }),
+    ...readJsonSync(
+      `${generatedExternalDocumentationPath}/packages-metadata.json`,
+      {
+        encoding: 'utf8',
+      }
+    ),
+  ];
 
   /**
    * We are starting by selecting what section of the map.json we want to work with.
@@ -183,11 +192,15 @@ function generateTags(manifests: Manifest[]) {
         Object.values(item.documents).forEach(
           (documentMetadata: DocumentMetadata) => {
             documentMetadata.tags.forEach((t: string) => {
+              const filePath = documentMetadata.file.startsWith(
+                'generated/packages'
+              )
+                ? documentMetadata.file
+                : ['generated', 'packages', documentMetadata.file].join('/');
+
               const tagData = {
                 description: documentMetadata.description,
-                file: ['generated', 'packages', documentMetadata.file].join(
-                  '/'
-                ),
+                file: filePath,
                 id: documentMetadata.id,
                 name: documentMetadata.name,
                 path: documentMetadata.path,
@@ -209,7 +222,7 @@ function createPackagesMenu(packages: PackageManifest): {
   const packagesMenu: MenuItem[] = Object.values(packages.records).map((p) => {
     const item: MenuItem = {
       id: p.name,
-      path: '/packages/' + p.name,
+      path: '/nx-api/' + p.name,
       name: p.name,
       children: [],
       isExternal: false,
@@ -220,7 +233,7 @@ function createPackagesMenu(packages: PackageManifest): {
       // Might need to remove the path set in the "additional api resources" items
       item.children.push({
         id: 'documents',
-        path: '/' + ['packages', p.name, 'documents'].join('/'),
+        path: '/' + ['nx-api', p.name, 'documents'].join('/'),
         name: 'documents',
         children: Object.values(p.documents).map((d) =>
           menuItemRecurseOperations(d)
@@ -233,11 +246,11 @@ function createPackagesMenu(packages: PackageManifest): {
     if (!!Object.values(p.executors).length) {
       item.children.push({
         id: 'executors',
-        path: '/' + ['packages', p.name, 'executors'].join('/'),
+        path: '/' + ['nx-api', p.name, 'executors'].join('/'),
         name: 'executors',
         children: Object.values(p.executors).map((e) => ({
           id: e.name,
-          path: '/' + ['packages', p.name, 'executors', e.name].join('/'),
+          path: '/' + ['nx-api', p.name, 'executors', e.name].join('/'),
           name: e.name,
           children: [],
           isExternal: false,
@@ -251,11 +264,11 @@ function createPackagesMenu(packages: PackageManifest): {
     if (!!Object.values(p.generators).length) {
       item.children.push({
         id: 'generators',
-        path: '/' + ['packages', p.name, 'generators'].join('/'),
+        path: '/' + ['nx-api', p.name, 'generators'].join('/'),
         name: 'generators',
         children: Object.values(p.generators).map((g) => ({
           id: g.name,
-          path: '/' + ['packages', p.name, 'generators', g.name].join('/'),
+          path: '/' + ['nx-api', p.name, 'generators', g.name].join('/'),
           name: g.name,
           children: [],
           isExternal: false,
@@ -267,7 +280,7 @@ function createPackagesMenu(packages: PackageManifest): {
     }
     return item;
   });
-  return { id: 'packages', menu: packagesMenu };
+  return { id: 'nx-api', menu: packagesMenu };
 }
 
 function getDocumentMenus(manifests: DocumentManifest[]): {
@@ -289,7 +302,7 @@ function createPackagesManifest(packages: PackageMetadata[]): {
   const packagesManifest: {
     id: string;
     records: Record<string, ProcessedPackageMetadata>;
-  } = { id: 'packages', records: {} };
+  } = { id: 'nx-api', records: {} };
 
   packages.forEach((p) => {
     packagesManifest.records[p.name] = {
@@ -301,7 +314,7 @@ function createPackagesManifest(packages: PackageMetadata[]): {
         p.documents.map((d) =>
           documentRecurseOperations(
             d,
-            createDocumentMetadata({ id: p.name, path: 'packages/' })
+            createDocumentMetadata({ id: p.name, path: 'nx-api/' })
           )
         ),
         'path'
@@ -311,18 +324,18 @@ function createPackagesManifest(packages: PackageMetadata[]): {
       executors: convertToDictionary(
         p.executors.map((e) => ({
           ...e,
-          path: generatePath({ id: e.name, path: e.path }, 'packages'),
+          path: generatePath({ id: e.name, path: e.path }, 'nx-api'),
         })),
         'path'
       ),
       generators: convertToDictionary(
         p.generators.map((g) => ({
           ...g,
-          path: generatePath({ id: g.name, path: g.path }, 'packages'),
+          path: generatePath({ id: g.name, path: g.path }, 'nx-api'),
         })),
         'path'
       ),
-      path: generatePath({ id: p.name, path: '' }, 'packages'),
+      path: generatePath({ id: p.name, path: '' }, 'nx-api'),
     };
   });
 
@@ -368,10 +381,10 @@ function createDocumentSections(
       prefix: 'extending-nx',
     },
     {
-      name: 'cloud',
-      content: documents.find((x) => x.id === 'nx-cloud-documentation')!
+      name: 'ci',
+      content: documents.find((x) => x.id === 'ci')!
         .itemList as Partial<DocumentMetadata>[],
-      prefix: 'nx-cloud',
+      prefix: 'ci',
     },
   ];
 }

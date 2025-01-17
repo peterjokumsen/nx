@@ -9,13 +9,14 @@ import {
   parseTargetString,
   readJsonFile,
   stripIndents,
+  workspaceRoot,
   writeJsonFile,
 } from '@nx/devkit';
 import { unlinkSync } from 'fs';
 import { isNpmProject } from 'nx/src/project-graph/operators';
 import { directoryExists, fileExists } from 'nx/src/utils/fileutils';
 import { output } from 'nx/src/utils/output';
-import { dirname, join, relative } from 'path';
+import { dirname, join, relative, extname, resolve } from 'path';
 import type * as ts from 'typescript';
 import { readTsConfigPaths } from './typescript/ts-config';
 
@@ -124,13 +125,11 @@ export function calculateProjectDependencies(
               : dep,
             outputs: getOutputsForTargetAndConfiguration(
               {
-                overrides: {},
-                target: {
-                  project: projectName,
-                  target: targetName,
-                  configuration: configurationName,
-                },
+                project: projectName,
+                target: targetName,
+                configuration: configurationName,
               },
+              {},
               depNode
             ),
             node: depNode,
@@ -172,7 +171,8 @@ function collectDependencies(
   areTopLevelDeps = true
 ): { name: string; isTopLevel: boolean }[] {
   (projGraph.dependencies[project] || []).forEach((dependency) => {
-    if (!acc.some((dep) => dep.name === dependency.target)) {
+    const existingEntry = acc.find((dep) => dep.name === dependency.target);
+    if (!existingEntry) {
       // Temporary skip this. Currently the set of external nodes is built from package.json, not lock file.
       // As a result, some nodes might be missing. This should not cause any issues, we can just skip them.
       if (
@@ -186,23 +186,31 @@ function collectDependencies(
       if (!shallow && isInternalTarget) {
         collectDependencies(dependency.target, projGraph, acc, shallow, false);
       }
+    } else if (areTopLevelDeps && !existingEntry.isTopLevel) {
+      existingEntry.isTopLevel = true;
     }
   });
   return acc;
 }
 
 function readTsConfigWithRemappedPaths(
-  tsConfig: string,
-  generatedTsConfigPath: string,
-  dependencies: DependentBuildableProjectNode[]
+  originalTsconfigPath: string,
+  generatedTsconfigPath: string,
+  dependencies: DependentBuildableProjectNode[],
+  workspaceRoot: string
 ) {
   const generatedTsConfig: any = { compilerOptions: {} };
+  const normalizedTsConfig = resolve(workspaceRoot, originalTsconfigPath);
+  const normalizedGeneratedTsConfigDir = resolve(
+    workspaceRoot,
+    dirname(generatedTsconfigPath)
+  );
   generatedTsConfig.extends = relative(
-    dirname(generatedTsConfigPath),
-    tsConfig
+    normalizedGeneratedTsConfigDir,
+    normalizedTsConfig
   );
   generatedTsConfig.compilerOptions.paths = computeCompilerOptionsPaths(
-    tsConfig,
+    originalTsconfigPath,
     dependencies
   );
 
@@ -257,10 +265,14 @@ export function calculateDependenciesFromTaskGraph(
     const depTask = taskGraph.tasks[taskName];
     const depProjectNode = projectGraph.nodes?.[depTask.target.project];
     if (depProjectNode?.type !== 'lib') {
-      return null;
+      continue;
     }
 
-    let outputs = getOutputsForTargetAndConfiguration(depTask, depProjectNode);
+    let outputs = getOutputsForTargetAndConfiguration(
+      depTask.target,
+      depTask.overrides,
+      depProjectNode
+    );
 
     if (outputs.length === 0) {
       nonBuildableDependencies.push(depTask.target.project);
@@ -423,20 +435,32 @@ export function createTmpTsConfig(
   tsconfigPath: string,
   workspaceRoot: string,
   projectRoot: string,
-  dependencies: DependentBuildableProjectNode[]
+  dependencies: DependentBuildableProjectNode[],
+  useWorkspaceAsBaseUrl: boolean = false
 ) {
   const tmpTsConfigPath = join(
     workspaceRoot,
     'tmp',
     projectRoot,
+    process.env.NX_TASK_TARGET_TARGET ?? 'build',
     'tsconfig.generated.json'
   );
+  if (tsconfigPath === tmpTsConfigPath) {
+    return tsconfigPath;
+  }
   const parsedTSConfig = readTsConfigWithRemappedPaths(
     tsconfigPath,
     tmpTsConfigPath,
-    dependencies
+    dependencies,
+    workspaceRoot
   );
   process.on('exit', () => cleanupTmpTsConfigFile(tmpTsConfigPath));
+
+  if (useWorkspaceAsBaseUrl) {
+    parsedTSConfig.compilerOptions ??= {};
+    parsedTSConfig.compilerOptions.baseUrl = workspaceRoot;
+  }
+
   writeJsonFile(tmpTsConfigPath, parsedTSConfig);
   return join(tmpTsConfigPath);
 }
@@ -506,6 +530,10 @@ export function updatePaths(
   const pathsKeys = Object.keys(paths);
   // For each registered dependency
   dependencies.forEach((dep) => {
+    if (dep.node.type === 'npm') {
+      return;
+    }
+
     // If there are outputs
     if (dep.outputs && dep.outputs.length > 0) {
       // Directly map the dependency name to the output paths (dist/packages/..., etc.)
@@ -520,21 +548,29 @@ export function updatePaths(
         if (path.startsWith(nestedName)) {
           const nestedPart = path.slice(nestedName.length);
 
-          // Bind secondary endpoints for ng-packagr projects
+          // Bind potential secondary endpoints for ng-packagr projects
           let mappedPaths = dep.outputs.map(
             (output) => `${output}/${nestedPart}`
           );
 
-          // Get the dependency's package name
-          const { root } = (dep.node?.data || {}) as any;
-          if (root) {
-            // Update nested mappings to point to the dependency's output paths
-            mappedPaths = mappedPaths.concat(
-              paths[path].flatMap((path) =>
-                dep.outputs.map((output) => path.replace(root, output))
-              )
-            );
-          }
+          const { root } = dep.node.data;
+          // Update nested mappings to point to the dependency's output paths
+          mappedPaths = mappedPaths.concat(
+            paths[path].flatMap((p) =>
+              dep.outputs.flatMap((output) => {
+                const basePath = p.replace(root, output);
+                return [
+                  // extension-less path to support compiled output
+                  basePath.replace(
+                    new RegExp(`${extname(basePath)}$`, 'gi'),
+                    ''
+                  ),
+                  // original path with the root re-mapped to the output path
+                  basePath,
+                ];
+              })
+            )
+          );
 
           paths[path] = mappedPaths;
         }
@@ -558,13 +594,11 @@ export function updateBuildableProjectPackageJsonDependencies(
 ) {
   const outputs = getOutputsForTargetAndConfiguration(
     {
-      overrides: {},
-      target: {
-        project: projectName,
-        target: targetName,
-        configuration: configurationName,
-      },
+      project: projectName,
+      target: targetName,
+      configuration: configurationName,
     },
+    {},
     node
   );
 
@@ -598,13 +632,11 @@ export function updateBuildableProjectPackageJsonDependencies(
         if (entry.node.type === 'lib') {
           const outputs = getOutputsForTargetAndConfiguration(
             {
-              overrides: {},
-              target: {
-                project: projectName,
-                target: targetName,
-                configuration: configurationName,
-              },
+              project: projectName,
+              target: targetName,
+              configuration: configurationName,
             },
+            {},
             entry.node
           );
 

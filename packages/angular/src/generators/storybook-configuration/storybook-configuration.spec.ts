@@ -1,17 +1,16 @@
-import { installedCypressVersion } from '@nx/cypress/src/utils/cypress-version';
 import type { Tree } from '@nx/devkit';
-import { writeJson } from '@nx/devkit';
-import { Linter } from 'packages/linter/src/generators/utils/linter';
+import { readJson, writeJson } from '@nx/devkit';
+import { Linter } from '@nx/eslint/src/generators/utils/linter';
 import { componentGenerator } from '../component/component';
 import { librarySecondaryEntryPointGenerator } from '../library-secondary-entry-point/library-secondary-entry-point';
-import { createStorybookTestWorkspaceForLib } from '../utils/testing';
+import {
+  createStorybookTestWorkspaceForLib,
+  generateTestApplication,
+} from '../utils/testing';
 import type { StorybookConfigurationOptions } from './schema';
 import { storybookConfigurationGenerator } from './storybook-configuration';
 
-// need to mock cypress otherwise it'll use the nx installed version from package.json
-//  which is v9 while we are testing for the new v10 version
-jest.mock('@nx/cypress/src/utils/cypress-version');
-// nested code imports graph from the repo, which might have innacurate graph version
+// nested code imports graph from the repo, which might have inaccurate graph version
 jest.mock('nx/src/project-graph/project-graph', () => ({
   ...jest.requireActual<any>('nx/src/project-graph/project-graph'),
   createProjectGraphAsync: jest
@@ -33,12 +32,8 @@ function listFiles(tree: Tree): string[] {
 describe('StorybookConfiguration generator', () => {
   let tree: Tree;
   const libName = 'test-ui-lib';
-  let mockedInstalledCypressVersion: jest.Mock<
-    ReturnType<typeof installedCypressVersion>
-  > = installedCypressVersion as never;
 
   beforeEach(async () => {
-    mockedInstalledCypressVersion.mockReturnValue(10);
     tree = await createStorybookTestWorkspaceForLib(libName);
 
     jest.resetModules();
@@ -46,57 +41,55 @@ describe('StorybookConfiguration generator', () => {
 
   it('should only configure storybook', async () => {
     await storybookConfigurationGenerator(tree, <StorybookConfigurationOptions>{
-      name: libName,
+      project: libName,
       generateStories: false,
+      skipFormat: true,
     });
 
-    expect(tree.exists('libs/test-ui-lib/.storybook/main.ts')).toBeTruthy();
-    expect(
-      tree.exists('libs/test-ui-lib/.storybook/tsconfig.json')
-    ).toBeTruthy();
+    expect(tree.exists('test-ui-lib/.storybook/main.ts')).toBeTruthy();
+    expect(tree.exists('test-ui-lib/.storybook/tsconfig.json')).toBeTruthy();
     expect(
       tree.exists(
-        'libs/test-ui-lib/src/lib/test-button/test-button.component.stories.ts'
+        'test-ui-lib/src/lib/test-button/test-button.component.stories.ts'
       )
     ).toBeFalsy();
     expect(
       tree.exists(
-        'libs/test-ui-lib/src/lib/test-other/test-other.component.stories.ts'
+        'test-ui-lib/src/lib/test-other/test-other.component.stories.ts'
       )
     ).toBeFalsy();
   });
 
   it('should configure storybook to use webpack 5', async () => {
     await storybookConfigurationGenerator(tree, {
-      name: libName,
+      project: libName,
       generateStories: false,
       linter: Linter.None,
+      skipFormat: true,
     });
 
     expect(
-      tree.read('libs/test-ui-lib/.storybook/main.ts', 'utf-8')
+      tree.read('test-ui-lib/.storybook/main.ts', 'utf-8')
     ).toMatchSnapshot();
   });
 
   it('should configure storybook with interaction tests and install dependencies', async () => {
     await storybookConfigurationGenerator(tree, <StorybookConfigurationOptions>{
-      name: libName,
+      project: libName,
       generateStories: true,
     });
 
-    expect(tree.exists('libs/test-ui-lib/.storybook/main.ts')).toBeTruthy();
-    expect(
-      tree.exists('libs/test-ui-lib/.storybook/tsconfig.json')
-    ).toBeTruthy();
+    expect(tree.exists('test-ui-lib/.storybook/main.ts')).toBeTruthy();
+    expect(tree.exists('test-ui-lib/.storybook/tsconfig.json')).toBeTruthy();
     expect(
       tree.read(
-        'libs/test-ui-lib/src/lib/test-button/test-button.component.stories.ts',
+        'test-ui-lib/src/lib/test-button/test-button.component.stories.ts',
         'utf-8'
       )
     ).toMatchSnapshot();
     expect(
       tree.read(
-        'libs/test-ui-lib/src/lib/test-other/test-other.component.stories.ts',
+        'test-ui-lib/src/lib/test-other/test-other.component.stories.ts',
         'utf-8'
       )
     ).toMatchSnapshot();
@@ -116,34 +109,37 @@ describe('StorybookConfiguration generator', () => {
     // add standalone component
     await componentGenerator(tree, {
       name: 'standalone',
-      project: libName,
+      path: `${libName}/src/lib/standalone/standalone`,
       standalone: true,
+      skipFormat: true,
     });
     // add secondary entrypoint
-    writeJson(tree, `libs/${libName}/package.json`, { name: libName });
+    writeJson(tree, `${libName}/package.json`, { name: libName });
     await librarySecondaryEntryPointGenerator(tree, {
       library: libName,
       name: 'secondary-entry-point',
+      skipFormat: true,
     });
     // add a regular component to the secondary entrypoint
     await componentGenerator(tree, {
       name: 'secondary-button',
-      project: libName,
-      path: `libs/${libName}/secondary-entry-point/src/lib`,
+      path: `${libName}/secondary-entry-point/src/lib/secondary-button/secondary-button`,
       export: true,
+      skipFormat: true,
     });
     // add a standalone component to the secondary entrypoint
     await componentGenerator(tree, {
       name: 'secondary-standalone',
-      project: libName,
-      path: `libs/${libName}/secondary-entry-point/src/lib`,
+      path: `${libName}/secondary-entry-point/src/lib/secondary-standalone/secondary-standalone`,
       standalone: true,
       export: true,
+      skipFormat: true,
     });
 
     await storybookConfigurationGenerator(tree, <StorybookConfigurationOptions>{
-      name: libName,
+      project: libName,
       generateStories: true,
+      skipFormat: true,
     });
 
     expect(listFiles(tree)).toMatchSnapshot();
@@ -153,36 +149,55 @@ describe('StorybookConfiguration generator', () => {
     // add standalone component
     await componentGenerator(tree, {
       name: 'standalone',
-      project: libName,
+      path: `${libName}/src/lib/standalone/standalone`,
       standalone: true,
+      skipFormat: true,
     });
     // add secondary entrypoint
-    writeJson(tree, `libs/${libName}/package.json`, { name: libName });
+    writeJson(tree, `${libName}/package.json`, { name: libName });
     await librarySecondaryEntryPointGenerator(tree, {
       library: libName,
       name: 'secondary-entry-point',
+      skipFormat: true,
     });
     // add a regular component to the secondary entrypoint
     await componentGenerator(tree, {
       name: 'secondary-button',
-      project: libName,
-      path: `libs/${libName}/secondary-entry-point/src/lib`,
+      path: `${libName}/secondary-entry-point/src/lib/secondary-button/secondary-button`,
       export: true,
+      skipFormat: true,
     });
     // add a standalone component to the secondary entrypoint
     await componentGenerator(tree, {
       name: 'secondary-standalone',
-      project: libName,
-      path: `libs/${libName}/secondary-entry-point/src/lib`,
+      path: `${libName}/secondary-entry-point/src/lib/secondary-standalone/secondary-standalone`,
       standalone: true,
       export: true,
+      skipFormat: true,
     });
 
     await storybookConfigurationGenerator(tree, <StorybookConfigurationOptions>{
-      name: libName,
+      project: libName,
       generateStories: true,
+      skipFormat: true,
     });
 
     expect(listFiles(tree)).toMatchSnapshot();
+  });
+
+  it('should exclude Storybook-related files from tsconfig.editor.json for applications', async () => {
+    await generateTestApplication(tree, { directory: 'test-app' });
+
+    await storybookConfigurationGenerator(tree, {
+      project: 'test-app',
+      generateStories: false,
+      skipFormat: true,
+      linter: Linter.EsLint,
+    });
+
+    const tsConfig = readJson(tree, 'test-app/tsconfig.editor.json');
+    expect(tsConfig.exclude).toStrictEqual(
+      expect.arrayContaining(['**/*.stories.ts', '**/*.stories.js'])
+    );
   });
 });

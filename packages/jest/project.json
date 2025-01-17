@@ -4,7 +4,6 @@
   "sourceRoot": "packages/jest",
   "projectType": "library",
   "targets": {
-    "test": {},
     "build-base": {
       "executor": "@nx/js:tsc",
       "options": {
@@ -48,12 +47,8 @@
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/build/packages/jest"],
       "options": {
-        "commands": [
-          "node ./scripts/copy-readme.js jest",
-          "node ./scripts/add-dependency-to-build.js jest @nrwl/jest"
-        ]
+        "command": "node ./scripts/copy-readme.js jest"
       }
-    },
-    "lint": {}
+    }
   }
 }

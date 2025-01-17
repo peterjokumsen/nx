@@ -1,30 +1,6 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`directive generator should export the directive correctly when flat=false and path is nested deeper 1`] = `
-"import { Directive } from '@angular/core';
-
-@Directive({
-  selector: '[projTest]',
-})
-export class TestDirective {
-  constructor() {}
-}
-"
-`;
-
-exports[`directive generator should export the directive correctly when flat=false and path is nested deeper 2`] = `
-"import { TestDirective } from './test.directive';
-
-describe('TestDirective', () => {
-  it('should create an instance', () => {
-    const directive = new TestDirective();
-    expect(directive).toBeTruthy();
-  });
-});
-"
-`;
-
-exports[`directive generator should export the directive correctly when flat=false and path is nested deeper 3`] = `
+exports[`directive generator --no-standalone should export the directive correctly when directory is nested deeper 1`] = `
 "import { NgModule } from '@angular/core';
 import { TestDirective } from './my-directives/test/test.directive';
 @NgModule({
@@ -36,11 +12,12 @@ export class TestModule {}
 "
 `;
 
-exports[`directive generator should generate a directive with test files and attach to the NgModule automatically 1`] = `
+exports[`directive generator --no-standalone should generate a directive with test files and attach to the NgModule automatically 1`] = `
 "import { Directive } from '@angular/core';
 
 @Directive({
-  selector: '[projTest]',
+  selector: '[test]',
+  standalone: false,
 })
 export class TestDirective {
   constructor() {}
@@ -48,7 +25,7 @@ export class TestDirective {
 "
 `;
 
-exports[`directive generator should generate a directive with test files and attach to the NgModule automatically 2`] = `
+exports[`directive generator --no-standalone should generate a directive with test files and attach to the NgModule automatically 2`] = `
 "import { TestDirective } from './test.directive';
 
 describe('TestDirective', () => {
@@ -60,7 +37,7 @@ describe('TestDirective', () => {
 "
 `;
 
-exports[`directive generator should generate a directive with test files and attach to the NgModule automatically 3`] = `
+exports[`directive generator --no-standalone should generate a directive with test files and attach to the NgModule automatically 3`] = `
 "import { NgModule } from '@angular/core';
 import { TestDirective } from './test.directive';
 @NgModule({
@@ -72,33 +49,13 @@ export class TestModule {}
 "
 `;
 
-exports[`directive generator should import the directive correctly when flat=false 1`] = `
-"import { Directive } from '@angular/core';
+exports[`directive generator --no-standalone should import the directive correctly 1`] = `null`;
 
-@Directive({
-  selector: '[projTest]',
-})
-export class TestDirective {
-  constructor() {}
-}
-"
-`;
+exports[`directive generator --no-standalone should import the directive correctly 2`] = `null`;
 
-exports[`directive generator should import the directive correctly when flat=false 2`] = `
-"import { TestDirective } from './test.directive';
-
-describe('TestDirective', () => {
-  it('should create an instance', () => {
-    const directive = new TestDirective();
-    expect(directive).toBeTruthy();
-  });
-});
-"
-`;
-
-exports[`directive generator should import the directive correctly when flat=false 3`] = `
+exports[`directive generator --no-standalone should import the directive correctly 3`] = `
 "import { NgModule } from '@angular/core';
-import { TestDirective } from './test/test.directive';
+import { TestDirective } from './test.directive';
 @NgModule({
   imports: [],
   declarations: [TestDirective],
@@ -108,11 +65,12 @@ export class TestModule {}
 "
 `;
 
-exports[`directive generator should import the directive correctly when flat=false and path is nested deeper 1`] = `
+exports[`directive generator --no-standalone should import the directive correctly when directory is nested deeper 1`] = `
 "import { Directive } from '@angular/core';
 
 @Directive({
-  selector: '[projTest]',
+  selector: '[test]',
+  standalone: false
 })
 export class TestDirective {
   constructor() {}
@@ -120,7 +78,7 @@ export class TestDirective {
 "
 `;
 
-exports[`directive generator should import the directive correctly when flat=false and path is nested deeper 2`] = `
+exports[`directive generator --no-standalone should import the directive correctly when directory is nested deeper 2`] = `
 "import { TestDirective } from './test.directive';
 
 describe('TestDirective', () => {
@@ -132,7 +90,7 @@ describe('TestDirective', () => {
 "
 `;
 
-exports[`directive generator should import the directive correctly when flat=false and path is nested deeper 3`] = `
+exports[`directive generator --no-standalone should import the directive correctly when directory is nested deeper 3`] = `
 "import { NgModule } from '@angular/core';
 import { TestDirective } from './my-directives/test/test.directive';
 @NgModule({
@@ -144,11 +102,11 @@ export class TestModule {}
 "
 `;
 
-exports[`directive generator should not generate test file when skipTests=true 1`] = `
+exports[`directive generator should generate correctly 1`] = `
 "import { Directive } from '@angular/core';
 
 @Directive({
-  selector: '[projTest]',
+  selector: '[test]',
 })
 export class TestDirective {
   constructor() {}
@@ -156,31 +114,7 @@ export class TestDirective {
 "
 `;
 
-exports[`directive generator should not generate test file when skipTests=true 2`] = `
-"import { NgModule } from '@angular/core';
-import { TestDirective } from './my-directives/test/test.directive';
-@NgModule({
-  imports: [],
-  declarations: [TestDirective],
-  exports: [],
-})
-export class TestModule {}
-"
-`;
-
-exports[`directive generator should not import the directive when skipImport=true 1`] = `
-"import { Directive } from '@angular/core';
-
-@Directive({
-  selector: '[projTest]',
-})
-export class TestDirective {
-  constructor() {}
-}
-"
-`;
-
-exports[`directive generator should not import the directive when skipImport=true 2`] = `
+exports[`directive generator should generate correctly 2`] = `
 "import { TestDirective } from './test.directive';
 
 describe('TestDirective', () => {
@@ -192,23 +126,11 @@ describe('TestDirective', () => {
 "
 `;
 
-exports[`directive generator should not import the directive when skipImport=true 3`] = `
-"import { NgModule } from '@angular/core';
-@NgModule({
-  imports: [],
-  declarations: [],
-  exports: [],
-})
-export class TestModule {}
-"
-`;
-
-exports[`directive generator should not import the directive when standalone=true 1`] = `
+exports[`directive generator should handle path with file extension 1`] = `
 "import { Directive } from '@angular/core';
 
 @Directive({
-  selector: '[projTest]',
-  standalone: true,
+  selector: '[test]',
 })
 export class TestDirective {
   constructor() {}
@@ -216,7 +138,7 @@ export class TestDirective {
 "
 `;
 
-exports[`directive generator should not import the directive when standalone=true 2`] = `
+exports[`directive generator should handle path with file extension 2`] = `
 "import { TestDirective } from './test.directive';
 
 describe('TestDirective', () => {
@@ -225,16 +147,5 @@ describe('TestDirective', () => {
     expect(directive).toBeTruthy();
   });
 });
-"
-`;
-
-exports[`directive generator should not import the directive when standalone=true 3`] = `
-"import { NgModule } from '@angular/core';
-@NgModule({
-  imports: [],
-  declarations: [],
-  exports: [],
-})
-export class TestModule {}
 "
 `;

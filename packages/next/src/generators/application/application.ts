@@ -1,11 +1,15 @@
 import {
-  convertNxGenerator,
+  addDependenciesToPackageJson,
   formatFiles,
   GeneratorCallback,
   joinPathFragments,
   runTasksInSerial,
   Tree,
 } from '@nx/devkit';
+import { initGenerator as jsInitGenerator } from '@nx/js';
+import { setupTailwindGenerator } from '@nx/react';
+import { testingLibraryReactVersion } from '@nx/react/src/utils/versions';
+import { getReactDependenciesVersionsToInstall } from '@nx/react/src/utils/version-utils';
 
 import { normalizeOptions } from './lib/normalize-options';
 import { Schema } from './schema';
@@ -21,12 +25,36 @@ import { addLinting } from './lib/add-linting';
 import { customServerGenerator } from '../custom-server/custom-server';
 import { updateCypressTsConfig } from './lib/update-cypress-tsconfig';
 import { showPossibleWarnings } from './lib/show-possible-warnings';
+import { tsLibVersion } from '../../utils/versions';
+import { logShowProjectCommand } from '@nx/devkit/src/utils/log-show-project-command';
+import {
+  addProjectToTsSolutionWorkspace,
+  updateTsconfigFiles,
+} from '@nx/js/src/utils/typescript/ts-solution-setup';
+import { sortPackageJsonFields } from '@nx/js/src/utils/package-json/sort-fields';
 
 export async function applicationGenerator(host: Tree, schema: Schema) {
+  return await applicationGeneratorInternal(host, {
+    addPlugin: false,
+    ...schema,
+  });
+}
+
+export async function applicationGeneratorInternal(host: Tree, schema: Schema) {
   const tasks: GeneratorCallback[] = [];
-  const options = normalizeOptions(host, schema);
+  const options = await normalizeOptions(host, schema);
 
   showPossibleWarnings(host, options);
+
+  const jsInitTask = await jsInitGenerator(host, {
+    js: options.js,
+    skipPackageJson: options.skipPackageJson,
+    skipFormat: true,
+    addTsPlugin: schema.useTsSolution,
+    formatter: schema.formatter,
+    platform: 'web',
+  });
+  tasks.push(jsInitTask);
 
   const nextTask = await nextInitGenerator(host, {
     ...options,
@@ -35,6 +63,7 @@ export async function applicationGenerator(host: Tree, schema: Schema) {
   tasks.push(nextTask);
 
   createApplicationFiles(host, options);
+
   addProject(host, options);
 
   const e2eTask = await addE2e(host, options);
@@ -45,6 +74,14 @@ export async function applicationGenerator(host: Tree, schema: Schema) {
 
   const lintTask = await addLinting(host, options);
   tasks.push(lintTask);
+
+  if (options.style === 'tailwind') {
+    const tailwindTask = await setupTailwindGenerator(host, {
+      project: options.projectName,
+    });
+
+    tasks.push(tailwindTask);
+  }
 
   const styledTask = addStyleDependencies(host, {
     style: options.style,
@@ -58,16 +95,61 @@ export async function applicationGenerator(host: Tree, schema: Schema) {
 
   if (options.customServer) {
     await customServerGenerator(host, {
-      project: options.name,
+      project: options.projectName,
       compiler: options.swc ? 'swc' : 'tsc',
     });
   }
+
+  if (!options.skipPackageJson) {
+    const reactVersions = await getReactDependenciesVersionsToInstall(host);
+    const devDependencies: Record<string, string> = {
+      '@types/react': reactVersions['@types/react'],
+      '@types/react-dom': reactVersions['@types/react-dom'],
+    };
+
+    if (options.unitTestRunner && options.unitTestRunner !== 'none') {
+      devDependencies['@testing-library/react'] = testingLibraryReactVersion;
+    }
+
+    tasks.push(
+      addDependenciesToPackageJson(
+        host,
+        { tslib: tsLibVersion },
+        devDependencies
+      )
+    );
+  }
+
+  updateTsconfigFiles(
+    host,
+    options.appProjectRoot,
+    'tsconfig.json',
+    {
+      jsx: 'preserve',
+      module: 'esnext',
+      moduleResolution: 'bundler',
+    },
+    options.linter === 'eslint'
+      ? ['.next', 'eslint.config.js', 'eslint.config.cjs', 'eslint.config.mjs']
+      : ['.next'],
+    options.src ? 'src' : '.'
+  );
+
+  // If we are using the new TS solution
+  // We need to update the workspace file (package.json or pnpm-workspaces.yaml) to include the new project
+  if (options.useTsSolution) {
+    addProjectToTsSolutionWorkspace(host, options.appProjectRoot);
+  }
+
+  sortPackageJsonFields(host, options.appProjectRoot);
 
   if (!options.skipFormat) {
     await formatFiles(host);
   }
 
+  tasks.push(() => {
+    logShowProjectCommand(options.projectName);
+  });
+
   return runTasksInSerial(...tasks);
 }
-
-export const applicationSchematic = convertNxGenerator(applicationGenerator);

@@ -4,8 +4,6 @@
   "sourceRoot": "packages/react-native/src",
   "projectType": "library",
   "targets": {
-    "lint": {},
-    "test": {},
     "build-base": {
       "executor": "@nx/js:tsc",
       "options": {
@@ -18,7 +16,7 @@
           },
           {
             "input": "packages/react-native/src",
-            "glob": "**/*.!(ts)",
+            "glob": "**/!(*.ts)",
             "output": "/src"
           },
           {
@@ -44,10 +42,7 @@
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/build/packages/react-native"],
       "options": {
-        "commands": [
-          "node ./scripts/copy-readme.js react-native",
-          "node ./scripts/add-dependency-to-build.js react-native @nrwl/react-native"
-        ]
+        "command": "node ./scripts/copy-readme.js react-native"
       }
     }
   }

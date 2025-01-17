@@ -1,7 +1,6 @@
 import { ExecutorContext, logger } from '@nx/devkit';
 import { ChildProcess, fork } from 'child_process';
 import { resolve as pathResolve } from 'path';
-import { ensureNodeModulesSymlink } from '../../utils/ensure-node-modules-symlink';
 import { isPackagerRunning } from './lib/is-packager-running';
 import { ReactNativeStartOptions } from './schema';
 
@@ -16,29 +15,13 @@ export default async function* startExecutor(
 ): AsyncGenerator<ReactNativeStartOutput> {
   const projectRoot =
     context.projectsConfigurations.projects[context.projectName].root;
-  ensureNodeModulesSymlink(context.root, projectRoot);
 
-  const startProcess = await runCliStart(context.root, projectRoot, options);
+  await runCliStart(context.root, projectRoot, options);
 
   yield {
     port: options.port,
     success: true,
   };
-
-  if (!startProcess) {
-    return;
-  }
-  await new Promise<void>((resolve) => {
-    const processExitListener = (signal?: number | NodeJS.Signals) => () => {
-      startProcess.kill(signal);
-      resolve();
-      process.exit();
-    };
-    process.once('exit', (signal) => startProcess.kill(signal));
-    process.once('SIGTERM', processExitListener);
-    process.once('SIGINT', processExitListener);
-    process.once('SIGQUIT', processExitListener);
-  });
 }
 
 /*
@@ -63,7 +46,9 @@ export async function runCliStart(
       return await startAsync(workspaceRoot, projectRoot, options);
     } catch (error) {
       logger.error(
-        `Failed to start the packager server. Error details: ${error.message}`
+        `Failed to start the packager server. Error details: ${
+          error.message ?? error
+        }`
       );
       throw error;
     }
@@ -82,19 +67,9 @@ function startAsync(
       {
         cwd: pathResolve(workspaceRoot, projectRoot),
         env: process.env,
-        stdio: ['inherit', 'pipe', 'pipe', 'ipc'],
+        stdio: 'inherit',
       }
     );
-
-    childProcess.stdout.on('data', (data) => {
-      process.stdout.write(data);
-      if (data.toString().includes('reload the app')) {
-        resolve(childProcess);
-      }
-    });
-    childProcess.stderr.on('data', (data) => {
-      process.stderr.write(data);
-    });
 
     childProcess.on('error', (err) => {
       reject(err);
@@ -106,6 +81,15 @@ function startAsync(
         reject(code);
       }
     });
+
+    const processExitListener = (signal?: number | NodeJS.Signals) => () => {
+      childProcess.kill(signal);
+      process.exit();
+    };
+    process.once('exit', (signal) => childProcess.kill(signal));
+    process.once('SIGTERM', processExitListener);
+    process.once('SIGINT', processExitListener);
+    process.once('SIGQUIT', processExitListener);
   });
 }
 

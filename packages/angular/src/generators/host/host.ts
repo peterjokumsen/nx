@@ -1,34 +1,47 @@
 import {
-  extractLayoutDirectory,
   formatFiles,
   getProjects,
+  joinPathFragments,
   runTasksInSerial,
-  stripIndents,
   Tree,
 } from '@nx/devkit';
-import type { Schema } from './schema';
+import {
+  determineProjectNameAndRootOptions,
+  ensureProjectName,
+} from '@nx/devkit/src/generators/project-name-and-root-utils';
+import { isValidVariable } from '@nx/js';
+import { assertNotUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
+import { E2eTestRunner } from '../../utils/test-runners';
 import applicationGenerator from '../application/application';
 import remoteGenerator from '../remote/remote';
-import { normalizeProjectName } from '../utils/project';
 import { setupMf } from '../setup-mf/setup-mf';
-import { E2eTestRunner } from '../../utils/test-runners';
-import { addSsr } from './lib';
+import { addMfEnvToTargetDefaultInputs } from '../utils/add-mf-env-to-inputs';
+import { updateSsrSetup } from './lib';
+import type { Schema } from './schema';
 
-import { getInstalledAngularVersionInfo } from '../utils/version-utils';
-import { lt } from 'semver';
+export async function host(tree: Tree, schema: Schema) {
+  assertNotUsingTsSolutionSetup(tree, 'angular', 'host');
 
-export async function host(tree: Tree, options: Schema) {
-  const installedAngularVersionInfo = getInstalledAngularVersionInfo(tree);
-
-  if (lt(installedAngularVersionInfo.version, '14.1.0') && options.standalone) {
-    throw new Error(stripIndents`The "standalone" option is only supported in Angular >= 14.1.0. You are currently using ${installedAngularVersionInfo.version}.
-    You can resolve this error by removing the "standalone" option or by migrating to Angular 14.1.0.`);
-  }
+  const { typescriptConfiguration = true, ...options }: Schema = schema;
+  options.standalone = options.standalone ?? true;
 
   const projects = getProjects(tree);
 
   const remotesToGenerate: string[] = [];
   const remotesToIntegrate: string[] = [];
+
+  // Check to see if remotes are provided and also check if --dynamic is provided
+  // if both are check that the remotes are valid names else throw an error.
+  if (options.dynamic && options.remotes?.length > 0) {
+    options.remotes.forEach((remote) => {
+      const isValidRemote = isValidVariable(remote);
+      if (!isValidRemote.isValid) {
+        throw new Error(
+          `Invalid remote name provided: ${remote}. ${isValidRemote.message}`
+        );
+      }
+    });
+  }
 
   if (options.remotes && options.remotes.length > 0) {
     options.remotes.forEach((remote) => {
@@ -40,21 +53,27 @@ export async function host(tree: Tree, options: Schema) {
     });
   }
 
-  const { projectDirectory } = extractLayoutDirectory(options.directory);
-  const appName = normalizeProjectName(options.name, projectDirectory);
+  await ensureProjectName(tree, options, 'application');
+  const { projectName: hostProjectName, projectRoot: appRoot } =
+    await determineProjectNameAndRootOptions(tree, {
+      name: options.name,
+      projectType: 'application',
+      directory: options.directory,
+    });
 
   const appInstallTask = await applicationGenerator(tree, {
     ...options,
-    standalone: options.standalone ?? false,
+    standalone: options.standalone,
     routing: true,
     port: 4200,
     skipFormat: true,
+    bundler: 'webpack',
   });
 
   const skipE2E =
     !options.e2eTestRunner || options.e2eTestRunner === E2eTestRunner.None;
   await setupMf(tree, {
-    appName,
+    appName: hostProjectName,
     mfType: 'host',
     routing: true,
     port: 4200,
@@ -63,25 +82,42 @@ export async function host(tree: Tree, options: Schema) {
     skipPackageJson: options.skipPackageJson,
     skipFormat: true,
     skipE2E,
-    e2eProjectName: skipE2E ? undefined : `${appName}-e2e`,
+    e2eProjectName: skipE2E ? undefined : `${hostProjectName}-e2e`,
     prefix: options.prefix,
+    typescriptConfiguration,
+    standalone: options.standalone,
+    setParserOptionsProject: options.setParserOptionsProject,
   });
 
   let installTasks = [appInstallTask];
   if (options.ssr) {
-    let ssrInstallTask = await addSsr(tree, options, appName);
+    let ssrInstallTask = await updateSsrSetup(
+      tree,
+      options,
+      hostProjectName,
+      typescriptConfiguration
+    );
     installTasks.push(ssrInstallTask);
   }
 
   for (const remote of remotesToGenerate) {
+    const remoteDirectory = options.directory
+      ? joinPathFragments(options.directory, '..', remote)
+      : appRoot === '.'
+      ? remote
+      : joinPathFragments(appRoot, '..', remote);
     await remoteGenerator(tree, {
       ...options,
       name: remote,
-      host: appName,
+      directory: remoteDirectory,
+      host: hostProjectName,
       skipFormat: true,
       standalone: options.standalone,
+      typescriptConfiguration,
     });
   }
+
+  addMfEnvToTargetDefaultInputs(tree);
 
   if (!options.skipFormat) {
     await formatFiles(tree);

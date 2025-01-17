@@ -1,10 +1,10 @@
-import { Linter } from '@nx/linter';
+import type { Linter, LinterType } from '@nx/eslint';
 
 export interface ApplicationGeneratorOptions {
-  name: string;
-  directory?: string;
+  directory: string;
+  name?: string;
   frontendProject?: string;
-  linter?: Linter;
+  linter?: Linter | LinterType;
   skipFormat?: boolean;
   skipPackageJson?: boolean;
   standaloneConfig?: boolean;
@@ -14,8 +14,11 @@ export interface ApplicationGeneratorOptions {
   setParserOptionsProject?: boolean;
   rootProject?: boolean;
   strict?: boolean;
+  addPlugin?: boolean;
+  useTsSolution?: boolean;
 }
 
 interface NormalizedOptions extends ApplicationGeneratorOptions {
+  appProjectName: string;
   appProjectRoot: Path;
 }

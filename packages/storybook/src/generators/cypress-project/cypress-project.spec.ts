@@ -1,22 +1,28 @@
-import { installedCypressVersion } from '@nx/cypress/src/utils/cypress-version';
-import { readJson, readProjectConfiguration, Tree } from '@nx/devkit';
+jest.mock('nx/src/project-graph/plugins/loader', () => ({
+  ...jest.requireActual('nx/src/project-graph/plugins/loader'),
+  loadNxPlugin: jest.fn().mockImplementation(() => {
+    return [Promise.resolve({}), () => {}];
+  }),
+}));
+import {
+  readNxJson,
+  readProjectConfiguration,
+  Tree,
+  updateNxJson,
+} from '@nx/devkit';
 import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
-import { Linter } from '@nx/linter';
+import { Linter } from '@nx/eslint';
 import { libraryGenerator } from '@nx/js';
 import { cypressProjectGenerator } from './cypress-project';
 
-jest.mock('@nx/cypress/src/utils/cypress-version');
 describe('@nx/storybook:cypress-project', () => {
   let tree: Tree;
-  let mockedInstalledCypressVersion: jest.Mock<
-    ReturnType<typeof installedCypressVersion>
-  > = installedCypressVersion as never;
 
   beforeEach(async () => {
-    mockedInstalledCypressVersion.mockReturnValue(10);
     tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
     await libraryGenerator(tree, {
       name: 'test-ui-lib',
+      directory: 'apps/test-ui-lib',
     });
   });
   afterEach(() => jest.clearAllMocks());
@@ -24,6 +30,7 @@ describe('@nx/storybook:cypress-project', () => {
   it('should generate files', async () => {
     await cypressProjectGenerator(tree, {
       name: 'test-ui-lib',
+      directory: 'apps/test-ui-lib-e2e',
       linter: Linter.EsLint,
     });
 
@@ -35,22 +42,10 @@ describe('@nx/storybook:cypress-project', () => {
     expect(cypressConfig).toMatchSnapshot();
   });
 
-  it('should update cypress.json file if present', async () => {
-    mockedInstalledCypressVersion.mockReturnValue(9);
-
-    await cypressProjectGenerator(tree, {
-      name: 'test-ui-lib',
-      linter: Linter.EsLint,
-    });
-
-    expect(tree.exists('apps/test-ui-lib-e2e/cypress.json')).toBeTruthy();
-    const cypressConfig = readJson(tree, 'apps/test-ui-lib-e2e/cypress.json');
-    expect(cypressConfig.baseUrl).toEqual('http://localhost:4400');
-  });
-
   it('should update `angular.json` file', async () => {
     await cypressProjectGenerator(tree, {
       name: 'test-ui-lib',
+      directory: 'apps/test-ui-lib-e2e',
       linter: Linter.EsLint,
     });
     const project = readProjectConfiguration(tree, 'test-ui-lib-e2e');
@@ -68,32 +63,35 @@ describe('@nx/storybook:cypress-project', () => {
   it('should generate in the correct folder', async () => {
     await cypressProjectGenerator(tree, {
       name: 'test-ui-lib',
-      directory: 'one/two',
+      directory: 'apps/one/two/test-ui-lib-e2e',
       linter: Linter.EsLint,
     });
-    expect(
-      readProjectConfiguration(tree, 'one-two-test-ui-lib-e2e')
-    ).toBeDefined();
+    expect(readProjectConfiguration(tree, 'test-ui-lib-e2e')).toBeDefined();
     expect(
       tree.exists('apps/one/two/test-ui-lib-e2e/cypress.config.ts')
     ).toBeTruthy();
   });
 
-  it('should make sure the cypress packages are installed', async () => {
-    expect(
-      readJson(tree, 'package.json').devDependencies['cypress']
-    ).toBeFalsy();
+  it('should generate a correct cypress.config.ts file when using inferred plugins', async () => {
+    // ARRANGE
+    const nxJson = readNxJson(tree);
+    nxJson.plugins ??= [];
+    nxJson.plugins.push('@nx/cypress/plugin');
+    updateNxJson(tree, nxJson);
+
+    // ACT
     await cypressProjectGenerator(tree, {
       name: 'test-ui-lib',
-      directory: 'one/two',
+      directory: 'apps/test-ui-lib-e2e',
       linter: Linter.EsLint,
     });
-    expect(
-      readJson(tree, 'package.json').devDependencies['cypress']
-    ).toBeTruthy();
 
-    expect(
-      readJson(tree, 'package.json').devDependencies['@nx/cypress']
-    ).toBeTruthy();
+    // ASSERT
+    expect(tree.exists('apps/test-ui-lib-e2e/cypress.config.ts')).toBeTruthy();
+    const cypressConfig = tree.read(
+      'apps/test-ui-lib-e2e/cypress.config.ts',
+      'utf-8'
+    );
+    expect(cypressConfig).toMatchSnapshot();
   });
 });

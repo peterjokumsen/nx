@@ -1,9 +1,22 @@
-import { TempFs } from '../../../../utils/testing/temp-fs';
+import { TempFs } from '../../../../internal-testing-utils/temp-fs';
+
 const tempFs = new TempFs('explicit-project-deps');
 
+import { ProjectGraphProjectNode } from '../../../../config/project-graph';
+import { ProjectConfiguration } from '../../../../config/workspace-json-project-json';
+import { CreateDependenciesContext } from '../../../../project-graph/plugins';
 import { ProjectGraphBuilder } from '../../../../project-graph/project-graph-builder';
+import {
+  retrieveProjectConfigurations,
+  retrieveWorkspaceFiles,
+} from '../../../../project-graph/utils/retrieve-workspace-files';
+import { setupWorkspaceContext } from '../../../../utils/workspace-context';
 import { buildExplicitTypeScriptDependencies } from './explicit-project-dependencies';
-import { retrieveWorkspaceFiles } from '../../../../project-graph/utils/retrieve-workspace-files';
+import { TargetProjectLocator } from './target-project-locator';
+import {
+  cleanupPlugins,
+  getOnlyDefaultPlugins,
+} from '../../../../project-graph/plugins/get-plugins';
 
 // projectName => tsconfig import path
 const dependencyProjectNamesToImportPaths = {
@@ -13,15 +26,19 @@ const dependencyProjectNamesToImportPaths = {
 };
 
 describe('explicit project dependencies', () => {
-  beforeEach(() => {
+  afterEach(() => {
     tempFs.reset();
+  });
+
+  afterAll(() => {
+    tempFs.cleanup();
   });
 
   describe('static imports, dynamic imports, and commonjs requires', () => {
     it('should build explicit dependencies for static imports, and top-level dynamic imports and commonjs requires', async () => {
-      const sourceProjectName = 'proj';
-      const { ctx, builder } = await createVirtualWorkspace({
-        sourceProjectName,
+      const source = 'proj';
+      const ctx = await createContext({
+        source,
         sourceProjectFiles: [
           {
             path: 'libs/proj/index.ts',
@@ -34,44 +51,107 @@ describe('explicit project dependencies', () => {
           },
         ],
       });
+      const targetProjectLocator = new TargetProjectLocator(
+        convertProjectsForTargetProjectLocator(ctx.projects),
+        ctx.externalNodes,
+        new Map()
+      );
 
       const res = buildExplicitTypeScriptDependencies(
-        builder.getUpdatedProjectGraph(),
-        ctx.filesToProcess
+        ctx,
+        targetProjectLocator
       );
 
       expect(res).toEqual([
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.ts',
-          targetProjectName: 'proj2',
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          target: 'proj2',
           type: 'static',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.ts',
-          targetProjectName: 'proj4ab',
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          target: 'proj4ab',
           type: 'static',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.ts',
-          targetProjectName: 'npm:npm-package',
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          target: 'npm:npm-package',
           type: 'static',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.ts',
-          targetProjectName: 'proj3a',
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          target: 'proj3a',
           type: 'dynamic',
         },
       ]);
     });
 
+    it('should preferentially resolve external projects found in the npmResolutionCache', async () => {
+      const source = 'proj';
+      const ctx = await createContext({
+        source,
+        sourceProjectFiles: [
+          {
+            path: 'libs/proj/index.ts',
+            content: `
+              import * as npmPackage from 'npm-package';
+            `,
+          },
+        ],
+      });
+
+      const npmResolutionCache = new Map();
+      // Add an example of a alternate version of npm-package in the workspace within the cache
+      npmResolutionCache.set('npm-package__libs/proj', 'npm:npm-package@0.5.0');
+
+      const targetProjectLocatorWithEmptyCache = new TargetProjectLocator(
+        convertProjectsForTargetProjectLocator(ctx.projects),
+        ctx.externalNodes,
+        new Map()
+      );
+      const targetProjectLocatorWithCache = new TargetProjectLocator(
+        convertProjectsForTargetProjectLocator(ctx.projects),
+        ctx.externalNodes,
+        npmResolutionCache
+      );
+
+      const resWithEmptyCache = buildExplicitTypeScriptDependencies(
+        ctx,
+        targetProjectLocatorWithEmptyCache
+      );
+      const resWithCache = buildExplicitTypeScriptDependencies(
+        ctx,
+        targetProjectLocatorWithCache
+      );
+
+      expect(resWithEmptyCache).toEqual([
+        {
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          target: 'npm:npm-package',
+          type: 'static',
+        },
+      ]);
+
+      expect(resWithCache).toEqual([
+        {
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          // Preferred the version in the cache instead of going through the full resolution process to find the 1.0.0 version in tempFs node_modules
+          target: 'npm:npm-package@0.5.0',
+          type: 'static',
+        },
+      ]);
+    });
+
     it('should build explicit dependencies for static exports', async () => {
-      const sourceProjectName = 'proj';
-      const { ctx, builder } = await createVirtualWorkspace({
-        sourceProjectName,
+      const source = 'proj';
+      const ctx = await createContext({
+        source,
         sourceProjectFiles: [
           {
             path: 'libs/proj/index.ts',
@@ -83,38 +163,43 @@ describe('explicit project dependencies', () => {
           },
         ],
       });
+      const targetProjectLocator = new TargetProjectLocator(
+        convertProjectsForTargetProjectLocator(ctx.projects),
+        ctx.externalNodes,
+        new Map()
+      );
 
       const res = buildExplicitTypeScriptDependencies(
-        builder.graph,
-        ctx.filesToProcess
+        ctx,
+        targetProjectLocator
       );
 
       expect(res).toEqual([
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.ts',
-          targetProjectName: 'proj2',
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          target: 'proj2',
           type: 'static',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.ts',
-          targetProjectName: 'proj3a',
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          target: 'proj3a',
           type: 'static',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.ts',
-          targetProjectName: 'proj4ab',
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          target: 'proj4ab',
           type: 'static',
         },
       ]);
     });
 
     it('should build explicit dependencies for static exports in .mts files', async () => {
-      const sourceProjectName = 'proj';
-      const { ctx, builder } = await createVirtualWorkspace({
-        sourceProjectName,
+      const source = 'proj';
+      const ctx = await createContext({
+        source,
         sourceProjectFiles: [
           {
             path: 'libs/proj/index.mts',
@@ -126,37 +211,42 @@ describe('explicit project dependencies', () => {
           },
         ],
       });
+      const targetProjectLocator = new TargetProjectLocator(
+        convertProjectsForTargetProjectLocator(ctx.projects),
+        ctx.externalNodes,
+        new Map()
+      );
 
       const res = buildExplicitTypeScriptDependencies(
-        builder.graph,
-        ctx.filesToProcess
+        ctx,
+        targetProjectLocator
       );
       expect(res).toEqual([
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.mts',
-          targetProjectName: 'proj2',
+          source,
+          sourceFile: 'libs/proj/index.mts',
+          target: 'proj2',
           type: 'static',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.mts',
-          targetProjectName: 'proj3a',
+          source,
+          sourceFile: 'libs/proj/index.mts',
+          target: 'proj3a',
           type: 'static',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.mts',
-          targetProjectName: 'proj4ab',
+          source,
+          sourceFile: 'libs/proj/index.mts',
+          target: 'proj4ab',
           type: 'static',
         },
       ]);
     });
 
     it(`should build explicit dependencies for TypeScript's import/export require syntax, and side-effectful import`, async () => {
-      const sourceProjectName = 'proj';
-      const { ctx, builder } = await createVirtualWorkspace({
-        sourceProjectName,
+      const source = 'proj';
+      const ctx = await createContext({
+        source,
         sourceProjectFiles: [
           {
             path: 'libs/proj/index.ts',
@@ -168,38 +258,43 @@ describe('explicit project dependencies', () => {
           },
         ],
       });
+      const targetProjectLocator = new TargetProjectLocator(
+        convertProjectsForTargetProjectLocator(ctx.projects),
+        ctx.externalNodes,
+        new Map()
+      );
 
       const res = buildExplicitTypeScriptDependencies(
-        builder.graph,
-        ctx.filesToProcess
+        ctx,
+        targetProjectLocator
       );
 
       expect(res).toEqual([
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.ts',
-          targetProjectName: 'proj2',
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          target: 'proj2',
           type: 'static',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.ts',
-          targetProjectName: 'proj3a',
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          target: 'proj3a',
           type: 'static',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/index.ts',
-          targetProjectName: 'proj4ab',
+          source,
+          sourceFile: 'libs/proj/index.ts',
+          target: 'proj4ab',
           type: 'static',
         },
       ]);
     });
 
     it('should build explicit dependencies for nested dynamic imports and commonjs requires', async () => {
-      const sourceProjectName = 'proj';
-      const { ctx, builder } = await createVirtualWorkspace({
-        sourceProjectName,
+      const source = 'proj';
+      const ctx = await createContext({
+        source,
         sourceProjectFiles: [
           {
             path: 'libs/proj/nested-dynamic-import.ts',
@@ -232,38 +327,43 @@ describe('explicit project dependencies', () => {
           },
         ],
       });
+      const targetProjectLocator = new TargetProjectLocator(
+        convertProjectsForTargetProjectLocator(ctx.projects),
+        ctx.externalNodes,
+        new Map()
+      );
 
       const res = buildExplicitTypeScriptDependencies(
-        builder.graph,
-        ctx.filesToProcess
+        ctx,
+        targetProjectLocator
       );
 
       expect(res).toEqual([
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/component.tsx',
-          targetProjectName: 'proj2',
+          source,
+          sourceFile: 'libs/proj/component.tsx',
+          target: 'proj2',
           type: 'dynamic',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/nested-dynamic-import.ts',
-          targetProjectName: 'proj3a',
+          source,
+          sourceFile: 'libs/proj/nested-dynamic-import.ts',
+          target: 'proj3a',
           type: 'dynamic',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/nested-require.ts',
-          targetProjectName: 'proj4ab',
+          source,
+          sourceFile: 'libs/proj/nested-require.ts',
+          target: 'proj4ab',
           type: 'static',
         },
       ]);
     });
 
     it('should build explicit dependencies when relative paths are used', async () => {
-      const sourceProjectName = 'proj';
-      const { ctx, builder } = await createVirtualWorkspace({
-        sourceProjectName,
+      const source = 'proj';
+      const ctx = await createContext({
+        source,
         sourceProjectFiles: [
           {
             path: 'libs/proj/absolute-path.ts',
@@ -279,32 +379,37 @@ describe('explicit project dependencies', () => {
           },
         ],
       });
+      const targetProjectLocator = new TargetProjectLocator(
+        convertProjectsForTargetProjectLocator(ctx.projects),
+        ctx.externalNodes,
+        new Map()
+      );
 
       const res = buildExplicitTypeScriptDependencies(
-        builder.graph,
-        ctx.filesToProcess
+        ctx,
+        targetProjectLocator
       );
 
       expect(res).toEqual([
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/absolute-path.ts',
-          targetProjectName: 'proj3a',
+          source,
+          sourceFile: 'libs/proj/absolute-path.ts',
+          target: 'proj3a',
           type: 'dynamic',
         },
         {
-          sourceProjectName,
-          sourceProjectFile: 'libs/proj/relative-path.ts',
-          targetProjectName: 'proj4ab',
+          source,
+          sourceFile: 'libs/proj/relative-path.ts',
+          target: 'proj4ab',
           type: 'dynamic',
         },
       ]);
     });
 
     it('should not build explicit dependencies when nx-ignore-next-line comments are present', async () => {
-      const sourceProjectName = 'proj';
-      const { ctx, builder } = await createVirtualWorkspace({
-        sourceProjectName,
+      const source = 'proj';
+      const ctx = await createContext({
+        source,
         sourceProjectFiles: [
           {
             path: 'libs/proj/static-import-1.ts',
@@ -397,19 +502,24 @@ describe('explicit project dependencies', () => {
           },
         ],
       });
+      const targetProjectLocator = new TargetProjectLocator(
+        convertProjectsForTargetProjectLocator(ctx.projects),
+        ctx.externalNodes,
+        new Map()
+      );
 
       const res = buildExplicitTypeScriptDependencies(
-        builder.graph,
-        ctx.filesToProcess
+        ctx,
+        targetProjectLocator
       );
 
       expect(res).toEqual([]);
     });
 
     it('should not build explicit dependencies for stringified or templatized import/require statements', async () => {
-      const sourceProjectName = 'proj';
-      const { ctx, builder } = await createVirtualWorkspace({
-        sourceProjectName,
+      const source = 'proj';
+      const ctx = await createContext({
+        source,
         sourceProjectFiles: [
           {
             path: 'libs/proj/stringified-imports-and-require.ts',
@@ -472,10 +582,15 @@ describe('explicit project dependencies', () => {
           // },
         ],
       });
+      const targetProjectLocator = new TargetProjectLocator(
+        convertProjectsForTargetProjectLocator(ctx.projects),
+        ctx.externalNodes,
+        new Map()
+      );
 
       const res = buildExplicitTypeScriptDependencies(
-        builder.graph,
-        ctx.filesToProcess
+        ctx,
+        targetProjectLocator
       );
 
       expect(res).toEqual([]);
@@ -484,7 +599,7 @@ describe('explicit project dependencies', () => {
 });
 
 interface VirtualWorkspaceConfig {
-  sourceProjectName: string;
+  source: string;
   sourceProjectFiles: {
     path: string;
     content: string;
@@ -495,14 +610,14 @@ interface VirtualWorkspaceConfig {
  * Prepares a minimal workspace and virtual file-system for the given files and dependency
  * projects in order to be able to execute `buildExplicitTypeScriptDependencies()` in the tests.
  */
-async function createVirtualWorkspace(config: VirtualWorkspaceConfig) {
-  const nxJson = {
-    npmScope: 'proj',
-  };
+async function createContext(
+  config: VirtualWorkspaceConfig
+): Promise<CreateDependenciesContext> {
+  const nxJson = {};
   const projectsFs = {
-    [`./libs/${config.sourceProjectName}/project.json`]: JSON.stringify({
-      name: config.sourceProjectName,
-      sourceRoot: `libs/${config.sourceProjectName}`,
+    [`./libs/${config.source}/project.json`]: JSON.stringify({
+      name: config.source,
+      sourceRoot: `libs/${config.source}`,
     }),
   };
 
@@ -522,24 +637,26 @@ async function createVirtualWorkspace(config: VirtualWorkspaceConfig) {
       }),
       {}
     ),
+    './node_modules/npm-package/package.json': JSON.stringify({
+      name: 'npm-package',
+      version: '1.0.0',
+    }),
   };
   const tsConfig = {
     compilerOptions: {
       baseUrl: '.',
       paths: {
-        [`@proj/${config.sourceProjectName}`]: [
-          `libs/${config.sourceProjectName}/index.ts`,
-        ],
+        [`@proj/${config.source}`]: [`libs/${config.source}/index.ts`],
       },
     },
   };
 
   const builder = new ProjectGraphBuilder();
   builder.addNode({
-    name: config.sourceProjectName,
+    name: config.source,
     type: 'lib',
     data: {
-      root: `libs/${config.sourceProjectName}`,
+      root: `libs/${config.source}`,
       files: config.sourceProjectFiles.map(({ path }) => ({
         file: path,
       })),
@@ -582,15 +699,44 @@ async function createVirtualWorkspace(config: VirtualWorkspaceConfig) {
     ...projectsFs,
   });
 
-  const { projectFileMap, projectConfigurations } =
-    await retrieveWorkspaceFiles(tempFs.tempDir, nxJson);
+  setupWorkspaceContext(tempFs.tempDir);
+
+  const plugins = await getOnlyDefaultPlugins(tempFs.tempDir);
+  const { projects, projectRootMap } = await retrieveProjectConfigurations(
+    plugins,
+    tempFs.tempDir,
+    nxJson
+  );
+  cleanupPlugins();
+
+  const { fileMap } = await retrieveWorkspaceFiles(
+    tempFs.tempDir,
+    projectRootMap
+  );
 
   return {
-    ctx: {
-      projectsConfigurations: projectConfigurations,
-      nxJsonConfiguration: nxJson,
-      filesToProcess: projectFileMap,
-    },
-    builder,
+    externalNodes: builder.getUpdatedProjectGraph().externalNodes,
+    projects: Object.fromEntries(
+      Object.entries(projects).map(([root, config]) => [config.name, config])
+    ),
+    nxJsonConfiguration: nxJson,
+    filesToProcess: fileMap,
+    fileMap: fileMap,
+    workspaceRoot: tempFs.tempDir,
   };
+}
+
+function convertProjectsForTargetProjectLocator(
+  projects: Record<string, ProjectConfiguration>
+): Record<string, ProjectGraphProjectNode> {
+  return Object.fromEntries(
+    Object.entries(projects).map(([key, config]) => [
+      key,
+      {
+        name: key,
+        type: null,
+        data: config,
+      },
+    ])
+  );
 }

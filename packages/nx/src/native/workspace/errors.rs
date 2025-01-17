@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use napi::bindgen_prelude::*;
 use thiserror::Error;
 
@@ -23,19 +21,19 @@ impl AsRef<str> for WorkspaceErrors {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum InternalWorkspaceErrors {
-    #[error("{file}")]
-    ParseError { file: PathBuf },
-    #[error("{msg}")]
-    Generic { msg: String },
+    #[error("{0}")]
+    ParseError(String),
+    #[error("{0}")]
+    Generic(String),
 }
 
 impl From<InternalWorkspaceErrors> for napi::Error<WorkspaceErrors> {
     fn from(value: InternalWorkspaceErrors) -> Self {
         match value {
-            InternalWorkspaceErrors::ParseError { file } => {
-                Error::new(WorkspaceErrors::ParseError, file.display().to_string())
+            InternalWorkspaceErrors::ParseError(msg) => {
+                Error::new(WorkspaceErrors::ParseError, msg)
             }
-            InternalWorkspaceErrors::Generic { msg } => Error::new(WorkspaceErrors::Generic, msg),
+            InternalWorkspaceErrors::Generic(msg) => Error::new(WorkspaceErrors::Generic, msg),
         }
     }
 }

@@ -2,14 +2,10 @@ import { ExecutorContext, names } from '@nx/devkit';
 import { resolve as pathResolve } from 'path';
 import { ChildProcess, fork } from 'child_process';
 
-import { ensureNodeModulesSymlink } from '../../utils/ensure-node-modules-symlink';
+import { resolveEas } from '../../utils/resolve-eas';
+import { installAndUpdatePackageJson } from '../install/install.impl';
 
 import { ExpoEasUpdateOptions } from './schema';
-import {
-  displayNewlyAddedDepsMessage,
-  syncDeps,
-} from '../sync-deps/sync-deps.impl';
-import { installAsync } from '../install/install.impl';
 
 export interface ReactNativeUpdateOutput {
   success: boolean;
@@ -23,20 +19,11 @@ export default async function* buildExecutor(
 ): AsyncGenerator<ReactNativeUpdateOutput> {
   const projectRoot =
     context.projectsConfigurations.projects[context.projectName].root;
-  await installAsync(context.root, { packages: ['expo-updates'] });
-  displayNewlyAddedDepsMessage(
-    context.projectName,
-    await syncDeps(
-      context.projectName,
-      projectRoot,
-      context.root,
-      context.projectGraph,
-      ['expo-updates']
-    )
-  );
-  ensureNodeModulesSymlink(context.root, projectRoot);
 
   try {
+    await installAndUpdatePackageJson(context, {
+      packages: ['expo-updates'],
+    });
     await runCliUpdate(context.root, projectRoot, options);
     yield { success: true };
   } finally {
@@ -53,7 +40,7 @@ function runCliUpdate(
 ) {
   return new Promise((resolve, reject) => {
     childProcess = fork(
-      require.resolve('eas-cli/bin/run'),
+      resolveEas(workspaceRoot),
       ['update', ...createUpdateOptions(options)],
       { cwd: pathResolve(workspaceRoot, projectRoot), env: process.env }
     );

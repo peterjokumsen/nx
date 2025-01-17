@@ -2,7 +2,7 @@
   "version": 2,
   "outputCapture": "direct-nodejs",
   "title": "esbuild (experimental)",
-  "description": "Bundle a package for different platforms. Note: declaration (*.d.ts) file are not currently generated.",
+  "description": "Bundle a package for different platforms.",
   "cli": "nx",
   "type": "object",
   "properties": {
@@ -53,6 +53,14 @@
         "enum": ["esm", "cjs"]
       },
       "default": ["esm"]
+    },
+    "declaration": {
+      "type": "boolean",
+      "description": "Generate declaration (*.d.ts) files for every TypeScript or JavaScript file inside your project. Should be used for libraries that are published to an npm repository."
+    },
+    "declarationRootDir": {
+      "type": "string",
+      "description": "Sets the rootDir for the declaration (*.d.ts) files."
     },
     "watch": {
       "type": "boolean",
@@ -129,12 +137,6 @@
     "thirdParty": {
       "type": "boolean",
       "description": "Includes third-party packages in the bundle (i.e. npm packages)."
-    },
-    "dependenciesFieldType": {
-      "type": "string",
-      "description": "When `bundleInternalProjectsOnly` is true, this option determines whether external packages should be in 'dependencies' or 'peerDependencies' field in the generated package.json file.",
-      "enum": ["dependencies", "peerDependencies"],
-      "default": "dependencies"
     },
     "esbuildOptions": {
       "type": "object",

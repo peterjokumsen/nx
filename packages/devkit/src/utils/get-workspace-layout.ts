@@ -1,7 +1,4 @@
-import type { Tree } from 'nx/src/generators/tree';
-import { requireNx } from '../../nx';
-
-const { readNxJson } = requireNx();
+import { readNxJson, Tree } from 'nx/src/devkit-exports';
 
 /**
  * Returns workspace defaults. It includes defaults folders for apps and libs,
@@ -10,7 +7,7 @@ const { readNxJson } = requireNx();
  * Example:
  *
  * ```typescript
- * { appsDir: 'apps', libsDir: 'libs', npmScope: 'myorg' }
+ * { appsDir: 'apps', libsDir: 'libs' }
  * ```
  * @param tree - file system tree
  */
@@ -18,10 +15,6 @@ export function getWorkspaceLayout(tree: Tree): {
   appsDir: string;
   libsDir: string;
   standaloneAsDefault: boolean;
-  /**
-   * @deprecated This will be removed in Nx 17. Use {@link getNpmScope} instead.
-   */
-  npmScope: string;
 } {
   const nxJson = readNxJson(tree);
   return {
@@ -31,7 +24,6 @@ export function getWorkspaceLayout(tree: Tree): {
     libsDir:
       nxJson?.workspaceLayout?.libsDir ??
       inOrderOfPreference(tree, ['libs', 'packages'], '.'),
-    npmScope: nxJson?.npmScope,
     standaloneAsDefault: true,
   };
 }
@@ -39,9 +31,9 @@ export function getWorkspaceLayout(tree: Tree): {
 /**
  * Experimental
  */
-export function extractLayoutDirectory(directory: string): {
-  layoutDirectory: string;
-  projectDirectory: string;
+export function extractLayoutDirectory(directory?: string): {
+  layoutDirectory: string | null;
+  projectDirectory?: string;
 } {
   if (directory) {
     directory = directory.startsWith('/') ? directory.substring(1) : directory;

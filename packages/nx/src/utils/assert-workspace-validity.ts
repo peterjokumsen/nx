@@ -1,16 +1,17 @@
-import { ProjectsConfigurations } from '../config/workspace-json-project-json';
+import { ProjectConfiguration } from '../config/workspace-json-project-json';
 import { NxJsonConfiguration } from '../config/nx-json';
 import { findMatchingProjects } from './find-matching-projects';
 import { output } from './output';
 import { ProjectGraphProjectNode } from '../config/project-graph';
+import { WorkspaceValidityError } from '../devkit-internals';
 
 export function assertWorkspaceValidity(
-  projectsConfigurations: ProjectsConfigurations,
+  projects: Record<string, ProjectConfiguration>,
   nxJson: NxJsonConfiguration
 ) {
-  const projectNames = Object.keys(projectsConfigurations.projects);
+  const projectNames = Object.keys(projects);
   const projectGraphNodes = projectNames.reduce((graph, project) => {
-    const projectConfiguration = projectsConfigurations.projects[project];
+    const projectConfiguration = projects[project];
     graph[project] = {
       name: project,
       type: projectConfiguration.projectType === 'library' ? 'lib' : 'app', // missing fallback to `e2e`
@@ -20,10 +21,6 @@ export function assertWorkspaceValidity(
     };
     return graph;
   }, {} as Record<string, ProjectGraphProjectNode>);
-
-  const projects = {
-    ...projectsConfigurations.projects,
-  };
 
   const invalidImplicitDependencies = new Map<string, string[]>();
 
@@ -103,21 +100,24 @@ export function assertWorkspaceValidity(
       .join('\n\n');
   }
 
-  throw new Error(`Configuration Error\n${message}`);
+  throw new WorkspaceValidityError(message);
 }
 
 function detectAndSetInvalidProjectGlobValues(
   map: Map<string, string[]>,
   sourceName: string,
   desiredImplicitDeps: string[],
-  projectConfigurations: ProjectsConfigurations['projects'],
+  projectConfigurations: Record<string, ProjectConfiguration>,
   projects: Record<string, ProjectGraphProjectNode>
 ) {
   const invalidProjectsOrGlobs = desiredImplicitDeps.filter((implicit) => {
     const projectName = implicit.startsWith('!')
       ? implicit.substring(1)
       : implicit;
-
+    // Do not error on cross-workspace implicit dependency references
+    if (projectName.startsWith('nx-cloud:')) {
+      return false;
+    }
     return !(
       projectConfigurations[projectName] ||
       findMatchingProjects([implicit], projects).length

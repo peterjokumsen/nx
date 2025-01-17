@@ -1,8 +1,8 @@
-import { Tree } from 'nx/src/generators/tree';
-import { NormalizedSchema } from './normalized-schema';
-import componentGenerator from '../../component/component';
-import { addLoadChildren } from './add-load-children';
+import { joinPathFragments, names, type Tree } from '@nx/devkit';
+import { componentGenerator } from '../../component/component';
 import { addChildren } from './add-children';
+import { addLoadChildren } from './add-load-children';
+import type { NormalizedSchema } from './normalized-schema';
 
 export async function addStandaloneComponent(
   tree: Tree,
@@ -10,11 +10,17 @@ export async function addStandaloneComponent(
 ) {
   await componentGenerator(tree, {
     ...componentOptions,
-    name: componentOptions.name,
+    name: names(libraryOptions.name).className,
+    path: joinPathFragments(
+      libraryOptions.projectRoot,
+      'src',
+      'lib',
+      componentOptions.flat
+        ? `${componentOptions.name}`
+        : `${componentOptions.name}/${componentOptions.name}`
+    ),
     standalone: true,
     export: true,
-    project: libraryOptions.name,
-    flat: componentOptions.flat,
     skipFormat: true,
   });
 

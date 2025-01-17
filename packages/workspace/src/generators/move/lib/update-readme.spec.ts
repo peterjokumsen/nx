@@ -1,3 +1,5 @@
+import 'nx/src/internal-testing-utils/mock-project-graph';
+
 import { Tree } from '@nx/devkit';
 import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
 import { join } from 'path';
@@ -18,7 +20,7 @@ describe('updateReadme', () => {
       importPath: '@proj/shared-my-destination',
       updateImportPath: true,
       newProjectName: 'shared-my-destination',
-      relativeToRootDestination: 'libs/shared/my-destination',
+      relativeToRootDestination: 'shared/my-destination',
     };
 
     tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
@@ -26,7 +28,7 @@ describe('updateReadme', () => {
 
   it('should handle README.md not existing', async () => {
     await libraryGenerator(tree, {
-      name: 'my-lib',
+      directory: 'my-lib',
     });
     const readmePath = join(schema.relativeToRootDestination, 'README.md');
     tree.delete(readmePath);
@@ -38,18 +40,15 @@ describe('updateReadme', () => {
 
   it('should update README.md contents', async () => {
     await libraryGenerator(tree, {
-      name: 'my-lib',
+      directory: 'my-lib',
     });
     // This step is usually handled elsewhere
-    tree.rename(
-      'libs/my-lib/README.md',
-      'libs/shared/my-destination/README.md'
-    );
+    tree.rename('my-lib/README.md', 'shared/my-destination/README.md');
 
     updateReadme(tree, schema);
 
     const content = tree
-      .read('/libs/shared/my-destination/README.md')
+      .read('shared/my-destination/README.md')
       .toString('utf8');
     expect(content).toMatch('# shared-my-destination');
     expect(content).toMatch('nx test shared-my-destination');

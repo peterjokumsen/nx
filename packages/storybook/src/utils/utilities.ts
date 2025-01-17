@@ -131,32 +131,19 @@ export function findStorybookAndBuildTargetsAndCompiler(targets: {
     '@nx/angular:webpack-browser',
     '@nx/esbuild:esbuild',
     '@nx/next:build',
-    '@nx/react-native:bundle',
-    '@nx/react-native:build-android',
-    '@nx/react-native:bundle',
-    '@nrwl/js:babel',
-    '@nrwl/js:swc',
-    '@nrwl/js:tsc',
-    '@nrwl/webpack:webpack',
-    '@nrwl/rollup:rollup',
-    '@nrwl/web:rollup',
-    '@nrwl/vite:build',
-    '@nrwl/angular:ng-packagr-lite',
-    '@nrwl/angular:package',
-    '@nrwl/angular:webpack-browser',
-    '@nrwl/esbuild:esbuild',
-    '@nrwl/next:build',
-    '@nrwl/react-native:bundle',
-    '@nrwl/react-native:build-android',
-    '@nrwl/react-native:bundle',
     '@nxext/vite:build',
+    '@angular-devkit/build-angular:application',
     '@angular-devkit/build-angular:browser',
+    '@angular-devkit/build-angular:browser-esbuild',
   ];
 
   for (const target in targets) {
     if (arrayOfBuilders.includes(targets[target].executor)) {
       if (
-        targets[target].executor === '@angular-devkit/build-angular:browser'
+        targets[target].executor === '@angular-devkit/build-angular:browser' ||
+        targets[target].executor ===
+          '@angular-devkit/build-angular:browser-esbuild' ||
+        targets[target].executor === '@angular-devkit/build-angular:application'
       ) {
         /**
          * Not looking for '@nx/angular:ng-packagr-lite' or any other
@@ -181,14 +168,12 @@ export function findStorybookAndBuildTargetsAndCompiler(targets: {
       returnObject.compiler = targets[target].options?.compiler;
     } else if (
       targets[target].executor === '@storybook/angular:start-storybook' ||
-      targets[target].executor === '@nrwl/storybook:storybook' ||
       targets[target].executor === '@nx/storybook:storybook'
     ) {
       returnObject.storybookTarget = target;
     } else if (
       targets[target].executor === '@storybook/angular:build-storybook' ||
-      targets[target].executor === '@nx/storybook:build' ||
-      targets[target].executor === '@nrwl/storybook:build'
+      targets[target].executor === '@nx/storybook:build'
     ) {
       returnObject.storybookBuildTarget = target;
     } else if (targets[target].options?.compiler) {
@@ -217,13 +202,15 @@ export function isTheFileAStory(tree: Tree, path: string): boolean {
       });
       const importSpecifiers = findNodes(importNode, [
         ts.SyntaxKind.ImportSpecifier,
+        ts.SyntaxKind.NamespaceImport,
       ]);
       importSpecifiers.forEach((importSpecifier: ts.ImportSpecifier) => {
         if (
           importSpecifier.getText() === 'Story' ||
           importSpecifier.getText() === 'Meta' ||
           importSpecifier.getText() === 'storiesOf' ||
-          importSpecifier.getText() === 'ComponentStory'
+          importSpecifier.getText() === 'ComponentStory' ||
+          importSpecifier.getText().includes('Storybook')
         ) {
           nodeContainsStoryImport = true;
         }
@@ -262,9 +249,10 @@ export function getTsSourceFile(host: Tree, path: string): ts.SourceFile {
 
 export function pleaseUpgrade(): string {
   return `
-    Storybook 6 is no longer maintained. Please upgrade to Storybook 7.
+    Storybook 6 and lower are no longer maintained, and not supported in Nx. 
+    Please upgrade to Storybook 7.
 
     Here is a guide on how to upgrade:
-    https://nx.dev/packages/storybook/generators/migrate-7
+    https://nx.dev/nx-api/storybook/generators/migrate-7
     `;
 }

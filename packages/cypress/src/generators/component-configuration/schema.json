@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "$id": "NxCypressComponentConfiguration",
   "cli": "nx",
   "title": "Set up Cypress component testing for a project",
@@ -31,6 +31,11 @@
       "type": "string",
       "description": "A directory where the project is placed relative from the project root",
       "default": "cypress"
+    },
+    "jsx": {
+      "description": "Whether or not this project uses JSX.",
+      "type": "boolean",
+      "default": true
     }
   },
   "required": ["project"],

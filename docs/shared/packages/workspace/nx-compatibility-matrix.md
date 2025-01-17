@@ -6,12 +6,13 @@ and the version of NodeJS that we tested it against.
 > _Note: Other versions of NodeJS **may** still work without issue for these versions of Nx. This table outlines the
 > version of NodeJS that we used when building and testing each particular version of Nx._
 
-| Nx Version | Node Version | Typescript Version |
-| ---------- | ------------ | ------------------ |
-| 10.4.15    | ^12.18       | 4.0.3              |
-| 11.6.3     | ^12.20       | 4.0.5              |
-| 12.10.1    | ^14.17       | ~4.3.5             |
-| 13.10.6    | ^16.5.0      | ~4.6.2             |
-| 14.5.4     | ^16.16.0     | ~4.7.2             |
-| 15.9.4     | ^16.16.0     | ~5.0.0             |
-| latest     | ^18.14.0     | ~5.1.0             |
+| Nx Version      | Node Version     | Typescript Version |
+| --------------- | ---------------- | ------------------ |
+| 20.x (latest)   | 22.x, 20.x       | ~5.4.2             |
+| 19.x (previous) | 22.x, 20.x, 18.x | ~5.4.2             |
+| 18.x            | 20.x, 18.x       | ~5.4.2             |
+| 17.x            | 20.x, 18.x       | ~5.1.0             |
+| 16.x            | 20.x, 18.x, 16.x | ~5.1.0             |
+| 15.x            | 18.x, 16.x, 14.x | ~5.0.0             |
+| 14.x            | 16.x, 14.x, 12.x | ~4.7.2             |
+| 13.x            | 14.x, 12.x, 10.x | ~4.6.2             |

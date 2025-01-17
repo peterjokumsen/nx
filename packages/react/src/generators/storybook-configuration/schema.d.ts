@@ -1,15 +1,13 @@
-import { Linter } from '@nx/linter';
+import { Linter, LinterType } from '@nx/eslint';
 
 export interface StorybookConfigureSchema {
-  name: string;
+  project: string;
   interactionTests?: boolean;
   generateStories?: boolean;
   js?: boolean;
   tsConfiguration?: boolean;
-  linter?: Linter;
+  linter?: Linter | LinterType;
   ignorePaths?: string[];
   configureStaticServe?: boolean;
-  configureCypress?: boolean;
-  generateCypressSpecs?: boolean;
-  cypressDirectory?: string;
+  addPlugin?: boolean;
 }

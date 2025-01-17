@@ -5,9 +5,15 @@ import {
   Tree,
 } from '@nx/devkit';
 import { join } from 'path';
+import type { JestPresetExtension } from '../../../utils/config/config-file';
 import { NormalizedJestProjectSchema } from '../schema';
+import { isUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
 
-export function createFiles(tree: Tree, options: NormalizedJestProjectSchema) {
+export function createFiles(
+  tree: Tree,
+  options: NormalizedJestProjectSchema,
+  presetExt: JestPresetExtension
+) {
   const projectConfig = readProjectConfiguration(tree, options.project);
 
   const filesFolder =
@@ -28,6 +34,12 @@ export function createFiles(tree: Tree, options: NormalizedJestProjectSchema) {
     transformerOptions = "{ tsconfig: '<rootDir>/tsconfig.spec.json' }";
   }
 
+  const isTsSolutionSetup = isUsingTsSolutionSetup(tree);
+
+  const projectRoot = options.rootProject
+    ? options.project
+    : projectConfig.root;
+  const rootOffset = offsetFromRoot(projectConfig.root);
   generateFiles(tree, join(__dirname, filesFolder), projectConfig.root, {
     tmpl: '',
     ...options,
@@ -40,8 +52,18 @@ export function createFiles(tree: Tree, options: NormalizedJestProjectSchema) {
     transformerOptions,
     js: !!options.js,
     rootProject: options.rootProject,
-    projectRoot: options.rootProject ? options.project : projectConfig.root,
-    offsetFromRoot: offsetFromRoot(projectConfig.root),
+    projectRoot,
+    offsetFromRoot: rootOffset,
+    presetExt,
+    coverageDirectory: isTsSolutionSetup
+      ? `test-output/jest/coverage`
+      : `${rootOffset}coverage/${projectRoot}`,
+    extendedConfig: isTsSolutionSetup
+      ? `${rootOffset}tsconfig.base.json`
+      : './tsconfig.json',
+    outDir: isTsSolutionSetup ? `./out-tsc/jest` : `${rootOffset}dist/out-tsc`,
+    module:
+      !isTsSolutionSetup || transformer === 'ts-jest' ? 'commonjs' : undefined,
   });
 
   if (options.setupFile === 'none') {

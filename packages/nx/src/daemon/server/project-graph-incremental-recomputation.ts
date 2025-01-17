@@ -1,53 +1,81 @@
 import { performance } from 'perf_hooks';
+import { readNxJson } from '../../config/nx-json';
 import {
   FileData,
-  ProjectFileMap,
+  FileMap,
   ProjectGraph,
+  ProjectGraphExternalNode,
 } from '../../config/project-graph';
-import { buildProjectGraphUsingProjectFileMap } from '../../project-graph/build-project-graph';
-import { updateProjectFileMap } from '../../project-graph/file-map-utils';
+import { ProjectConfiguration } from '../../config/workspace-json-project-json';
+import { hashArray } from '../../hasher/file-hasher';
+import { buildProjectGraphUsingProjectFileMap as buildProjectGraphUsingFileMap } from '../../project-graph/build-project-graph';
+import { updateFileMap } from '../../project-graph/file-map-utils';
 import {
+  FileMapCache,
   nxProjectGraph,
-  ProjectFileMapCache,
-  readProjectFileMapCache,
+  readFileMapCache,
+  writeCache,
 } from '../../project-graph/nx-deps-cache';
+import {
+  retrieveProjectConfigurations,
+  retrieveWorkspaceFiles,
+} from '../../project-graph/utils/retrieve-workspace-files';
 import { fileExists } from '../../utils/fileutils';
+import {
+  resetWorkspaceContext,
+  updateFilesInContext,
+} from '../../utils/workspace-context';
+import { workspaceRoot } from '../../utils/workspace-root';
 import { notifyFileWatcherSockets } from './file-watching/file-watcher-sockets';
 import { serverLogger } from './logger';
-import { Workspaces } from '../../config/workspaces';
-import { workspaceRoot } from '../../utils/workspace-root';
-import { execSync } from 'child_process';
-import { fileHasher, hashArray } from '../../hasher/file-hasher';
+import { NxWorkspaceFilesExternals } from '../../native';
+import { ConfigurationResult } from '../../project-graph/utils/project-configuration-utils';
+import type { LoadedNxPlugin } from '../../project-graph/plugins/loaded-nx-plugin';
 import {
-  retrieveWorkspaceFiles,
-  retrieveProjectConfigurations,
-} from '../../project-graph/utils/retrieve-workspace-files';
-import { ProjectConfiguration } from '../../config/workspace-json-project-json';
-import { readNxJson } from '../../config/nx-json';
+  DaemonProjectGraphError,
+  ProjectConfigurationsError,
+  isAggregateProjectGraphError,
+} from '../../project-graph/error-types';
+import { getPlugins } from '../../project-graph/plugins/get-plugins';
 
-let cachedSerializedProjectGraphPromise: Promise<{
+interface SerializedProjectGraph {
   error: Error | null;
   projectGraph: ProjectGraph | null;
-  projectFileMap: ProjectFileMap | null;
+  projectFileMapCache: FileMapCache | null;
+  fileMap: FileMap | null;
   allWorkspaceFiles: FileData[] | null;
   serializedProjectGraph: string | null;
-}>;
-export let projectFileMapWithFiles:
-  | { projectFileMap: ProjectFileMap; allWorkspaceFiles: FileData[] }
+  serializedSourceMaps: string | null;
+  rustReferences: NxWorkspaceFilesExternals | null;
+}
+
+let cachedSerializedProjectGraphPromise: Promise<SerializedProjectGraph>;
+export let fileMapWithFiles:
+  | {
+      fileMap: FileMap;
+      allWorkspaceFiles: FileData[];
+      rustReferences: NxWorkspaceFilesExternals;
+    }
   | undefined;
-export let currentProjectFileMapCache: ProjectFileMapCache | undefined;
+export let currentProjectFileMapCache: FileMapCache | undefined;
 export let currentProjectGraph: ProjectGraph | undefined;
 
 const collectedUpdatedFiles = new Set<string>();
 const collectedDeletedFiles = new Set<string>();
+const projectGraphRecomputationListeners = new Set<
+  (projectGraph: ProjectGraph) => void
+>();
 let storedWorkspaceConfigHash: string | undefined;
 let waitPeriod = 100;
 let scheduledTimeoutId;
+let knownExternalNodes: Record<string, ProjectGraphExternalNode> = {};
 
-export async function getCachedSerializedProjectGraphPromise() {
+export async function getCachedSerializedProjectGraphPromise(): Promise<SerializedProjectGraph> {
   try {
+    let wasScheduled = false;
     // recomputing it now on demand. we can ignore the scheduled timeout
     if (scheduledTimeoutId) {
+      wasScheduled = true;
       clearTimeout(scheduledTimeoutId);
       scheduledTimeoutId = undefined;
     }
@@ -55,23 +83,33 @@ export async function getCachedSerializedProjectGraphPromise() {
     // reset the wait time
     waitPeriod = 100;
     await resetInternalStateIfNxDepsMissing();
+    const plugins = await getPlugins();
     if (collectedUpdatedFiles.size == 0 && collectedDeletedFiles.size == 0) {
       if (!cachedSerializedProjectGraphPromise) {
         cachedSerializedProjectGraphPromise =
-          processFilesAndCreateAndSerializeProjectGraph();
+          processFilesAndCreateAndSerializeProjectGraph(plugins);
       }
     } else {
       cachedSerializedProjectGraphPromise =
-        processFilesAndCreateAndSerializeProjectGraph();
+        processFilesAndCreateAndSerializeProjectGraph(plugins);
     }
-    return await cachedSerializedProjectGraphPromise;
+    const result = await cachedSerializedProjectGraphPromise;
+
+    if (wasScheduled) {
+      notifyProjectGraphRecomputationListeners(result.projectGraph);
+    }
+
+    return result;
   } catch (e) {
     return {
       error: e,
       serializedProjectGraph: null,
+      serializedSourceMaps: null,
       projectGraph: null,
-      projectFileMap: null,
+      projectFileMapCache: null,
+      fileMap: null,
       allWorkspaceFiles: null,
+      rustReferences: null,
     };
   }
 }
@@ -107,14 +145,22 @@ export function addUpdatedAndDeletedFiles(
       }
 
       cachedSerializedProjectGraphPromise =
-        processFilesAndCreateAndSerializeProjectGraph();
-      await cachedSerializedProjectGraphPromise;
+        processFilesAndCreateAndSerializeProjectGraph(await getPlugins());
+      const { projectGraph } = await cachedSerializedProjectGraphPromise;
 
       if (createdFiles.length > 0) {
         notifyFileWatcherSockets(createdFiles, null, null);
       }
+
+      notifyProjectGraphRecomputationListeners(projectGraph);
     }, waitPeriod);
   }
+}
+
+export function registerProjectGraphRecomputationListener(
+  listener: (projectGraph: ProjectGraph) => void
+) {
+  projectGraphRecomputationListeners.add(listener);
 }
 
 function computeWorkspaceConfigHash(
@@ -131,83 +177,36 @@ function computeWorkspaceConfigHash(
   return hashArray(projectConfigurationStrings);
 }
 
-/**
- * Temporary work around to handle nested gitignores. The parcel file watcher doesn't handle them well,
- * so we need to filter them out here.
- *
- * TODO(Cammisuli): remove after 16.4 - Rust watcher handles nested gitignores
- */
-function filterUpdatedFiles(files: string[]) {
-  if (files.length === 0) {
-    return files;
-  }
-
+async function processCollectedUpdatedAndDeletedFiles(
+  { projects, externalNodes, projectRootMap }: ConfigurationResult,
+  updatedFileHashes: Record<string, string>,
+  deletedFiles: string[]
+) {
   try {
-    const quoted = files.map((f) => '"' + f + '"');
-    const ignored = execSync(`git check-ignore ${quoted.join(' ')}`, {
-      windowsHide: true,
-    })
-      .toString()
-      .split('\n');
-    return files.filter((f) => ignored.indexOf(f) === -1);
-  } catch (e) {
-    // none of the files were ignored
-    return files;
-  }
-}
-
-async function processCollectedUpdatedAndDeletedFiles() {
-  try {
-    performance.mark('hash-watched-changes-start');
-    const updatedFiles = await fileHasher.hashFiles(
-      filterUpdatedFiles([...collectedUpdatedFiles.values()])
-    );
-    const deletedFiles = [...collectedDeletedFiles.values()];
-    performance.mark('hash-watched-changes-end');
-    performance.measure(
-      'hash changed files from watcher',
-      'hash-watched-changes-start',
-      'hash-watched-changes-end'
-    );
-    fileHasher.incrementalUpdate(updatedFiles, deletedFiles);
-
-    let nxJson = readNxJson(workspaceRoot);
-
-    const projectConfigurations = await retrieveProjectConfigurations(
-      workspaceRoot,
-      nxJson
-    );
-
-    const workspaceConfigHash = computeWorkspaceConfigHash(
-      projectConfigurations
-    );
-    serverLogger.requestLog(
-      `Updated file-hasher based on watched changes, recomputing project graph...`
-    );
-    serverLogger.requestLog([...updatedFiles.values()]);
-    serverLogger.requestLog([...deletedFiles]);
+    const workspaceConfigHash = computeWorkspaceConfigHash(projects);
 
     // when workspace config changes we cannot incrementally update project file map
     if (workspaceConfigHash !== storedWorkspaceConfigHash) {
       storedWorkspaceConfigHash = workspaceConfigHash;
 
-      projectFileMapWithFiles = await retrieveWorkspaceFiles(
+      ({ ...fileMapWithFiles } = await retrieveWorkspaceFiles(
         workspaceRoot,
-        nxJson
-      );
+        projectRootMap
+      ));
+
+      knownExternalNodes = externalNodes;
     } else {
-      if (projectFileMapWithFiles) {
-        projectFileMapWithFiles = updateProjectFileMap(
-          projectConfigurations,
-          projectFileMapWithFiles.projectFileMap,
-          projectFileMapWithFiles.allWorkspaceFiles,
-          updatedFiles,
+      if (fileMapWithFiles) {
+        fileMapWithFiles = updateFileMap(
+          projects,
+          fileMapWithFiles.rustReferences,
+          updatedFileHashes,
           deletedFiles
         );
       } else {
-        projectFileMapWithFiles = await retrieveWorkspaceFiles(
+        fileMapWithFiles = await retrieveWorkspaceFiles(
           workspaceRoot,
-          nxJson
+          projectRootMap
         );
       }
     }
@@ -226,61 +225,150 @@ async function processCollectedUpdatedAndDeletedFiles() {
       `Error detected when recomputing project file map: ${e.message}`
     );
     resetInternalState();
-    return e;
+    throw e;
   }
 }
 
-async function processFilesAndCreateAndSerializeProjectGraph() {
-  const err = await processCollectedUpdatedAndDeletedFiles();
-  if (err) {
-    return Promise.resolve({
+async function processFilesAndCreateAndSerializeProjectGraph(
+  plugins: LoadedNxPlugin[]
+): Promise<SerializedProjectGraph> {
+  try {
+    performance.mark('hash-watched-changes-start');
+    const updatedFiles = [...collectedUpdatedFiles.values()];
+    const deletedFiles = [...collectedDeletedFiles.values()];
+    let updatedFileHashes = updateFilesInContext(
+      workspaceRoot,
+      updatedFiles,
+      deletedFiles
+    );
+    performance.mark('hash-watched-changes-end');
+    performance.measure(
+      'hash changed files from watcher',
+      'hash-watched-changes-start',
+      'hash-watched-changes-end'
+    );
+    serverLogger.requestLog(
+      `Updated workspace context based on watched changes, recomputing project graph...`
+    );
+    serverLogger.requestLog([...updatedFiles.values()]);
+    serverLogger.requestLog([...deletedFiles]);
+    const nxJson = readNxJson(workspaceRoot);
+    global.NX_GRAPH_CREATION = true;
+
+    let projectConfigurationsResult: ConfigurationResult;
+    let projectConfigurationsError;
+
+    try {
+      projectConfigurationsResult = await retrieveProjectConfigurations(
+        plugins,
+        workspaceRoot,
+        nxJson
+      );
+    } catch (e) {
+      if (e instanceof ProjectConfigurationsError) {
+        projectConfigurationsResult = e.partialProjectConfigurationsResult;
+        projectConfigurationsError = e;
+      } else {
+        throw e;
+      }
+    }
+    await processCollectedUpdatedAndDeletedFiles(
+      projectConfigurationsResult,
+      updatedFileHashes,
+      deletedFiles
+    );
+    const g = await createAndSerializeProjectGraph(projectConfigurationsResult);
+
+    delete global.NX_GRAPH_CREATION;
+
+    const errors = [...(projectConfigurationsError?.errors ?? [])];
+
+    if (g.error) {
+      if (isAggregateProjectGraphError(g.error) && g.error.errors?.length) {
+        errors.push(...g.error.errors);
+      } else {
+        return {
+          error: g.error,
+          projectGraph: null,
+          projectFileMapCache: null,
+          fileMap: null,
+          rustReferences: null,
+          allWorkspaceFiles: null,
+          serializedProjectGraph: null,
+          serializedSourceMaps: null,
+        };
+      }
+    }
+
+    if (errors.length > 0) {
+      return {
+        error: new DaemonProjectGraphError(
+          errors,
+          g.projectGraph,
+          projectConfigurationsResult.sourceMaps
+        ),
+        projectGraph: null,
+        projectFileMapCache: null,
+        fileMap: null,
+        rustReferences: null,
+        allWorkspaceFiles: null,
+        serializedProjectGraph: null,
+        serializedSourceMaps: null,
+      };
+    } else {
+      writeCache(g.projectFileMapCache, g.projectGraph);
+      return g;
+    }
+  } catch (err) {
+    return {
       error: err,
       projectGraph: null,
-      projectFileMap: null,
+      projectFileMapCache: null,
+      fileMap: null,
+      rustReferences: null,
       allWorkspaceFiles: null,
       serializedProjectGraph: null,
-    });
-  } else {
-    return createAndSerializeProjectGraph();
+      serializedSourceMaps: null,
+    };
   }
 }
 
-function copyFileData(d: FileData[]) {
+function copyFileData<T extends FileData>(d: T[]) {
   return d.map((t) => ({ ...t }));
 }
 
-function copyFileMap(m: ProjectFileMap) {
-  const c = {};
-  for (let p of Object.keys(m)) {
-    c[p] = copyFileData(m[p]);
+function copyFileMap(m: FileMap) {
+  const c: FileMap = {
+    nonProjectFiles: copyFileData(m.nonProjectFiles),
+    projectFileMap: {},
+  };
+  for (let p of Object.keys(m.projectFileMap)) {
+    c.projectFileMap[p] = copyFileData(m.projectFileMap[p]);
   }
   return c;
 }
 
-async function createAndSerializeProjectGraph(): Promise<{
-  error: string | null;
-  projectGraph: ProjectGraph | null;
-  projectFileMap: ProjectFileMap | null;
-  allWorkspaceFiles: FileData[] | null;
-  serializedProjectGraph: string | null;
-}> {
+async function createAndSerializeProjectGraph({
+  projects,
+  sourceMaps,
+}: ConfigurationResult): Promise<SerializedProjectGraph> {
   try {
     performance.mark('create-project-graph-start');
-    const projectsConfigurations = new Workspaces(
-      workspaceRoot
-    ).readProjectsConfigurations();
-    const projectFileMap = copyFileMap(projectFileMapWithFiles.projectFileMap);
-    const allWorkspaceFiles = copyFileData(
-      projectFileMapWithFiles.allWorkspaceFiles
-    );
+    const fileMap = copyFileMap(fileMapWithFiles.fileMap);
+    const allWorkspaceFiles = copyFileData(fileMapWithFiles.allWorkspaceFiles);
+    const rustReferences = fileMapWithFiles.rustReferences;
     const { projectGraph, projectFileMapCache } =
-      await buildProjectGraphUsingProjectFileMap(
-        projectsConfigurations,
-        projectFileMap,
+      await buildProjectGraphUsingFileMap(
+        projects,
+        knownExternalNodes,
+        fileMap,
         allWorkspaceFiles,
-        currentProjectFileMapCache || readProjectFileMapCache(),
-        true
+        rustReferences,
+        currentProjectFileMapCache || readFileMapCache(),
+        await getPlugins(),
+        sourceMaps
       );
+
     currentProjectFileMapCache = projectFileMapCache;
     currentProjectGraph = projectGraph;
 
@@ -293,6 +381,7 @@ async function createAndSerializeProjectGraph(): Promise<{
 
     performance.mark('json-stringify-start');
     const serializedProjectGraph = JSON.stringify(projectGraph);
+    const serializedSourceMaps = JSON.stringify(sourceMaps);
     performance.mark('json-stringify-end');
     performance.measure(
       'serialize graph',
@@ -303,9 +392,12 @@ async function createAndSerializeProjectGraph(): Promise<{
     return {
       error: null,
       projectGraph,
-      projectFileMap,
+      projectFileMapCache,
+      fileMap,
       allWorkspaceFiles,
       serializedProjectGraph,
+      serializedSourceMaps,
+      rustReferences,
     };
   } catch (e) {
     serverLogger.log(
@@ -314,22 +406,24 @@ async function createAndSerializeProjectGraph(): Promise<{
     return {
       error: e,
       projectGraph: null,
-      projectFileMap: null,
+      projectFileMapCache: null,
+      fileMap: null,
       allWorkspaceFiles: null,
       serializedProjectGraph: null,
+      serializedSourceMaps: null,
+      rustReferences: null,
     };
   }
 }
 
 async function resetInternalState() {
   cachedSerializedProjectGraphPromise = undefined;
-  projectFileMapWithFiles = undefined;
+  fileMapWithFiles = undefined;
   currentProjectFileMapCache = undefined;
   currentProjectGraph = undefined;
   collectedUpdatedFiles.clear();
   collectedDeletedFiles.clear();
-  fileHasher.clear();
-  await fileHasher.ensureInitialized();
+  resetWorkspaceContext();
   waitPeriod = 100;
 }
 
@@ -340,5 +434,11 @@ async function resetInternalStateIfNxDepsMissing() {
     }
   } catch (e) {
     await resetInternalState();
+  }
+}
+
+function notifyProjectGraphRecomputationListeners(projectGraph: ProjectGraph) {
+  for (const listener of projectGraphRecomputationListeners) {
+    listener(projectGraph);
   }
 }

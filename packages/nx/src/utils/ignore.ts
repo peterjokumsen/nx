@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs-extra';
+import { readFileSync } from 'node:fs';
 import ignore from 'ignore';
 import { readFileIfExisting } from './fileutils';
 import { joinPathFragments } from './path';
@@ -6,7 +6,6 @@ import { workspaceRoot } from './workspace-root';
 
 /**
  * An array of glob patterns that should always be ignored.
- * Uses path/posix, since fast-glob requires unix paths.
  */
 export const ALWAYS_IGNORE = getAlwaysIgnore();
 
@@ -33,7 +32,14 @@ export function getIgnoredGlobs(
 }
 
 export function getAlwaysIgnore(root?: string) {
-  const paths = ['node_modules', '**/node_modules', '.git'];
+  const paths = [
+    'node_modules',
+    '**/node_modules',
+    '.git',
+    '.nx',
+    '.vscode',
+    '.yarn/cache',
+  ];
   return root ? paths.map((x) => joinPathFragments(root, x)) : paths;
 }
 

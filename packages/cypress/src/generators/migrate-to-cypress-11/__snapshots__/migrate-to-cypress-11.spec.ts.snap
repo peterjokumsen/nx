@@ -8,8 +8,8 @@ const cypressJsonConfig = {
   fileServerFolder: '.',
   fixturesFolder: './src/fixtures',
   video: true,
-  videosFolder: '../../dist/cypress/apps/app-e2e/videos',
-  screenshotsFolder: '../../dist/cypress/apps/app-e2e/screenshots',
+  videosFolder: '../dist/cypress/app-e2e/videos',
+  screenshotsFolder: '../dist/cypress/app-e2e/screenshots',
   chromeWebSecurity: false,
   specPattern: 'src/e2e/**/*.cy.{js,jsx,ts,tsx}',
   supportFile: 'src/support/e2e.ts',
@@ -31,8 +31,8 @@ const cypressJsonConfig = {
   fileServerFolder: '.',
   fixturesFolder: './src/fixtures',
   video: true,
-  videosFolder: '../../dist/cypress/apps/app-e2e/videos',
-  screenshotsFolder: '../../dist/cypress/apps/app-e2e/screenshots',
+  videosFolder: '../dist/cypress/app-e2e/videos',
+  screenshotsFolder: '../dist/cypress/app-e2e/screenshots',
   chromeWebSecurity: false,
   specPattern: 'src/e2e/**/*.cy.{js,jsx,ts,tsx}',
   supportFile: 'src/support/e2e.ts',
@@ -58,7 +58,7 @@ exports[`convertToCypressTen convertCypressProject should handle multiple config
   },
   "executor": "@nx/cypress:cypress",
   "options": {
-    "cypressConfig": "apps/app-e2e/cypress.config.ts",
+    "cypressConfig": "app-e2e/cypress.config.ts",
     "devServerTarget": "app:serve",
     "testingType": "e2e",
   },
@@ -73,8 +73,8 @@ const cypressJsonConfig = {
   fileServerFolder: '.',
   fixturesFolder: './src/fixtures',
   video: true,
-  videosFolder: '../../dist/cypress/apps/app-e2e/videos',
-  screenshotsFolder: '../../dist/cypress/apps/app-e2e/screenshots',
+  videosFolder: '../dist/cypress/app-e2e/videos',
+  screenshotsFolder: '../dist/cypress/app-e2e/screenshots',
   chromeWebSecurity: false,
   specPattern: 'src/e2e/**/*.cy.{js,jsx,ts,tsx}',
   supportFile: 'src/support/e2e.ts',
@@ -92,12 +92,12 @@ exports[`convertToCypressTen convertCypressProject should handle multiple config
 {
   "configurations": {
     "production": {
-      "cypressConfig": "apps/app-e2e/cypress.production.config.ts",
+      "cypressConfig": "app-e2e/cypress.production.config.ts",
       "devServerTarget": "target:serve:production",
     },
     "static": {
       "baseUrl": "http://localhost:3000",
-      "cypressConfig": "apps/app-e2e/cypress.config.ts",
+      "cypressConfig": "app-e2e/cypress.config.ts",
     },
   },
   "executor": "@nx/cypress:cypress",
@@ -137,8 +137,8 @@ const cypressJsonConfig = {
   fileServerFolder: '.',
   fixturesFolder: './src/fixtures',
   video: true,
-  videosFolder: '../../dist/cypress/apps/app-e2e/videos',
-  screenshotsFolder: '../../dist/cypress/apps/app-e2e/screenshots',
+  videosFolder: '../dist/cypress/app-e2e/videos',
+  screenshotsFolder: '../dist/cypress/app-e2e/screenshots',
   chromeWebSecurity: false,
   specPattern: 'src/e2e/**/*.cy.{js,jsx,ts,tsx}',
   supportFile: 'src/support/e2e.ts',
@@ -155,41 +155,23 @@ export default defineConfig({
 exports[`convertToCypressTen convertCypressProject should infer targets with --all flag 2`] = `
 {
   "e2e": {
-    "configurations": {
-      "production": {
-        "devServerTarget": "app:serve:production",
-      },
-    },
     "executor": "@nx/cypress:cypress",
     "options": {
-      "cypressConfig": "apps/app-e2e/cypress.config.ts",
+      "cypressConfig": "app-e2e/cypress.config.ts",
       "devServerTarget": "app:serve",
       "testingType": "e2e",
     },
   },
   "e2e-custom": {
-    "configurations": {
-      "production": {
-        "devServerTarget": "app:serve:production",
-      },
-    },
     "executor": "@nx/cypress:cypress",
     "options": {
-      "cypressConfig": "apps/app-e2e/cypress.config.ts",
+      "cypressConfig": "app-e2e/cypress.config.ts",
       "devServerTarget": "app:serve",
       "testingType": "e2e",
     },
   },
   "lint": {
-    "executor": "@nx/linter:eslint",
-    "options": {
-      "lintFilePatterns": [
-        "apps/app-e2e/**/*.{js,ts}",
-      ],
-    },
-    "outputs": [
-      "{options.outputFile}",
-    ],
+    "executor": "@nx/eslint:lint",
   },
 }
 `;
@@ -202,8 +184,8 @@ const cypressJsonConfig = {
   fileServerFolder: '.',
   fixturesFolder: './src/fixtures',
   video: true,
-  videosFolder: '../../dist/cypress/apps/app-e2e/videos',
-  screenshotsFolder: '../../dist/cypress/apps/app-e2e/screenshots',
+  videosFolder: '../dist/cypress/app-e2e/videos',
+  screenshotsFolder: '../dist/cypress/app-e2e/screenshots',
   chromeWebSecurity: false,
   specPattern: 'src/e2e/**/*.cy.{js,jsx,ts,tsx}',
   supportFile: 'src/support/e2e.ts',
@@ -220,41 +202,23 @@ export default defineConfig({
 exports[`convertToCypressTen convertCypressProject should not break when an invalid target is passed in 2`] = `
 {
   "e2e": {
-    "configurations": {
-      "production": {
-        "devServerTarget": "app:serve:production",
-      },
-    },
     "executor": "@nx/cypress:cypress",
     "options": {
-      "cypressConfig": "apps/app-e2e/cypress.config.ts",
+      "cypressConfig": "app-e2e/cypress.config.ts",
       "devServerTarget": "app:serve",
       "testingType": "e2e",
     },
   },
   "e2e-custom": {
-    "configurations": {
-      "production": {
-        "devServerTarget": "app:serve:production",
-      },
-    },
     "executor": "@nx/cypress:cypress",
     "options": {
-      "cypressConfig": "apps/app-e2e/cypress.config.ts",
+      "cypressConfig": "app-e2e/cypress.config.ts",
       "devServerTarget": "app:serve",
       "testingType": "e2e",
     },
   },
   "lint": {
-    "executor": "@nx/linter:eslint",
-    "options": {
-      "lintFilePatterns": [
-        "apps/app-e2e/**/*.{js,ts}",
-      ],
-    },
-    "outputs": [
-      "{options.outputFile}",
-    ],
+    "executor": "@nx/eslint:lint",
   },
 }
 `;
@@ -268,8 +232,8 @@ const cypressJsonConfig = {
   fileServerFolder: '.',
   fixturesFolder: './src/fixtures',
   video: true,
-  videosFolder: '../../dist/cypress/apps/app-e2e/videos',
-  screenshotsFolder: '../../dist/cypress/apps/app-e2e/screenshots',
+  videosFolder: '../dist/cypress/app-e2e/videos',
+  screenshotsFolder: '../dist/cypress/app-e2e/screenshots',
   chromeWebSecurity: false,
   baseUrl: 'http://localhost:4200',
   specPattern: 'src/e2e/**/*.cy.{js,jsx,ts,tsx}',
@@ -293,8 +257,8 @@ const cypressJsonConfig = {
   fileServerFolder: '.',
   fixturesFolder: './src/fixtures',
   video: true,
-  videosFolder: '../../dist/cypress/apps/app-e2e/videos',
-  screenshotsFolder: '../../dist/cypress/apps/app-e2e/screenshots',
+  videosFolder: '../dist/cypress/app-e2e/videos',
+  screenshotsFolder: '../dist/cypress/app-e2e/screenshots',
   chromeWebSecurity: false,
   specPattern: 'src/e2e/**/*.cy.{js,jsx,ts,tsx}',
   supportFile: 'src/support/e2e.ts',

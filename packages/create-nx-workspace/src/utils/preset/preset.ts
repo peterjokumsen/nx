@@ -1,7 +1,5 @@
 export enum Preset {
   Apps = 'apps',
-  Empty = 'empty', // same as apps, deprecated
-  Core = 'core', // same as npm, deprecated
   NPM = 'npm',
   TS = 'ts',
   WebComponents = 'web-components',
@@ -9,13 +7,20 @@ export enum Preset {
   AngularStandalone = 'angular-standalone',
   ReactMonorepo = 'react-monorepo',
   ReactStandalone = 'react-standalone',
+  VueMonorepo = 'vue-monorepo',
+  VueStandalone = 'vue-standalone',
+  Nuxt = 'nuxt',
+  NuxtStandalone = 'nuxt-standalone',
   NextJs = 'next',
   NextJsStandalone = 'nextjs-standalone',
+  RemixMonorepo = 'remix-monorepo',
+  RemixStandalone = 'remix-standalone',
   ReactNative = 'react-native',
   Expo = 'expo',
   Nest = 'nest',
   Express = 'express',
   React = 'react',
+  Vue = 'vue',
   Angular = 'angular',
   NodeStandalone = 'node-standalone',
   NodeMonorepo = 'node-monorepo',

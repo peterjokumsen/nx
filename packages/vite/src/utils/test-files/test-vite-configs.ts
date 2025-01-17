@@ -2,21 +2,17 @@ export const noBuildOptions = `
     /// <reference types="vitest" />
     import { defineConfig } from 'vite';
     import react from '@vitejs/plugin-react';
-    import viteTsConfigPaths from 'vite-tsconfig-paths';
+    import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 
     export default defineConfig({
+      cacheDir: '../../node_modules/.vitest',
       plugins: [
         react(),
-        viteTsConfigPaths({
-          root: '../../',
-        }),
+        nxViteTsPaths(),
       ],
 
       test: {
         globals: true,
-        cache: {
-          dir: '../../node_modules/.vitest',
-        },
         environment: 'jsdom',
         include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
       },
@@ -28,21 +24,17 @@ export const someBuildOptions = `
     /// <reference types="vitest" />
     import { defineConfig } from 'vite';
     import react from '@vitejs/plugin-react';
-    import viteTsConfigPaths from 'vite-tsconfig-paths';
+    import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 
     export default defineConfig({
+      cacheDir: '../../node_modules/.vitest',
       plugins: [
         react(),
-        viteTsConfigPaths({
-          root: '../../',
-        }),
+        nxViteTsPaths(),
       ],
 
       test: {
         globals: true,
-        cache: {
-          dir: '../../node_modules/.vitest',
-        },
         environment: 'jsdom',
         include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
       },
@@ -58,7 +50,7 @@ export const noContentDefineConfig = `
     /// <reference types="vitest" />
     import { defineConfig } from 'vite';
     import react from '@vitejs/plugin-react';
-    import viteTsConfigPaths from 'vite-tsconfig-paths';
+    import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 
     export default defineConfig({});
     `;
@@ -85,14 +77,12 @@ export const configNoDefineConfig = `
     /// <reference types="vitest" />
     import { defineConfig } from 'vite';
     import react from '@vitejs/plugin-react';
-    import viteTsConfigPaths from 'vite-tsconfig-paths';
+    import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 
     export default {
       plugins: [
         react(),
-        viteTsConfigPaths({
-          root: '../../',
-        }),
+        nxViteTsPaths(),
       ],
     };
     `;
@@ -101,21 +91,18 @@ export const noBuildOptionsHasTestOption = `
     /// <reference types="vitest" />
     import { defineConfig } from 'vite';
     import react from '@vitejs/plugin-react';
-    import viteTsConfigPaths from 'vite-tsconfig-paths';
+    import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 
     export default defineConfig({
+    
+      cacheDir: '../../node_modules/.vitest',
       plugins: [
         react(),
-        viteTsConfigPaths({
-          root: '../../',
-        }),
+        nxViteTsPaths(),
       ],
 
       test: {
         globals: true,
-        cache: {
-          dir: '../../node_modules/.vitest',
-        },
         environment: 'jsdom',
         include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
       },
@@ -127,14 +114,12 @@ export const someBuildOptionsSomeTestOption = `
     /// <reference types="vitest" />
     import { defineConfig } from 'vite';
     import react from '@vitejs/plugin-react';
-    import viteTsConfigPaths from 'vite-tsconfig-paths';
+    import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 
     export default defineConfig({
       plugins: [
         react(),
-        viteTsConfigPaths({
-          root: '../../',
-        }),
+        nxViteTsPaths(),
       ],
 
       test: {
@@ -152,21 +137,16 @@ export const hasEverything = `
     /// <reference types="vitest" />
     import { defineConfig } from 'vite';
     import react from '@vitejs/plugin-react';
-    import viteTsConfigPaths from 'vite-tsconfig-paths';
+    import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
     import dts from 'vite-plugin-dts';
     import { joinPathFragments } from '@nx/devkit';
 
     export default defineConfig({
+      cacheDir: '../../node_modules/.vitest',
       plugins: [
-        dts({
-          entryRoot: 'src',
-          tsConfigFilePath: joinPathFragments(__dirname, 'tsconfig.lib.json'),
-          skipDiagnostics: true,
-        }),
+        dts({ entryRoot: 'src', tsConfigFilePath: joinPathFragments(__dirname, 'tsconfig.lib.json'), skipDiagnostics: true }),
         react(),
-        viteTsConfigPaths({
-          root: '../../../',
-        }),
+        nxViteTsPaths(),
       ],
     
       // Configuration for building your library.
@@ -179,7 +159,7 @@ export const hasEverything = `
           fileName: 'index',
           // Change this to the formats you want to support.
           // Don't forget to update your package.json as well.
-          formats: ['es', 'cjs'],
+          formats: ['es'],
         },
         rollupOptions: {
           // External packages that should not be bundled into your library.
@@ -189,9 +169,6 @@ export const hasEverything = `
     
       test: {
         globals: true,
-        cache: {
-          dir: '../../../node_modules/.vitest',
-        },
         environment: 'jsdom',
         include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
       },
@@ -209,11 +186,11 @@ export const buildOption = `
         fileName: 'index',
         // Change this to the formats you want to support.
         // Don't forget to update your package.json as well.
-        formats: ['es', 'cjs']
+        formats: ['es']
       },
       rollupOptions: {
         // External packages that should not be bundled into your library.
-        external: ["'react', 'react-dom', 'react/jsx-runtime'"]
+        external: ['react', 'react-dom', 'react/jsx-runtime']
       }
     },`;
 export const buildOptionObject = {
@@ -221,44 +198,28 @@ export const buildOptionObject = {
     entry: 'src/index.ts',
     name: 'my-app',
     fileName: 'index',
-    formats: ['es', 'cjs'],
+    formats: ['es'],
   },
   rollupOptions: {
-    external: ["'react', 'react-dom', 'react/jsx-runtime'"],
+    external: ['react', 'react-dom', 'react/jsx-runtime'],
   },
 };
 
 export const testOption = `test: {
         globals: true,
-        cache: {
-          dir: '../node_modules/.vitest'
-        },
         environment: 'jsdom',
         include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
     },`;
 
 export const testOptionObject = {
   globals: true,
-  cache: {
-    dir: `../node_modules/.vitest`,
-  },
   environment: 'jsdom',
   include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
 };
 
-export const dtsPlugin = `dts({
-      entryRoot: 'src',
-      tsConfigFilePath: joinPathFragments(__dirname, 'tsconfig.lib.json'),
-      skipDiagnostics: true,
-    }),`;
-export const dtsImportLine = `import dts from 'vite-plugin-dts';\nimport { joinPathFragments } from '@nx/devkit';`;
+export const imports = [
+  `import dts from 'vite-plugin-dts'`,
+  `import { joinPathFragments } from '@nx/devkit'`,
+];
 
-export const pluginOption = `
-    plugins: [
-      ${dtsPlugin}
-      react(),
-      viteTsConfigPaths({
-        root: '../../',
-      }),
-    ],
-    `;
+export const plugins = [`react()`, `nxViteTsPaths()`];

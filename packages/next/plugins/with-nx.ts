@@ -5,13 +5,31 @@
 import type { NextConfig } from 'next';
 import type { NextConfigFn } from '../src/utils/config';
 import type { NextBuildBuilderOptions } from '../src/utils/types';
-import type { DependentBuildableProjectNode } from '@nx/js/src/utils/buildable-libs-utils';
-import type { ProjectGraph, ProjectGraphProjectNode, Target } from '@nx/devkit';
+import {
+  type ExecutorContext,
+  type ProjectGraph,
+  type ProjectGraphProjectNode,
+  type Target,
+} from '@nx/devkit';
+import type { AssetGlobPattern } from '@nx/webpack';
+
+export interface SvgrOptions {
+  svgo?: boolean;
+  titleProp?: boolean;
+  ref?: boolean;
+}
 
 export interface WithNxOptions extends NextConfig {
   nx?: {
-    svgr?: boolean;
+    /**
+     * @deprecated Next.js via turbo conflicts with how webpack handles the import of SVGs.
+     * It is best to configure SVGR manually with the `@svgr/webpack` loader.
+     * We will remove this option in Nx 21.
+     * */
+    svgr?: boolean | SvgrOptions;
     babelUpwardRootMode?: boolean;
+    fileReplacements?: { replace: string; with: string }[];
+    assets?: AssetGlobPattern[];
   };
 }
 
@@ -53,7 +71,7 @@ function getNxContext(
   targetName: string;
   configurationName?: string;
 } {
-  const { parseTargetString } = require('@nx/devkit');
+  const { parseTargetString, workspaceRoot } = require('@nx/devkit');
   const projectNode = graph.nodes[target.project];
   const targetConfig = projectNode.data.targets[target.target];
   const targetOptions = targetConfig.options;
@@ -64,17 +82,25 @@ function getNxContext(
     );
   }
 
+  const partialExecutorContext: Partial<ExecutorContext> = {
+    projectName: target.project,
+    targetName: target.target,
+    projectGraph: graph,
+    configurationName: target.configuration,
+    root: workspaceRoot,
+  };
+
   if (targetOptions.devServerTarget) {
     // Executors such as @nx/cypress:cypress define the devServerTarget option.
     return getNxContext(
       graph,
-      parseTargetString(targetOptions.devServerTarget, graph)
+      parseTargetString(targetOptions.devServerTarget, partialExecutorContext)
     );
   } else if (targetOptions.buildTarget) {
-    // Executors such as @nx/next:server or @nx/next:export define the buildTarget option.
+    // Executors such as @nx/next:server define the buildTarget option.
     return getNxContext(
       graph,
-      parseTargetString(targetOptions.buildTarget, graph)
+      parseTargetString(targetOptions.buildTarget, partialExecutorContext)
     );
   }
 
@@ -97,10 +123,20 @@ function withNx(
   context: WithNxContext = getWithNxContext()
 ): NextConfigFn {
   return async (phase: string) => {
-    const { PHASE_PRODUCTION_SERVER } = await import('next/constants');
-    if (phase === PHASE_PRODUCTION_SERVER) {
-      // If we are running an already built production server, just return the configuration.
-      // NOTE: Avoid any `require(...)` or `import(...)` statements here. Development dependencies are not available at production runtime.
+    const { PHASE_PRODUCTION_SERVER, PHASE_DEVELOPMENT_SERVER } = await import(
+      'next/constants'
+    );
+    // Three scenarios where we want to skip graph creation:
+    // 1. Running production server means the build is already done so we just need to start the Next.js server.
+    // 2. During graph creation (i.e. create nodes), we won't have a graph to read, and it is not needed anyway since it's a build-time concern.
+    // 3. Running outside of Nx, we don't have a graph to read.
+    //
+    // NOTE: Avoid any `require(...)` or `import(...)` statements here. Development dependencies are not available at production runtime.
+    if (
+      PHASE_PRODUCTION_SERVER === phase ||
+      global.NX_GRAPH_CREATION ||
+      !process.env.NX_TASK_TARGET_TARGET
+    ) {
       const { nx, ...validNextConfig } = _nextConfig;
       return {
         distDir: '.next',
@@ -114,10 +150,15 @@ function withNx(
         workspaceRoot,
       } = require('@nx/devkit');
 
-      // Otherwise, add in webpack and eslint configuration for build or test.
-      let dependencies: DependentBuildableProjectNode[] = [];
-
-      const graph = await createProjectGraphAsync();
+      let graph: ProjectGraph;
+      try {
+        graph = await createProjectGraphAsync();
+      } catch (e) {
+        throw new Error(
+          'Could not create project graph. Please ensure that your workspace is valid.',
+          { cause: e }
+        );
+      }
 
       const originalTarget = {
         project: process.env.NX_TASK_TARGET_PROJECT,
@@ -129,24 +170,8 @@ function withNx(
         node: projectNode,
         options,
         projectName: project,
-        targetName,
-        configurationName,
       } = getNxContext(graph, originalTarget);
       const projectDirectory = projectNode.data.root;
-
-      if (options.buildLibsFromSource === false && targetName) {
-        const {
-          calculateProjectDependencies,
-        } = require('@nx/js/src/utils/buildable-libs-utils');
-        const result = calculateProjectDependencies(
-          graph,
-          workspaceRoot,
-          project,
-          targetName,
-          configurationName
-        );
-        dependencies = result.dependencies;
-      }
 
       // Get next config
       const nextConfig = getNextConfig(_nextConfig, context);
@@ -177,25 +202,42 @@ function withNx(
 
       // outputPath may be undefined if using run-commands or other executors other than @nx/next:build.
       // In this case, the user should set distDir in their next.config.js.
-      if (options.outputPath) {
+      if (options.outputPath && phase !== PHASE_DEVELOPMENT_SERVER) {
         const outputDir = `${offsetFromRoot(projectDirectory)}${
           options.outputPath
         }`;
+        // If running dev-server, we should keep `.next` inside project directory since Turbopack expects this.
+        // See: https://github.com/nrwl/nx/issues/19365
         nextConfig.distDir =
           nextConfig.distDir && nextConfig.distDir !== '.next'
             ? joinPathFragments(outputDir, nextConfig.distDir)
             : joinPathFragments(outputDir, '.next');
       }
 
+      // If we are running a static serve of the Next.js app, we need to change the output to 'export' and the distDir to 'out'.
+      if (process.env.NX_SERVE_STATIC_BUILD_RUNNING === 'true') {
+        nextConfig.output = 'export';
+        nextConfig.distDir = 'out';
+      }
+
       const userWebpackConfig = nextConfig.webpack;
 
-      const { createWebpackConfig } = require('../src/utils/config');
+      const { createWebpackConfig } = require(require.resolve(
+        '@nx/next/src/utils/config',
+        {
+          paths: [workspaceRoot],
+        }
+      )) as typeof import('@nx/next/src/utils/config');
+      // If we have file replacements or assets, inside of the next config we pass the workspaceRoot as a join of the workspaceRoot and the projectDirectory
+      // Because the file replacements and assets are relative to the projectRoot, not the workspaceRoot
       nextConfig.webpack = (a, b) =>
         createWebpackConfig(
-          workspaceRoot,
+          _nextConfig.nx?.fileReplacements
+            ? joinPathFragments(workspaceRoot, projectDirectory)
+            : workspaceRoot,
           projectDirectory,
-          options.fileReplacements,
-          options.assets
+          _nextConfig.nx?.fileReplacements || options.fileReplacements,
+          _nextConfig.nx?.assets || options.assets
         )(userWebpackConfig ? userWebpackConfig(a, b) : a, b);
 
       return nextConfig;
@@ -313,46 +355,66 @@ export function getNextConfig(
       }
 
       /**
-       * 5. Add env variables prefixed with NX_
-       */
-      addNxEnvVariables(config);
-
-      /**
-       * 6. Add SVGR support if option is on.
+       * 5. Add SVGR support if option is on.
        */
 
       // Default SVGR support to be on for projects.
-      if (nx?.svgr !== false) {
+      if (nx?.svgr !== false || typeof nx?.svgr === 'object') {
+        forNextVersion('>=15.0.0', () => {
+          // Since Next.js 15, turbopack could be enabled by default.
+          console.warn(
+            `NX: Next.js SVGR support is deprecated. If used with turbopack, it may not work as expected and is not recommended. Please configure SVGR manually.`
+          );
+        });
+        const defaultSvgrOptions = {
+          svgo: false,
+          titleProp: true,
+          ref: true,
+        };
+
+        const svgrOptions =
+          typeof nx?.svgr === 'object' ? nx.svgr : defaultSvgrOptions;
+        // TODO(v21): Remove file-loader and use `?react` querystring to differentiate between asset and SVGR.
+        // It should be:
+        // use: [{
+        //   test: /\.svg$/i,
+        //   type: 'asset',
+        //   resourceQuery: /react/, // *.svg?react
+        // },
+        // {
+        //   test: /\.svg$/i,
+        //   issuer: /\.[jt]sx?$/,
+        //   resourceQuery: { not: [/react/] }, // exclude react component if *.svg?react
+        //   use: ['@svgr/webpack'],
+        // }],
+        // See:
+        // - SVGR: https://react-svgr.com/docs/webpack/#use-svgr-and-asset-svg-in-the-same-project
+        // - Vite: https://www.npmjs.com/package/vite-plugin-svgr
+        // - Rsbuild: https://github.com/web-infra-dev/rsbuild/pull/1783
+        // Note: We also need a migration for any projects that are using SVGR to convert
+        //       `import { ReactComponent as X } from './x.svg` to
+        //       `import X from './x.svg?react';
         config.module.rules.push({
           test: /\.svg$/,
-          oneOf: [
-            // If coming from JS/TS file, then transform into React component using SVGR.
+          issuer: { not: /\.(css|scss|sass)$/ },
+          resourceQuery: {
+            not: [
+              /__next_metadata__/,
+              /__next_metadata_route__/,
+              /__next_metadata_image_meta__/,
+            ],
+          },
+          use: [
             {
-              issuer: /\.[jt]sx?$/,
-              use: [
-                {
-                  loader: require.resolve('@svgr/webpack'),
-                  options: {
-                    svgo: false,
-                    titleProp: true,
-                    ref: true,
-                  },
-                },
-                {
-                  loader: require.resolve('url-loader'),
-                  options: {
-                    limit: 10000, // 10kB
-                    name: '[name].[hash:7].[ext]',
-                  },
-                },
-              ],
+              loader: require.resolve('@svgr/webpack'),
+              options: svgrOptions,
             },
-            // Fallback to plain URL loader if someone just imports the SVG and references it on the <img src> tag
             {
-              loader: require.resolve('url-loader'),
+              loader: require.resolve('file-loader'),
               options: {
-                limit: 10000, // 10kB
-                name: '[name].[hash:7].[ext]',
+                // Next.js hard-codes assets to load from "static/media".
+                // See: https://github.com/vercel/next.js/blob/53d017d/packages/next/src/build/webpack-config.ts#L1993
+                name: 'static/media/[name].[hash].[ext]',
               },
             },
           ],
@@ -364,38 +426,12 @@ export function getNextConfig(
   };
 }
 
-function getNxEnvironmentVariables() {
-  return Object.keys(process.env)
-    .filter((env) => /^NX_/i.test(env))
-    .reduce((env, key) => {
-      env[key] = process.env[key];
-      return env;
-    }, {});
-}
-
-function addNxEnvVariables(config: any) {
-  const maybeDefinePlugin = config.plugins?.find((plugin) => {
-    return plugin.definitions?.['process.env.NODE_ENV'];
-  });
-
-  if (maybeDefinePlugin) {
-    const env = getNxEnvironmentVariables();
-
-    Object.entries(env)
-      .map(([name, value]) => [`process.env.${name}`, `"${value}"`])
-      .filter(([name]) => !maybeDefinePlugin.definitions[name])
-      .forEach(
-        ([name, value]) => (maybeDefinePlugin.definitions[name] = value)
-      );
-  }
-}
-
 export function getAliasForProject(
   node: ProjectGraphProjectNode,
   paths: Record<string, string[]>
 ): null | string {
   // Match workspace libs to their alias in tsconfig paths.
-  for (const [alias, lookup] of Object.entries(paths)) {
+  for (const [alias, lookup] of Object.entries(paths ?? {})) {
     const lookupContainsDepNode = lookup.some(
       (lookupPath) =>
         lookupPath.startsWith(node?.data?.root) ||
@@ -413,7 +449,7 @@ export function getAliasForProject(
 export function forNextVersion(range: string, fn: () => void) {
   const semver = require('semver');
   const nextJsVersion = require('next/package.json').version;
-  if (semver.satisfies(nextJsVersion, range)) {
+  if (semver.satisfies(nextJsVersion, range, { includePrerelease: true })) {
     fn();
   }
 }

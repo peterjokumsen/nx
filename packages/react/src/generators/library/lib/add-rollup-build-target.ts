@@ -2,42 +2,55 @@ import { Tree } from 'nx/src/generators/tree';
 import {
   addDependenciesToPackageJson,
   ensurePackage,
-  getWorkspaceLayout,
+  GeneratorCallback,
   joinPathFragments,
+  offsetFromRoot,
+  readNxJson,
   readProjectConfiguration,
+  runTasksInSerial,
   updateProjectConfiguration,
 } from '@nx/devkit';
 
-import { maybeJs } from './maybe-js';
-import { NormalizedSchema } from '../schema';
+import { maybeJs } from '../../../utils/maybe-js';
 import {
   nxVersion,
   rollupPluginUrlVersion,
   svgrRollupVersion,
 } from '../../../utils/versions';
+import { NormalizedSchema } from '../schema';
 
 export async function addRollupBuildTarget(
   host: Tree,
   options: NormalizedSchema
 ) {
-  const { rollupInitGenerator } = ensurePackage<typeof import('@nx/rollup')>(
+  const tasks: GeneratorCallback[] = [];
+
+  const { configurationGenerator } = ensurePackage<typeof import('@nx/rollup')>(
     '@nx/rollup',
     nxVersion
   );
-
-  // These are used in `@nx/react/plugins/bundle-rollup`
-  addDependenciesToPackageJson(
-    host,
-    {},
-    {
-      '@rollup/plugin-url': rollupPluginUrlVersion,
-      '@svgr/rollup': svgrRollupVersion,
-    }
+  tasks.push(
+    await configurationGenerator(host, {
+      ...options,
+      project: options.name,
+      skipFormat: true,
+    })
   );
 
-  const { targets } = readProjectConfiguration(host, options.name);
+  if (!options.skipPackageJson) {
+    // These are used in `@nx/react/plugins/bundle-rollup`
+    tasks.push(
+      addDependenciesToPackageJson(
+        host,
+        {},
+        {
+          '@rollup/plugin-url': rollupPluginUrlVersion,
+          '@svgr/rollup': svgrRollupVersion,
+        }
+      )
+    );
+  }
 
-  const { libsDir } = getWorkspaceLayout(host);
   const external: string[] = ['react', 'react-dom'];
 
   if (options.style === '@emotion/styled') {
@@ -46,37 +59,85 @@ export async function addRollupBuildTarget(
     external.push('react/jsx-runtime');
   }
 
-  targets.build = {
-    executor: '@nx/rollup:rollup',
-    outputs: ['{options.outputPath}'],
-    options: {
-      outputPath:
-        libsDir !== '.'
-          ? `dist/${libsDir}/${options.projectDirectory}`
-          : `dist/${options.projectDirectory}`,
-      tsConfig: `${options.projectRoot}/tsconfig.lib.json`,
-      project: `${options.projectRoot}/package.json`,
-      entryFile: maybeJs(options, `${options.projectRoot}/src/index.ts`),
-      external,
-      rollupConfig: `@nx/react/plugins/bundle-rollup`,
-      compiler: options.compiler ?? 'babel',
-      assets: [
-        {
-          glob: `${options.projectRoot}/README.md`,
-          input: '.',
-          output: '.',
-        },
-      ],
-    },
-  };
+  const nxJson = readNxJson(host);
+  const hasRollupPlugin = !!nxJson.plugins?.some((p) =>
+    typeof p === 'string'
+      ? p === '@nx/rollup/plugin'
+      : p.plugin === '@nx/rollup/plugin'
+  );
+  if (hasRollupPlugin) {
+    // New behavior, using rollup config file and inferred target.
+    host.write(
+      joinPathFragments(options.projectRoot, 'rollup.config.cjs'),
+      `const { withNx } = require('@nx/rollup/with-nx');
+const url = require('@rollup/plugin-url');
+const svg = require('@svgr/rollup');
 
-  updateProjectConfiguration(host, options.name, {
-    root: options.projectRoot,
-    sourceRoot: joinPathFragments(options.projectRoot, 'src'),
-    projectType: 'library',
-    tags: options.parsedTags,
-    targets,
-  });
+module.exports = withNx(
+  {
+    main: '${maybeJs(options, './src/index.ts')}',
+    outputPath: '${
+      options.isUsingTsSolutionConfig
+        ? './dist'
+        : joinPathFragments(
+            offsetFromRoot(options.projectRoot),
+            'dist',
+            options.projectRoot
+          )
+    }',
+    tsConfig: './tsconfig.lib.json',
+    compiler: '${options.compiler ?? 'babel'}',
+    external: ${JSON.stringify(external)},
+    format: ['esm'],
+    assets:[{ input: '.', output: '.', glob: 'README.md'}],
+  }, {
+    // Provide additional rollup configuration here. See: https://rollupjs.org/configuration-options
+    plugins: [
+      svg({
+        svgo: false,
+        titleProp: true,
+        ref: true,
+      }),
+      url({
+        limit: 10000, // 10kB
+      }),
+    ],
+  }
+);
+`
+    );
+  } else {
+    // Legacy behavior, there is a target in project.json using rollup executor.
+    const { targets } = readProjectConfiguration(host, options.name);
+    targets.build = {
+      executor: '@nx/rollup:rollup',
+      outputs: ['{options.outputPath}'],
+      options: {
+        outputPath: joinPathFragments('dist', options.projectRoot),
+        tsConfig: `${options.projectRoot}/tsconfig.lib.json`,
+        project: `${options.projectRoot}/package.json`,
+        entryFile: maybeJs(options, `${options.projectRoot}/src/index.ts`),
+        external,
+        rollupConfig: `@nx/react/plugins/bundle-rollup`,
+        compiler: options.compiler ?? 'babel',
+        assets: [
+          {
+            glob: `${options.projectRoot}/README.md`,
+            input: '.',
+            output: '.',
+          },
+        ],
+      },
+    };
 
-  return rollupInitGenerator(host, { ...options, skipFormat: true });
+    updateProjectConfiguration(host, options.name, {
+      root: options.projectRoot,
+      sourceRoot: joinPathFragments(options.projectRoot, 'src'),
+      projectType: 'library',
+      tags: options.parsedTags,
+      targets,
+    });
+  }
+
+  return runTasksInSerial(...tasks);
 }

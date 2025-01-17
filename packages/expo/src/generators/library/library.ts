@@ -1,22 +1,27 @@
 import {
   addProjectConfiguration,
-  convertNxGenerator,
   ensurePackage,
   formatFiles,
   generateFiles,
   GeneratorCallback,
-  getWorkspaceLayout,
+  installPackagesTask,
   joinPathFragments,
   names,
   offsetFromRoot,
+  ProjectConfiguration,
   runTasksInSerial,
-  TargetConfiguration,
   toJS,
   Tree,
   updateJson,
+  updateProjectConfiguration,
+  writeJson,
 } from '@nx/devkit';
 
-import { addTsConfigPath, getRelativePathToRootTsConfig } from '@nx/js';
+import {
+  addTsConfigPath,
+  getRelativePathToRootTsConfig,
+  initGenerator as jsInitGenerator,
+} from '@nx/js';
 import init from '../init/init';
 import { addLinting } from '../../utils/add-linting';
 import { addJest } from '../../utils/add-jest';
@@ -27,33 +32,59 @@ import {
 } from '../../utils/versions';
 import { NormalizedSchema, normalizeOptions } from './lib/normalize-options';
 import { Schema } from './schema';
+import { ensureDependencies } from '../../utils/ensure-dependencies';
+import { initRootBabelConfig } from '../../utils/init-root-babel-config';
+import { addBuildTargetDefaults } from '@nx/devkit/src/generators/target-defaults-utils';
+import { logShowProjectCommand } from '@nx/devkit/src/utils/log-show-project-command';
+import {
+  addProjectToTsSolutionWorkspace,
+  updateTsconfigFiles,
+} from '@nx/js/src/utils/typescript/ts-solution-setup';
+import { getImportPath } from '@nx/js/src/utils/get-import-path';
+import { sortPackageJsonFields } from '@nx/js/src/utils/package-json/sort-fields';
 
 export async function expoLibraryGenerator(
   host: Tree,
   schema: Schema
 ): Promise<GeneratorCallback> {
-  const options = normalizeOptions(host, schema);
+  return await expoLibraryGeneratorInternal(host, {
+    addPlugin: false,
+    ...schema,
+  });
+}
+
+export async function expoLibraryGeneratorInternal(
+  host: Tree,
+  schema: Schema
+): Promise<GeneratorCallback> {
+  const tasks: GeneratorCallback[] = [];
+
+  const jsInitTask = await jsInitGenerator(host, {
+    ...schema,
+    skipFormat: true,
+  });
+  tasks.push(jsInitTask);
+
+  const options = await normalizeOptions(host, schema);
   if (options.publishable === true && !schema.importPath) {
     throw new Error(
       `For publishable libs you have to provide a proper "--importPath" which needs to be a valid npm package name (e.g. my-awesome-lib or @myorg/my-lib)`
     );
   }
 
-  const tasks: GeneratorCallback[] = [];
-
-  const initTask = await init(host, {
-    ...options,
-    skipFormat: true,
-    e2eTestRunner: 'none',
-  });
+  const initTask = await init(host, { ...options, skipFormat: true });
   tasks.push(initTask);
+  if (!options.skipPackageJson) {
+    tasks.push(ensureDependencies(host));
+  }
+  initRootBabelConfig(host);
+
+  createFiles(host, options);
 
   const addProjectTask = await addProject(host, options);
   if (addProjectTask) {
     tasks.push(addProjectTask);
   }
-
-  createFiles(host, options);
 
   const lintTask = await addLinting(host, {
     ...options,
@@ -70,7 +101,8 @@ export async function expoLibraryGenerator(
     options.name,
     options.projectRoot,
     options.js,
-    options.skipPackageJson
+    options.skipPackageJson,
+    options.addPlugin
   );
   tasks.push(jestTask);
 
@@ -78,7 +110,7 @@ export async function expoLibraryGenerator(
     updateLibPackageNpmScope(host, options);
   }
 
-  if (!options.skipTsConfig) {
+  if (!options.skipTsConfig && !options.isUsingTsSolutionConfig) {
     addTsConfigPath(host, options.importPath, [
       joinPathFragments(
         options.projectRoot,
@@ -88,62 +120,118 @@ export async function expoLibraryGenerator(
     ]);
   }
 
+  updateTsconfigFiles(
+    host,
+    options.projectRoot,
+    'tsconfig.lib.json',
+    {
+      jsx: 'react-jsx',
+      module: 'esnext',
+      moduleResolution: 'bundler',
+    },
+    options.linter === 'eslint'
+      ? ['eslint.config.js', 'eslint.config.cjs', 'eslint.config.mjs']
+      : undefined
+  );
+
+  if (options.isUsingTsSolutionConfig) {
+    addProjectToTsSolutionWorkspace(host, options.projectRoot);
+  }
+
+  sortPackageJsonFields(host, options.projectRoot);
+
   if (!options.skipFormat) {
     await formatFiles(host);
   }
 
+  // Always run install to link packages.
+  if (options.isUsingTsSolutionConfig) {
+    tasks.push(() => installPackagesTask(host, true));
+  }
+
+  tasks.push(() => {
+    logShowProjectCommand(options.name);
+  });
+
   return runTasksInSerial(...tasks);
 }
 
-async function addProject(host: Tree, options: NormalizedSchema) {
-  const targets: { [key: string]: TargetConfiguration } = {};
-
-  let task: GeneratorCallback;
-  if (options.publishable || options.buildable) {
-    const { rollupInitGenerator } = ensurePackage<typeof import('@nx/rollup')>(
-      '@nx/rollup',
-      nxVersion
-    );
-
-    const { libsDir } = getWorkspaceLayout(host);
-    const external = [
-      'react/jsx-runtime',
-      'react-native',
-      'react',
-      'react-dom',
-    ];
-
-    targets.build = {
-      executor: '@nx/rollup:rollup',
-      outputs: ['{options.outputPath}'],
-      options: {
-        outputPath: `dist/${libsDir}/${options.projectDirectory}`,
-        tsConfig: `${options.projectRoot}/tsconfig.lib.json`,
-        project: `${options.projectRoot}/package.json`,
-        entryFile: maybeJs(options, `${options.projectRoot}/src/index.ts`),
-        external,
-        rollupConfig: `@nx/react/plugins/bundle-rollup`,
-        assets: [
-          {
-            glob: `${options.projectRoot}/README.md`,
-            input: '.',
-            output: '.',
-          },
-        ],
-      },
-    };
-    task = await rollupInitGenerator(host, { ...options, skipFormat: true });
-  }
-
-  addProjectConfiguration(host, options.name, {
+async function addProject(
+  host: Tree,
+  options: NormalizedSchema
+): Promise<GeneratorCallback> {
+  const project: ProjectConfiguration = {
     root: options.projectRoot,
     sourceRoot: joinPathFragments(options.projectRoot, 'src'),
     projectType: 'library',
     tags: options.parsedTags,
-    targets,
+    targets: {},
+  };
+
+  if (options.isUsingTsSolutionConfig) {
+    const packageName = getImportPath(host, options.name);
+    const sourceEntry = !options.buildable
+      ? options.js
+        ? './src/index.js'
+        : './src/index.ts'
+      : undefined;
+    writeJson(host, joinPathFragments(options.projectRoot, 'package.json'), {
+      name: packageName,
+      version: '0.0.1',
+      main: sourceEntry,
+      types: sourceEntry,
+      nx: {
+        name: packageName === options.name ? undefined : options.name,
+        projectType: 'library',
+        sourceRoot: joinPathFragments(options.projectRoot, 'src'),
+        tags: options.parsedTags?.length ? options.parsedTags : undefined,
+      },
+    });
+  } else {
+    addProjectConfiguration(host, options.name, project);
+  }
+
+  if (!options.publishable && !options.buildable) {
+    return () => {};
+  }
+
+  const { configurationGenerator } = ensurePackage<typeof import('@nx/rollup')>(
+    '@nx/rollup',
+    nxVersion
+  );
+  const rollupConfigTask = await configurationGenerator(host, {
+    ...options,
+    project: options.name,
+    skipFormat: true,
   });
 
-  return task;
+  const external = ['react/jsx-runtime', 'react-native', 'react', 'react-dom'];
+
+  addBuildTargetDefaults(host, '@nx/rollup:rollup');
+
+  project.targets.build = {
+    executor: '@nx/rollup:rollup',
+    outputs: ['{options.outputPath}'],
+    options: {
+      outputPath: `dist/${options.projectRoot}`,
+      tsConfig: `${options.projectRoot}/tsconfig.lib.json`,
+      project: `${options.projectRoot}/package.json`,
+      entryFile: maybeJs(options, `${options.projectRoot}/src/index.ts`),
+      external,
+      rollupConfig: `@nx/react/plugins/bundle-rollup`,
+      assets: [
+        {
+          glob: `${options.projectRoot}/README.md`,
+          input: '.',
+          output: '.',
+        },
+      ],
+    },
+  };
+
+  updateProjectConfiguration(host, options.name, project);
+
+  return rollupConfigTask;
 }
 
 function updateTsConfig(tree: Tree, options: NormalizedSchema) {
@@ -212,4 +300,3 @@ function maybeJs(options: NormalizedSchema, path: string): string {
 }
 
 export default expoLibraryGenerator;
-export const expoLibrarySchematic = convertNxGenerator(expoLibraryGenerator);

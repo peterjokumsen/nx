@@ -9,12 +9,11 @@
     "@nx/",
     "@angular-devkit",
     "@angular-eslint/",
-    "@nguniversal/builders",
+    "@module-federation/enhanced",
     "@schematics",
     "@phenomnomnominal/tsquery",
     "@typescript-eslint/",
-    "chalk",
-    "chokidar",
+    "picocolors",
     "ignore",
     "minimatch",
     "rxjs-for-await",
@@ -23,10 +22,14 @@
     "tsconfig-paths",
     "semver",
     "webpack",
+    "express",
+    "http-proxy-middleware",
     "http-server",
     "magic-string",
     "enquirer",
-    "find-cache-dir"
+    "find-cache-dir",
+    "piscina",
+    "webpack"
   ],
   "keepLifecycleScripts": true
 }

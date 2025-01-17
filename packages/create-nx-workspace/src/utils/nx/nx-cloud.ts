@@ -1,47 +1,65 @@
+import { CLIOutput } from '../output';
+import { getMessageFactory } from './messages';
 import * as ora from 'ora';
-import { join } from 'path';
-import { execAndWait } from '../child-process-utils';
-import { output } from '../output';
-import { getPackageManagerCommand, PackageManager } from '../package-manager';
-import { mapErrorToBodyLines } from '../error-utils';
 
-export async function setupNxCloud(
-  directory: string,
-  packageManager: PackageManager
-) {
-  const nxCloudSpinner = ora(`Setting up NxCloud`).start();
-  try {
-    const pmc = getPackageManagerCommand(packageManager);
-    const res = await execAndWait(
-      `${pmc.exec} nx g nx-cloud:init --no-analytics --installationSource=create-nx-workspace`,
-      directory
-    );
-    nxCloudSpinner.succeed('NxCloud has been set up successfully');
-    return res;
-  } catch (e) {
-    nxCloudSpinner.fail();
+export type NxCloud =
+  | 'yes'
+  | 'github'
+  | 'gitlab'
+  | 'azure'
+  | 'bitbucket-pipelines'
+  | 'circleci'
+  | 'skip';
 
-    if (e instanceof Error) {
-      output.error({
-        title: `Failed to setup NxCloud`,
-        bodyLines: mapErrorToBodyLines(e),
-      });
-    } else {
-      console.error(e);
+export function readNxCloudToken(directory: string) {
+  const nxCloudSpinner = ora(`Checking Nx Cloud setup`).start();
+  // nx-ignore-next-line
+  const { getCloudOptions } = require(require.resolve(
+    'nx/src/nx-cloud/utilities/get-cloud-options',
+    {
+      paths: [directory],
     }
+    // nx-ignore-next-line
+  )) as typeof import('nx/src/nx-cloud/utilities/get-cloud-options');
 
-    process.exit(1);
-  } finally {
-    nxCloudSpinner.stop();
-  }
+  const { accessToken, nxCloudId } = getCloudOptions(directory);
+  nxCloudSpinner.succeed('Nx Cloud has been set up successfully');
+  return accessToken || nxCloudId;
 }
 
-export function printNxCloudSuccessMessage(nxCloudOut: string) {
-  const bodyLines = nxCloudOut
-    .split('Distributed caching via Nx Cloud has been enabled')[1]
-    .trim();
-  output.note({
-    title: `Distributed caching via Nx Cloud has been enabled`,
-    bodyLines: bodyLines.split('\n').map((r) => r.trim()),
-  });
+export async function getOnboardingInfo(
+  nxCloud: NxCloud,
+  token: string,
+  directory: string,
+  useGithub?: boolean
+) {
+  // nx-ignore-next-line
+  const { createNxCloudOnboardingURL } = require(require.resolve(
+    'nx/src/nx-cloud/utilities/url-shorten',
+    {
+      paths: [directory],
+    }
+    // nx-ignore-next-line
+  )) as typeof import('nx/src/nx-cloud/utilities/url-shorten');
+
+  const source =
+    nxCloud === 'yes'
+      ? 'create-nx-workspace-success-cache-setup'
+      : 'create-nx-workspace-success-ci-setup';
+  const { code, createMessage } = getMessageFactory(source);
+  const connectCloudUrl = await createNxCloudOnboardingURL(
+    source,
+    token,
+    useGithub ??
+      (nxCloud === 'yes' || nxCloud === 'github' || nxCloud === 'circleci'),
+    code
+  );
+  const out = new CLIOutput(false);
+  const message = createMessage(connectCloudUrl);
+  if (message.type === 'success') {
+    out.success(message);
+  } else {
+    out.warn(message);
+  }
+  return { output: out.getOutput(), connectCloudUrl };
 }

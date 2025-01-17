@@ -1,45 +1,34 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "cli": "nx",
   "$id": "NxPluginExecutor",
   "title": "Create an Executor for an Nx Plugin",
   "description": "Create an Executor for an Nx Plugin.",
   "examplesFile": "../../../docs/generators/executor-examples.md",
   "type": "object",
-  "examples": [
-    {
-      "command": "nx g executor my-executor --project=my-plugin",
-      "description": "Generate `libs/my-plugin/src/executors/my-executor`"
-    }
-  ],
   "properties": {
-    "project": {
+    "path": {
       "type": "string",
-      "description": "The name of the project.",
-      "alias": "p",
-      "$default": {
-        "$source": "projectName"
-      },
-      "x-prompt": "What is the name of the project for the executor?",
-      "x-priority": "important"
-    },
-    "name": {
-      "type": "string",
-      "description": "Executor name.",
+      "description": "The file path to the executor. Relative to the current working directory.",
+      "x-prompt": "What is the executor file path?",
       "$default": {
         "$source": "argv",
         "index": 0
       },
-      "x-prompt": "What name would you like to use for the executor?",
       "x-priority": "important"
+    },
+    "name": {
+      "type": "string",
+      "description": "The executor name to export in the plugin executors collection."
     },
     "description": {
       "type": "string",
-      "description": "Executor description."
+      "description": "Executor description.",
+      "x-priority": "important"
     },
     "unitTestRunner": {
       "type": "string",
-      "enum": ["jest", "none"],
+      "enum": ["jest", "vitest", "none"],
       "description": "Test runner to use for unit tests.",
       "default": "jest"
     },
@@ -60,6 +49,6 @@
       "x-priority": "internal"
     }
   },
-  "required": ["project", "name"],
+  "required": ["path"],
   "additionalProperties": false
 }

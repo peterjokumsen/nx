@@ -63,7 +63,10 @@ module.exports = function (path, options) {
   }
   // Try to use the defaultResolver
   try {
-    if (path.startsWith('@nx/')) throw new Error('custom resolution');
+    // powerpack packages are installed via npm and resolved like any other packages
+    if (path.startsWith('@nx/') && !path.startsWith('@nx/powerpack-')) {
+      throw new Error('custom resolution');
+    }
     if (path.startsWith('nx/')) throw new Error('custom resolution');
 
     if (path.indexOf('@nx/workspace') > -1) {
@@ -77,24 +80,21 @@ module.exports = function (path, options) {
       return options.defaultResolver(path, options);
     }
 
-    return enhancedResolver(options.basedir, path);
+    return enhancedResolver(path_1.resolve(options.basedir), path);
   } catch (e) {
     // Fallback to using typescript
     compilerSetup = compilerSetup || getCompilerSetup(options.rootDir);
     const { compilerOptions, host } = compilerSetup;
-
-    // TODO(v17): Remove this workaround
-    // We have some weird d.ts + .js business going on for these 2 imports so this is a workaround
-    if (path === '@nx/devkit') {
-      return join(__dirname, '../', './packages/devkit/index.js');
-    } else if (path === '@nx/devkit/testing') {
-      return join(__dirname, '../', './packages/devkit/testing.js');
-    }
-    return ts.resolveModuleName(
+    const name = ts.resolveModuleName(
       path,
       join(options.basedir, 'fake-placeholder.ts'),
       compilerOptions,
       host
     ).resolvedModule.resolvedFileName;
+    if (name.startsWith('..')) {
+      return path_1.join(options.rootDir, name);
+    } else {
+      return name;
+    }
   }
 };

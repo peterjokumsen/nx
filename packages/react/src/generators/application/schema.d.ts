@@ -1,17 +1,16 @@
-import { Linter } from '@nx/linter';
-import { SupportedStyles } from '../../../typings/style';
+import type { Linter, LinterType } from '@nx/eslint';
+import type { SupportedStyles } from '../../../typings/style';
 
 export interface Schema {
-  name: string;
+  directory: string;
+  name?: string;
   style: SupportedStyles;
   skipFormat?: boolean;
-  directory?: string;
   tags?: string;
   unitTestRunner?: 'jest' | 'vitest' | 'none';
   inSourceTests?: boolean;
   e2eTestRunner: 'cypress' | 'playwright' | 'none';
-  linter: Linter;
-  pascalCaseFiles?: boolean;
+  linter: Linter | LinterType;
   classComponent?: boolean;
   routing?: boolean;
   skipNxJson?: boolean;
@@ -24,8 +23,14 @@ export interface Schema {
   devServerPort?: number;
   skipPackageJson?: boolean;
   rootProject?: boolean;
-  bundler?: 'webpack' | 'vite' | 'rspack';
+  bundler?: 'webpack' | 'vite' | 'rspack' | 'rsbuild';
   minimal?: boolean;
+  // Internal options
+  addPlugin?: boolean;
+  nxCloudToken?: string;
+  useTsSolution?: boolean;
+  formatter?: 'prettier' | 'none';
+  alwaysGenerateProjectJson?: boolean; // this is needed for MF currently
 }
 
 export interface NormalizedSchema<T extends Schema = Schema> extends T {
@@ -38,4 +43,6 @@ export interface NormalizedSchema<T extends Schema = Schema> extends T {
   styledModule: null | SupportedStyles;
   hasStyles: boolean;
   unitTestRunner: 'jest' | 'vitest' | 'none';
+  addPlugin?: boolean;
+  isUsingTsSolutionConfig?: boolean;
 }

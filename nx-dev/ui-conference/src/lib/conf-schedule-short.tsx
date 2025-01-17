@@ -1,11 +1,4 @@
-interface ScheduleItem {
-  description: string;
-  speakers: Array<string>;
-  time: string;
-  title: string;
-  type: 'event' | 'break';
-  videoUrl?: string;
-}
+import { breakRow, ScheduleItem, scheduleRow } from './components/schedule';
 
 export function ConfScheduleShort(): JSX.Element {
   const scheduleItemsDiscussions: ScheduleItem[] = [
@@ -40,17 +33,18 @@ export function ConfScheduleShort(): JSX.Element {
       type: 'event',
       time: '9:10am',
       title: 'Keynote',
-      description: 'tbd',
-      speakers: ['Victor Savkin', 'Juri Strumpflohner'],
-      videoUrl: '',
+      description: '',
+      speakers: ['Juri Strumpflohner', 'Victor Savkin'],
+      videoUrl: 'https://youtu.be/WSqivWlEDFw',
     },
     {
       type: 'event',
       time: '10:05am',
-      title: 'Announcement - tbd',
-      description: 'tbd',
+      title:
+        'Nx Cloud Workflows: Next-Gen CI with First-Class Monorepo Support',
+      description: `We're excited to provide an exclusive preview of Nx Cloud Workflows. In our first foray into delivering CI as part of Nx Cloud, we'll demonstrate how Workflows can simplify distributed executions as part of a typical CI pipeline, before talking about our long-term vision for the product.`,
       speakers: ['Simon Critchley'],
-      videoUrl: '',
+      videoUrl: 'https://youtu.be/JG1FWfZFByM',
     },
     {
       type: 'event',
@@ -61,7 +55,7 @@ export function ConfScheduleShort(): JSX.Element {
  
       This talk covers the tactics we apply to avoid interrupting the teams' workflow and onboard them to Nx and a monorepo workflow. An important part is what we call the Migration Toolkit. This custom Nx plugin helps teams prepare their repo by identifying the minimum requirements for migrating to the Nx monorepo workspace and offering custom Nx migration generators.`,
       speakers: ['Michael Hladky'],
-      videoUrl: '',
+      videoUrl: 'https://youtu.be/i0UdoImryJQ',
     },
     {
       type: 'break',
@@ -78,7 +72,7 @@ export function ConfScheduleShort(): JSX.Element {
       title: 'Redefining Projects with Nx: A Dive into the New Inference API',
       description: `In a continuous strive for improvement, we have revamped the project inference API, aiming to provide greater flexibility and power in defining and managing projects. This talk will walk through the evolution of the project inference API, highlighting the transition from a 1:1 file-to-project mapping to a more nuanced approach that handles complex project configurations. We'll explore the key advantages of the new API, including the ability to define multiple projects within a single file and set more comprehensive project properties. Join us to learn about these exciting changes and understand how they can enhance your work with Nx.`,
       speakers: ['Craigory Coppola'],
-      videoUrl: '',
+      videoUrl: 'https://youtu.be/bnjOu7iOrMg',
     },
     {
       type: 'event',
@@ -88,7 +82,7 @@ export function ConfScheduleShort(): JSX.Element {
 
       Starting from a package-based repo, we'll enforce module boundaries, create and use code generators and, finally, use task executors and automate updating dependencies.  Together, these improvements add up to one giant leap forward in developer experience.`,
       speakers: ['Isaac Mann'],
-      videoUrl: '',
+      videoUrl: 'https://youtu.be/nY0_o7zWBLM',
     },
     {
       type: 'event',
@@ -97,7 +91,7 @@ export function ConfScheduleShort(): JSX.Element {
       description:
         'In this talk we will dig into practical examples of various approaches to versioning and publishing packages from an Nx workspace.',
       speakers: ['James Henry'],
-      videoUrl: '',
+      videoUrl: 'https://youtu.be/p5qW5-2nKqI',
     },
     {
       type: 'break',
@@ -114,7 +108,7 @@ export function ConfScheduleShort(): JSX.Element {
         'Lightning Talk: What if your stories were - already - your e2e tests?',
       description: `Storybook interaction tests allow developers to verify the functional aspects of UI components by simulating user behavior and checking UI and state updates. They integrate with Storybook's existing stories, utilizing a 'play' function to recreate user interactions, effectively transforming these stories into comprehensive e2e tests. Nx enhances the testing process by providing generators for Storybook interaction tests. This means that you don't need third-party tools for e2e tests if you're already using Storybook. What's awesome is that everything is fully integrated into your project right off the bat, with zero extra setup needed. So you can focus on what matters: building amazing UIs, with the peace of mind that testing is taken care of.`,
       speakers: ['Katerina Skroumpelou'],
-      videoUrl: '',
+      videoUrl: 'https://youtu.be/SWlvsDNXCsQ',
     },
     {
       type: 'event',
@@ -122,7 +116,7 @@ export function ConfScheduleShort(): JSX.Element {
       title: 'Lightning Talk: Nx Cloud Demo',
       description: `We're going to take a tour through some of the features of our latest release of Nx Cloud. We'll show you some of the latest analytics, organization management tools and ways that Nx Cloud can help you figure out what's really going on in CI without digging through endless logs.`,
       speakers: ['Johanna Pearce'],
-      videoUrl: '',
+      videoUrl: 'https://youtu.be/xc6fJpwk4Lo',
     },
     {
       type: 'event',
@@ -130,7 +124,7 @@ export function ConfScheduleShort(): JSX.Element {
       title: 'From DIY to DTE - An Enterprise Experience',
       description: `Nobody likes a slow CI/CD pipeline. When working in a monorepo with hundreds of projects, it can be difficult to optimize your CI/CD for performance and efficiency. Sure, you can DIY a crafty solution for it, but why DIY when you can DTE? Nx distributed task execution (DTE) is designed to fully optimize your CI/CD performance. Although configuring DTE for large monorepos can be challenging, it's not impossible. In this talk, we'll explore an enterprise experience, where we start with a DIY solution for CI/CD performance, realize its limitations, and embark on a bumpy but promising journey towards Nx DTE.`,
       speakers: ['Adrian Baran'],
-      videoUrl: '',
+      videoUrl: 'https://youtu.be/MsUN0wQHPAs',
     },
     {
       type: 'event',
@@ -140,7 +134,7 @@ export function ConfScheduleShort(): JSX.Element {
 
       This talk will take us on an epic journey with Nx and the powerful monorepo wizardry to show us how good tooling eventually defeats even the scariest of dev ops monsters.`,
       speakers: ['Miroslav Jonas'],
-      videoUrl: '',
+      videoUrl: 'https://youtu.be/jGF8vo2ChfI',
     },
     {
       type: 'break',
@@ -156,7 +150,7 @@ export function ConfScheduleShort(): JSX.Element {
       title: 'Optimizing your OSS infrastructure with Nx Plugins',
       description: `When building and maintaining open source projects, offloading maintenance is vital to continue working on the features you want to ship. Building, testing, distribution are all part of maintaining an open source project. This talk shows how to optimize your open source workflow through an Nx Plugin.`,
       speakers: ['Brandon Roberts'],
-      videoUrl: '',
+      videoUrl: 'https://youtu.be/bNuXH25CTO0',
     },
     {
       type: 'event',
@@ -167,7 +161,7 @@ export function ConfScheduleShort(): JSX.Element {
       We will dive into the key features of Nx Console and demonstrate how it enhances code generation and boosts your ability to navigate and understand complex codebases. Leverage the full potential of Nx Console in your daily development workflow!
       `,
       speakers: ['Jonathan Cammisuli', 'Max Kless'],
-      videoUrl: '',
+      videoUrl: 'https://youtu.be/TTjVcWCdwVY',
     },
     {
       type: 'event',
@@ -190,7 +184,7 @@ export function ConfScheduleShort(): JSX.Element {
           </div>
         </div>
       </div>
-      <section className="w-full divide-y divide-slate-200 border-t border-b border-slate-200 dark:divide-slate-700 dark:border-slate-700">
+      <section className="w-full divide-y divide-slate-200 border-b border-t border-slate-200 dark:divide-slate-700 dark:border-slate-700">
         <div className="mx-auto max-w-screen-lg xl:max-w-screen-xl">
           <article className="md:divide-x md:divide-slate-200 md:dark:divide-slate-700">
             <div className="px-5 py-12 md:pr-12">
@@ -215,60 +209,3 @@ export function ConfScheduleShort(): JSX.Element {
     </div>
   );
 }
-
-const scheduleRow = (item: ScheduleItem): JSX.Element => (
-  <div key={item.title + item.time} className="w-full">
-    <div className="mx-auto max-w-screen-lg xl:max-w-screen-xl">
-      <article className="grid w-full grid-cols-1 md:grid-cols-5 md:divide-x md:divide-slate-200 md:dark:divide-slate-700">
-        <div className="font-input-mono px-5 pt-12 pb-8 md:py-12">
-          <span className="hidden md:block">{item.time}</span>
-          <span className="mb-4 rounded-md py-4 px-6 md:hidden">
-            {item.time}
-          </span>
-        </div>
-        <div className="font-input-mono col-span-2 px-5 md:py-12 md:px-8">
-          {item.videoUrl ? (
-            <h3 className="mb-4 underline">
-              <a href={item.videoUrl} target="_blank" rel="noreferrer">
-                {item.title}
-              </a>
-            </h3>
-          ) : (
-            <h3 className="mb-4">{item.title}</h3>
-          )}
-          <div className="text-sm">{item.speakers.join(' & ')}</div>
-        </div>
-        <p className="col-span-2 px-5 pt-8 pb-12 md:py-12 md:px-8">
-          {item.description}
-        </p>
-      </article>
-    </div>
-  </div>
-);
-
-const breakRow = (item: ScheduleItem): JSX.Element => (
-  <div key={item.title + item.time} className="w-full">
-    <div className="mx-auto max-w-screen-lg xl:max-w-screen-xl">
-      <div className="grid w-full grid-cols-1 md:grid-cols-5">
-        <div className="font-input-mono px-5 pt-12 pb-8 md:py-12">
-          <span className="hidden md:block">{item.time}</span>
-          <span className="mb-4 rounded-md py-4 px-6 md:hidden">
-            {item.time}
-          </span>
-        </div>
-        <div className="px-5 pb-12 md:col-span-4 md:border-l md:border-slate-200 md:py-12 md:px-8 md:dark:border-slate-700">
-          {item.videoUrl ? (
-            <h3 className="font-input-mono underline">
-              <a href={item.videoUrl} target="_blank" rel="noreferrer">
-                {item.title}
-              </a>
-            </h3>
-          ) : (
-            <h3 className="font-input-mono">{item.title}</h3>
-          )}
-          <div className="description">{item.description}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-);

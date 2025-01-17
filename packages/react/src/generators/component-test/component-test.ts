@@ -5,12 +5,12 @@ import {
   readProjectConfiguration,
   Tree,
 } from '@nx/devkit';
-import { basename, dirname, extname, relative } from 'path';
+import { basename, dirname, extname, join, relative } from 'path';
 import {
   findExportDeclarationsForJsx,
   getComponentNode,
 } from '../../utils/ast-utils';
-import { getDefaultsForComponent } from '../../utils/component-props';
+import { getComponentPropDefaults } from '../../utils/component-props';
 import { nxVersion } from '../../utils/versions';
 import { ComponentTestSchema } from './schema';
 import { ensureTypescript } from '@nx/js/src/utils/typescript/ensure-typescript';
@@ -72,7 +72,7 @@ function generateSpecsForComponents(tree: Tree, filePath: string) {
 
   if (cmpNodes?.length) {
     const components = cmpNodes.map((cmp) => {
-      const defaults = getDefaultsForComponent(sourceFile, cmp);
+      const defaults = getComponentPropDefaults(sourceFile, cmp);
       const isDefaultExport = defaultExport
         ? (defaultExport as any).name.text === (cmp as any).name.text
         : false;
@@ -81,6 +81,7 @@ function generateSpecsForComponents(tree: Tree, filePath: string) {
         props: [...defaults.props, ...defaults.argTypes],
         name: (cmp as any).name.text as string,
         typeName: defaults.propsTypeName,
+        inlineTypeString: defaults.inlineTypeString,
       };
     });
     const namedImports = components
@@ -100,7 +101,7 @@ function generateSpecsForComponents(tree: Tree, filePath: string) {
     const namedImportStatement =
       namedImports.length > 0 ? `, { ${namedImports} }` : '';
 
-    generateFiles(tree, joinPathFragments(__dirname, 'files'), componentDir, {
+    generateFiles(tree, join(__dirname, 'files'), componentDir, {
       fileName,
       components,
       importStatement: defaultExport

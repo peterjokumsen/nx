@@ -80,9 +80,7 @@ exports[`workspace move to nx layout should create a root eslint config 1`] = `
 
 exports[`workspace move to nx layout should create nx.json 1`] = `
 {
-  "affected": {
-    "defaultBase": "main",
-  },
+  "defaultBase": "main",
   "defaultProject": "myApp",
   "namedInputs": {
     "default": [
@@ -95,11 +93,23 @@ exports[`workspace move to nx layout should create nx.json 1`] = `
       "!{projectRoot}/**/*.spec.[jt]s",
       "!{projectRoot}/karma.conf.js",
       "!{projectRoot}/.eslintrc.json",
+      "!{projectRoot}/eslint.config.cjs",
+      "!{projectRoot}/eslint.config.mjs",
     ],
     "sharedGlobals": [],
   },
   "targetDefaults": {
+    "@nx/eslint:lint": {
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/.eslintrc.json",
+        "{workspaceRoot}/.eslintignore",
+        "{workspaceRoot}/eslint.config.mjs",
+      ],
+    },
     "build": {
+      "cache": true,
       "dependsOn": [
         "^build",
       ],
@@ -109,36 +119,27 @@ exports[`workspace move to nx layout should create nx.json 1`] = `
       ],
     },
     "e2e": {
+      "cache": true,
       "inputs": [
         "default",
         "^production",
       ],
     },
     "lint": {
+      "cache": true,
       "inputs": [
         "default",
         "{workspaceRoot}/.eslintrc.json",
+        "{workspaceRoot}/eslint.config.cjs",
       ],
     },
     "test": {
+      "cache": true,
       "inputs": [
         "default",
         "^production",
         "{workspaceRoot}/karma.conf.js",
       ],
-    },
-  },
-  "tasksRunnerOptions": {
-    "default": {
-      "options": {
-        "cacheableOperations": [
-          "build",
-          "test",
-          "lint",
-          "e2e",
-        ],
-      },
-      "runner": "nx/tasks-runners/default",
     },
   },
 }

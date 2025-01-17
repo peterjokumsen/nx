@@ -15,15 +15,14 @@ When migrating to Nx 16, a new workspace plugin is automatically generated in th
 - If you don't already have a local plugin, use Nx to generate one:
 
 ```shell
-# replace `latest` with the version that matches your Nx version
-npm install @nx/plugin@latest
-nx g @nx/plugin:plugin my-plugin
+npm add -D @nx/plugin
+nx g @nx/plugin:plugin tools/my-plugin
 ```
 
 - Use the Nx CLI to generate the initial files needed for your generator. Replace `my-generator` with the name of your workspace generator.
 
 ```shell
-nx generate @nx/plugin:generator my-generator --project=my-plugin
+nx generate @nx/plugin:generator tools/my-plugin/src/generators/my-generator
 ```
 
 - Copy the code for your workspace generator into the newly created generator's folder. e.g. `libs/my-plugin/src/generators/my-generator/`

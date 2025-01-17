@@ -1,4 +1,6 @@
-import { readJson, readProjectConfiguration, Tree } from '@nx/devkit';
+import 'nx/src/internal-testing-utils/mock-project-graph';
+
+import { readProjectConfiguration, Tree } from '@nx/devkit';
 import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
 import { monorepoGenerator } from './convert-to-monorepo';
 
@@ -21,15 +23,19 @@ describe('monorepo generator', () => {
     tree.write('README.md', '');
     tree.write('tools/scripts/custom_script.sh', '');
 
-    await libraryGenerator(tree, { name: 'my-lib', rootProject: true });
-    await libraryGenerator(tree, { name: 'other-lib' });
+    await libraryGenerator(tree, {
+      name: 'my-lib',
+      directory: '.',
+      rootProject: true,
+    });
+    await libraryGenerator(tree, { directory: 'other-lib' });
 
     await monorepoGenerator(tree, {
       appsDir: 'apps',
       libsDir: 'packages',
     });
 
-    expect(readJson(tree, 'packages/my-lib/project.json')).toMatchObject({
+    expect(readProjectConfiguration(tree, 'my-lib')).toMatchObject({
       sourceRoot: 'packages/my-lib/src',
       targets: {
         build: {
@@ -41,7 +47,8 @@ describe('monorepo generator', () => {
         },
       },
     });
-    expect(readJson(tree, 'packages/other-lib/project.json')).toMatchObject({
+    expect(readProjectConfiguration(tree, 'other-lib')).toMatchObject({
+      name: 'other-lib',
       sourceRoot: 'packages/other-lib/src',
     });
 
@@ -57,6 +64,7 @@ describe('monorepo generator', () => {
   it('should convert root React app (Vite, Vitest)', async () => {
     await reactAppGenerator(tree, {
       name: 'demo',
+      directory: '.',
       style: 'css',
       bundler: 'vite',
       unitTestRunner: 'vitest',
@@ -67,21 +75,32 @@ describe('monorepo generator', () => {
 
     await monorepoGenerator(tree, {});
 
-    expect(readJson(tree, 'apps/demo/project.json')).toMatchObject({
+    expect(readProjectConfiguration(tree, 'demo')).toMatchObject({
       sourceRoot: 'apps/demo/src',
     });
 
     // Extracted base config files
     expect(tree.exists('tsconfig.base.json')).toBeTruthy();
-    expect(tree.exists('.eslintrc.base.json')).toBeTruthy();
   });
 
-  it('should convert root React app (Webpack, Jest)', async () => {
+  it('should respect nested libraries', async () => {
     await reactAppGenerator(tree, {
       name: 'demo',
+      directory: '.',
       style: 'css',
-      bundler: 'webpack',
-      unitTestRunner: 'jest',
+      bundler: 'vite',
+      unitTestRunner: 'vitest',
+      e2eTestRunner: 'none',
+      linter: 'eslint',
+      rootProject: true,
+    });
+
+    await libraryGenerator(tree, {
+      name: 'my-lib',
+      directory: 'inner/my-lib',
+      style: 'css',
+      bundler: 'vite',
+      unitTestRunner: 'none',
       e2eTestRunner: 'none',
       linter: 'eslint',
       rootProject: true,
@@ -89,58 +108,37 @@ describe('monorepo generator', () => {
 
     await monorepoGenerator(tree, {});
 
-    expect(readJson(tree, 'apps/demo/project.json')).toMatchObject({
-      sourceRoot: 'apps/demo/src',
-      targets: {
-        build: {
-          executor: '@nx/webpack:webpack',
-          options: {
-            main: 'apps/demo/src/main.tsx',
-            tsConfig: 'apps/demo/tsconfig.app.json',
-            webpackConfig: 'apps/demo/webpack.config.js',
-          },
-        },
-        test: {
-          executor: '@nx/jest:jest',
-          options: {
-            jestConfig: 'apps/demo/jest.config.app.ts',
-          },
-        },
-      },
-    });
-
-    // Extracted base config files
-    expect(tree.exists('tsconfig.base.json')).toBeTruthy();
-    expect(tree.exists('.eslintrc.base.json')).toBeTruthy();
-    expect(tree.exists('jest.config.ts')).toBeTruthy();
+    expect(tree.exists('libs/inner/my-lib/tsconfig.json')).toBeTruthy();
+    expect(tree.exists('libs/inner/my-lib/src/index.ts')).toBeTruthy();
   });
 
   it('should convert root Next.js app with existing libraries', async () => {
     await nextAppGenerator(tree, {
       name: 'demo',
+      directory: '.',
       style: 'css',
       unitTestRunner: 'jest',
       e2eTestRunner: 'none',
       appDir: true,
+      src: true,
       linter: 'eslint',
       rootProject: true,
     });
-    await libraryGenerator(tree, { name: 'util' });
+    await libraryGenerator(tree, { directory: 'util' });
 
     await monorepoGenerator(tree, {});
 
-    expect(readJson(tree, 'apps/demo/project.json')).toMatchObject({
+    expect(readProjectConfiguration(tree, 'demo')).toMatchObject({
       sourceRoot: 'apps/demo',
     });
-    expect(tree.read('apps/demo/app/page.tsx', 'utf-8')).toContain('demo');
-    expect(readJson(tree, 'libs/util/project.json')).toMatchObject({
+    expect(tree.read('apps/demo/src/app/page.tsx', 'utf-8')).toContain('demo');
+    expect(readProjectConfiguration(tree, 'util')).toMatchObject({
       sourceRoot: 'libs/util/src',
     });
     expect(tree.read('libs/util/src/lib/util.ts', 'utf-8')).toContain('util');
 
     // Extracted base config files
     expect(tree.exists('tsconfig.base.json')).toBeTruthy();
-    expect(tree.exists('.eslintrc.base.json')).toBeTruthy();
-    expect(tree.exists('jest.config.ts')).toBeTruthy();
+    expect(tree.exists('jest.preset.js')).toBeTruthy();
   });
 });

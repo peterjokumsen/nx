@@ -1,9 +1,9 @@
 import { execSync } from 'child_process';
+import { existsSync } from 'node:fs';
 import { platform } from 'os';
+import { join } from 'path';
 import * as chalk from 'chalk';
 import { GeneratorCallback, logger } from '@nx/devkit';
-import { existsSync } from 'fs-extra';
-import { join } from 'path';
 
 const podInstallErrorMessage = `
 Running ${chalk.bold('pod install')} failed, see above.
@@ -28,10 +28,12 @@ export function runPodInstall(
     buildFolder?: string;
     repoUpdate?: boolean;
     deployment?: boolean;
+    useBundler?: boolean;
   } = {
     buildFolder: './build',
     repoUpdate: false,
     deployment: false,
+    useBundler: false,
   }
 ): GeneratorCallback {
   return () => {
@@ -57,22 +59,32 @@ export function podInstall(
     buildFolder?: string;
     repoUpdate?: boolean;
     deployment?: boolean;
+    useBundler?: boolean;
   } = {
     buildFolder: './build',
     repoUpdate: false,
     deployment: false,
+    useBundler: false,
   }
 ) {
   try {
-    execSync(
-      `pod install ${options.repoUpdate ? '--repo-update' : ''} ${
-        options.deployment ? '--deployment' : ''
-      }`,
-      {
+    if (existsSync(join(iosDirectory, '.xcode.env'))) {
+      execSync('touch .xcode.env', {
         cwd: iosDirectory,
         stdio: 'inherit',
-      }
-    );
+        windowsHide: false,
+      });
+    }
+    const podCommand = [
+      options.useBundler ? 'bundle exec pod install' : 'pod install',
+      options.repoUpdate ? '--repo-update' : '',
+      options.deployment ? '--deployment' : '',
+    ].join(' ');
+    execSync(podCommand, {
+      cwd: iosDirectory,
+      stdio: 'inherit',
+      windowsHide: false,
+    });
   } catch (e) {
     logger.error(podInstallErrorMessage);
     throw e;

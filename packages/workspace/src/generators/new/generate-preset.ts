@@ -13,17 +13,10 @@ import { getNpmPackageVersion } from '../utils/get-npm-package-version';
 import { NormalizedSchema } from './new';
 import { join } from 'path';
 import * as yargsParser from 'yargs-parser';
-import { spawn, SpawnOptions } from 'child_process';
+import { fork, ForkOptions } from 'child_process';
+import { getNxRequirePaths } from 'nx/src/utils/installation-directory';
 
 export function addPresetDependencies(host: Tree, options: NormalizedSchema) {
-  if (
-    options.preset === Preset.Apps ||
-    options.preset === Preset.Core ||
-    options.preset === Preset.Empty ||
-    options.preset === Preset.NPM
-  ) {
-    return;
-  }
   const { dependencies, dev } = getPresetDependencies(options);
   return addDependenciesToPackageJson(
     host,
@@ -40,24 +33,34 @@ export function generatePreset(host: Tree, opts: NormalizedSchema) {
       interactive: true,
     },
   });
-  const spawnOptions: SpawnOptions = {
+
+  const newWorkspaceRoot = join(host.root, opts.directory);
+  const forkOptions: ForkOptions = {
     stdio: 'inherit',
-    shell: true,
-    cwd: join(host.root, opts.directory),
+    cwd: newWorkspaceRoot,
   };
   const pmc = getPackageManagerCommand();
-  const executable = `${pmc.exec} nx`;
+  const nxInstallationPaths = getNxRequirePaths(newWorkspaceRoot);
+  const nxBinForNewWorkspaceRoot = require.resolve('nx/bin/nx', {
+    paths: nxInstallationPaths,
+  });
   const args = getPresetArgs(opts);
 
   return new Promise<void>((resolve, reject) => {
-    spawn(executable, args, spawnOptions).on('close', (code: number) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        const message = 'Workspace creation failed, see above.';
-        reject(new Error(message));
+    // This needs to be `fork` instead of `spawn` because `spawn` is failing on Windows with pnpm + yarn
+    // The root cause is unclear. Spawn causes the `@nx/workspace:preset` generator to be called twice
+    // and the second time it fails with `Project {projectName} already exists.`
+    fork(nxBinForNewWorkspaceRoot, args, forkOptions).on(
+      'close',
+      (code: number) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          const message = 'Workspace creation failed, see above.';
+          reject(new Error(message));
+        }
       }
-    });
+    );
   });
 
   function getPresetArgs(options: NormalizedSchema) {
@@ -78,6 +81,7 @@ export function generatePreset(host: Tree, opts: NormalizedSchema) {
       opts.docker ? `--docker=${opts.docker}` : null,
       opts.js ? `--js` : null,
       opts.nextAppDir ? '--nextAppDir=true' : '--nextAppDir=false',
+      opts.nextSrcDir ? '--nextSrcDir=true' : '--nextSrcDir=false',
       opts.packageManager ? `--packageManager=${opts.packageManager}` : null,
       opts.standaloneApi !== undefined
         ? `--standaloneApi=${opts.standaloneApi}`
@@ -87,6 +91,12 @@ export function generatePreset(host: Tree, opts: NormalizedSchema) {
       opts.e2eTestRunner !== undefined
         ? `--e2eTestRunner=${opts.e2eTestRunner}`
         : null,
+      opts.ssr ? `--ssr` : null,
+      opts.serverRouting ? `--server-routing` : null,
+      opts.prefix !== undefined ? `--prefix=${opts.prefix}` : null,
+      opts.nxCloudToken ? `--nxCloudToken=${opts.nxCloudToken}` : null,
+      opts.formatter ? `--formatter=${opts.formatter}` : null,
+      opts.workspaces ? `--workspaces` : null,
     ].filter((e) => !!e);
   }
 }
@@ -98,6 +108,8 @@ function getPresetDependencies({
   e2eTestRunner,
 }: NormalizedSchema) {
   switch (preset) {
+    case Preset.Apps:
+    case Preset.NPM:
     case Preset.TS:
     case Preset.TsStandalone:
       return { dependencies: {}, dev: { '@nx/js': nxVersion } };
@@ -105,9 +117,10 @@ function getPresetDependencies({
     case Preset.AngularMonorepo:
     case Preset.AngularStandalone:
       return {
-        dependencies: { '@nx/angular': nxVersion },
+        dependencies: {},
         dev: {
           '@angular-devkit/core': angularCliVersion,
+          '@nx/angular': nxVersion,
           typescript: typescriptVersion,
         },
       };
@@ -125,13 +138,44 @@ function getPresetDependencies({
     case Preset.NextJsStandalone:
       return { dependencies: { '@nx/next': nxVersion }, dev: {} };
 
+    case Preset.RemixStandalone:
+    case Preset.RemixMonorepo:
+      return { dependencies: { '@nx/remix': nxVersion }, dev: {} };
+
+    case Preset.VueMonorepo:
+    case Preset.VueStandalone:
+      return {
+        dependencies: {},
+        dev: {
+          '@nx/vue': nxVersion,
+          '@nx/cypress': e2eTestRunner === 'cypress' ? nxVersion : undefined,
+          '@nx/playwright':
+            e2eTestRunner === 'playwright' ? nxVersion : undefined,
+          '@nx/vite': nxVersion,
+        },
+      };
+
+    case Preset.Nuxt:
+    case Preset.NuxtStandalone:
+      return {
+        dependencies: {},
+        dev: {
+          '@nx/nuxt': nxVersion,
+          '@nx/cypress': e2eTestRunner === 'cypress' ? nxVersion : undefined,
+          '@nx/playwright':
+            e2eTestRunner === 'playwright' ? nxVersion : undefined,
+        },
+      };
+
     case Preset.ReactMonorepo:
     case Preset.ReactStandalone:
       return {
         dependencies: {},
         dev: {
           '@nx/react': nxVersion,
-          '@nx/cypress': e2eTestRunner !== 'none' ? nxVersion : undefined,
+          '@nx/cypress': e2eTestRunner === 'cypress' ? nxVersion : undefined,
+          '@nx/playwright':
+            e2eTestRunner === 'playwright' ? nxVersion : undefined,
           '@nx/jest': bundler !== 'vite' ? nxVersion : undefined,
           '@nx/vite': bundler === 'vite' ? nxVersion : undefined,
           '@nx/webpack': bundler === 'webpack' ? nxVersion : undefined,

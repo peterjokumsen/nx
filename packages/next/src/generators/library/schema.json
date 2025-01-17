@@ -1,26 +1,25 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "cli": "nx",
   "$id": "NxReactLibrary",
   "title": "Create a React Library for Nx",
   "description": "Create a React Library for an Nx workspace.",
   "type": "object",
   "properties": {
-    "name": {
-      "type": "string",
-      "description": "Library name",
-      "$default": {
-        "$source": "argv",
-        "index": 0
-      },
-      "x-prompt": "What name would you like to use for the library?",
-      "pattern": "^[a-zA-Z].*$",
-      "x-priority": "important"
-    },
     "directory": {
       "type": "string",
       "description": "A directory where the lib is placed.",
       "alias": "dir",
+      "$default": {
+        "$source": "argv",
+        "index": 0
+      },
+      "x-prompt": "Which directory do you want to create the library in?"
+    },
+    "name": {
+      "type": "string",
+      "description": "Library name",
+      "pattern": "(?:^@[a-zA-Z0-9-*~][a-zA-Z0-9-*._~]*\\/[a-zA-Z0-9-~][a-zA-Z0-9-._~]*|^[a-zA-Z][^:]*)$",
       "x-priority": "important"
     },
     "style": {
@@ -32,14 +31,21 @@
         "message": "Which stylesheet format would you like to use?",
         "type": "list",
         "items": [
-          { "value": "css", "label": "CSS" },
+          {
+            "value": "css",
+            "label": "CSS"
+          },
           {
             "value": "scss",
-            "label": "SASS(.scss)       [ http://sass-lang.com          ]"
+            "label": "SASS(.scss)       [ https://sass-lang.com          ]"
           },
           {
             "value": "less",
-            "label": "LESS              [ http://lesscss.org            ]"
+            "label": "LESS              [ https://lesscss.org            ]"
+          },
+          {
+            "value": "tailwind",
+            "label": "tailwind          [ https://tailwindcss.com/       ]"
           },
           {
             "value": "styled-components",
@@ -56,24 +62,33 @@
           {
             "value": "none",
             "label": "None"
-          },
-          {
-            "value": "styl",
-            "label": "Stylus(.styl)     [ http://stylus-lang.com        ] (DEPRECATED)"
           }
         ]
       }
     },
+    "bundler": {
+      "type": "string",
+      "description": "The bundler to use. Choosing 'none' means this library is not buildable.",
+      "enum": ["none", "vite", "rollup"],
+      "default": "none",
+      "x-prompt": "Which bundler would you like to use to build the library? Choose 'none' to skip build setup.",
+      "x-priority": "important"
+    },
     "linter": {
       "description": "The tool to use for running lint checks.",
       "type": "string",
-      "enum": ["eslint"],
-      "default": "eslint"
+      "enum": ["eslint", "none"],
+      "default": "none",
+      "x-prompt": "Which linter would you like to use?",
+      "x-priority": "important"
     },
     "unitTestRunner": {
       "type": "string",
-      "enum": ["jest", "vitest", "none"],
-      "description": "Test runner to use for unit tests."
+      "enum": ["vitest", "jest", "none"],
+      "description": "Test runner to use for unit tests.",
+      "default": "none",
+      "x-prompt": "What unit test runner should be used?",
+      "x-priority": "important"
     },
     "tags": {
       "type": "string",
@@ -89,12 +104,6 @@
       "type": "boolean",
       "default": false,
       "description": "Do not update tsconfig.json for development experience."
-    },
-    "pascalCaseFiles": {
-      "type": "boolean",
-      "description": "Use pascal case component file name (e.g. `App.tsx`).",
-      "alias": "P",
-      "default": false
     },
     "routing": {
       "type": "boolean",
@@ -112,7 +121,8 @@
     "buildable": {
       "type": "boolean",
       "default": false,
-      "description": "Generate a buildable library."
+      "description": "Generate a buildable library that uses rollup to bundle.",
+      "x-deprecated": "Use the `bundler` option for greater control (none, vite, rollup)."
     },
     "importPath": {
       "type": "string",
@@ -150,6 +160,6 @@
       "x-priority": "internal"
     }
   },
-  "required": ["name"],
+  "required": ["directory"],
   "examplesFile": "../../../docs/library-examples.md"
 }

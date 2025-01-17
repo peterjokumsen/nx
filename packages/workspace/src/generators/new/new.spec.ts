@@ -1,4 +1,5 @@
 import { readJson, Tree, writeJson } from '@nx/devkit';
+import * as devkit from '@nx/devkit';
 import { createTree } from '@nx/devkit/testing';
 import { Linter } from '../../utils/lint';
 import {
@@ -8,14 +9,10 @@ import {
 } from '../../utils/versions';
 import { Preset } from '../utils/presets';
 import { newGenerator, NormalizedSchema } from './new';
+import * as getNpmPackageVersion from './../utils/get-npm-package-version';
+import * as generatePreset from './generate-preset';
 
 const DEFAULT_PACKAGE_VERSION = '1.0.0';
-jest.mock('./../utils/get-npm-package-version', () => ({
-  ...jest.requireActual<any>('./../utils/get-npm-package-version'),
-  getNpmPackageVersion: jest
-    .fn()
-    .mockImplementation((name, version) => version ?? DEFAULT_PACKAGE_VERSION),
-}));
 
 const defaultOptions: Omit<
   NormalizedSchema,
@@ -29,21 +26,61 @@ const defaultOptions: Omit<
 
 describe('new', () => {
   let tree: Tree;
+  let installPackagesTaskSpy: jest.SpyInstance;
+  let generatePresetSpy: jest.SpyInstance;
+  let getNpmPackageVersionSpy: jest.SpyInstance;
 
   beforeEach(() => {
     tree = createTree();
     // we need an actual path for the package manager version check
     tree.root = process.cwd();
+
+    installPackagesTaskSpy = jest
+      .spyOn(devkit, 'installPackagesTask')
+      .mockImplementation(() => undefined);
+
+    generatePresetSpy = jest
+      .spyOn(generatePreset, 'generatePreset')
+      .mockImplementation(async () => undefined);
+
+    getNpmPackageVersionSpy = jest
+      .spyOn(getNpmPackageVersion, 'getNpmPackageVersion')
+      .mockImplementation(
+        (name, version) => version ?? DEFAULT_PACKAGE_VERSION
+      );
+  });
+
+  afterEach(() => {
+    jest.resetAllMocks();
   });
 
   it('should generate an empty nx.json', async () => {
-    await newGenerator(tree, {
-      ...defaultOptions,
-      name: 'my-workspace',
-      directory: 'my-workspace',
-      appName: 'app',
-    });
+    await (
+      await newGenerator(tree, {
+        ...defaultOptions,
+        name: 'my-workspace',
+        directory: 'my-workspace',
+        appName: 'app',
+      })
+    )();
     expect(readJson(tree, 'my-workspace/nx.json')).toMatchSnapshot();
+    expect(installPackagesTaskSpy).toHaveBeenCalled();
+    expect(generatePresetSpy).toHaveBeenCalled();
+  });
+
+  it('should skip install', async () => {
+    await (
+      await newGenerator(tree, {
+        ...defaultOptions,
+        name: 'my-workspace',
+        directory: 'my-workspace',
+        appName: 'app',
+        skipInstall: true,
+      })
+    )();
+    expect(readJson(tree, 'my-workspace/nx.json')).toMatchSnapshot();
+    expect(installPackagesTaskSpy).not.toHaveBeenCalled();
+    expect(generatePresetSpy).toHaveBeenCalled();
   });
 
   describe('--preset', () => {
@@ -53,7 +90,7 @@ describe('new', () => {
         name: 'my-workspace',
         directory: 'my-workspace',
         appName: 'app',
-        preset: Preset.Empty,
+        preset: Preset.Apps,
       });
 
       expect(readJson(tree, 'my-workspace/package.json')).toMatchSnapshot();
@@ -72,8 +109,46 @@ describe('new', () => {
       const { devDependencies } = readJson(tree, 'my-workspace/package.json');
       expect(devDependencies).toStrictEqual({
         '@nx/react': nxVersion,
+        '@nx/vite': nxVersion,
+        '@nx/workspace': nxVersion,
+        nx: nxVersion,
+      });
+    });
+
+    it('should generate necessary npm dependencies for vue preset', async () => {
+      await newGenerator(tree, {
+        ...defaultOptions,
+        name: 'my-workspace',
+        directory: 'my-workspace',
+        appName: 'app',
+        e2eTestRunner: 'cypress',
+        preset: Preset.VueMonorepo,
+      });
+
+      const { devDependencies } = readJson(tree, 'my-workspace/package.json');
+      expect(devDependencies).toStrictEqual({
+        '@nx/vue': nxVersion,
         '@nx/cypress': nxVersion,
         '@nx/vite': nxVersion,
+        '@nx/workspace': nxVersion,
+        nx: nxVersion,
+      });
+    });
+
+    it('should generate necessary npm dependencies for nuxt preset', async () => {
+      await newGenerator(tree, {
+        ...defaultOptions,
+        name: 'my-workspace',
+        directory: 'my-workspace',
+        appName: 'app',
+        e2eTestRunner: 'cypress',
+        preset: Preset.Nuxt,
+      });
+
+      const { devDependencies } = readJson(tree, 'my-workspace/package.json');
+      expect(devDependencies).toStrictEqual({
+        '@nx/nuxt': nxVersion,
+        '@nx/cypress': nxVersion,
         '@nx/workspace': nxVersion,
         nx: nxVersion,
       });
@@ -92,9 +167,9 @@ describe('new', () => {
         tree,
         'my-workspace/package.json'
       );
-      expect(dependencies).toStrictEqual({ '@nx/angular': nxVersion });
       expect(devDependencies).toStrictEqual({
         '@angular-devkit/core': angularCliVersion,
+        '@nx/angular': nxVersion,
         '@nx/workspace': nxVersion,
         nx: nxVersion,
         typescript: typescriptVersion,

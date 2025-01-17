@@ -1,23 +1,31 @@
-import type { Tree } from 'nx/src/generators/tree';
 import * as path from 'path';
 import type * as Prettier from 'prettier';
-// eslint-disable-next-line @typescript-eslint/no-restricted-imports
-import { sortObjectByKeys } from 'nx/src/utils/object-sort';
-import { requireNx } from '../../nx';
 
-const { updateJson, readJson } = requireNx();
+import { readJson, Tree, updateJson } from 'nx/src/devkit-exports';
+import { sortObjectByKeys } from 'nx/src/devkit-internals';
 
 /**
  * Formats all the created or updated files using Prettier
  * @param tree - the file system tree
  */
-export async function formatFiles(tree: Tree): Promise<void> {
+export async function formatFiles(
+  tree: Tree,
+  options = {
+    /**
+     * TODO(v21): Stop sorting tsconfig paths by default, paths are now less common/important
+     * in Nx workspace setups, and the sorting causes comments to be lost.
+     */
+    sortRootTsconfigPaths: true,
+  }
+): Promise<void> {
   let prettier: typeof Prettier;
   try {
     prettier = await import('prettier');
   } catch {}
 
-  sortTsConfig(tree);
+  if (options.sortRootTsconfigPaths) {
+    sortTsConfig(tree);
+  }
 
   if (!prettier) return;
 
@@ -53,7 +61,10 @@ export async function formatFiles(tree: Tree): Promise<void> {
 
         tree.write(
           file.path,
-          prettier.format(file.content.toString('utf-8'), options)
+          // In prettier v3 the format result is a promise
+          await (prettier.format(file.content.toString('utf-8'), options) as
+            | Promise<string>
+            | string)
         );
       } catch (e) {
         console.warn(`Could not format ${file.path}. Error: "${e.message}"`);

@@ -4,16 +4,37 @@ import {
   babelPresetReactVersion,
   lessVersion,
   sassVersion,
-  stylusVersion,
   swcLoaderVersion,
+  testingLibraryReactVersion,
+  testingLibraryDomVersion,
+  tsLibVersion,
+  typesNodeVersion,
+  typesReactDomVersion,
+  typesReactVersion,
 } from '../../../utils/versions';
 import { NormalizedSchema } from '../schema';
+import { getReactDependenciesVersionsToInstall } from '../../../utils/version-utils';
 
-export function installCommonDependencies(
+export async function installCommonDependencies(
   host: Tree,
   options: NormalizedSchema
 ) {
-  const devDependencies: Record<string, string> = {};
+  if (options.skipPackageJson) {
+    return () => {};
+  }
+
+  const reactDeps = await getReactDependenciesVersionsToInstall(host);
+
+  const dependencies: Record<string, string> = {};
+  const devDependencies: Record<string, string> = {
+    '@types/node': typesNodeVersion,
+    '@types/react': reactDeps['@types/react'],
+    '@types/react-dom': reactDeps['@types/react-dom'],
+  };
+
+  if (options.bundler !== 'vite') {
+    dependencies['tslib'] = tsLibVersion;
+  }
 
   // Vite requires style preprocessors to be installed manually.
   // `@nx/webpack` installs them automatically for now.
@@ -24,9 +45,6 @@ export function installCommonDependencies(
         break;
       case 'less':
         devDependencies['less'] = lessVersion;
-        break;
-      case 'styl': // @TODO(17): deprecated, going to be removed in Nx 17
-        devDependencies['stylus'] = stylusVersion;
         break;
     }
   }
@@ -40,6 +58,11 @@ export function installCommonDependencies(
       devDependencies['@babel/preset-react'] = babelPresetReactVersion;
       devDependencies['@babel/core'] = babelCoreVersion;
     }
+  }
+
+  if (options.unitTestRunner && options.unitTestRunner !== 'none') {
+    devDependencies['@testing-library/react'] = testingLibraryReactVersion;
+    devDependencies['@testing-library/dom'] = testingLibraryDomVersion;
   }
 
   return addDependenciesToPackageJson(host, {}, devDependencies);

@@ -1,5 +1,5 @@
 import type { Tree } from '@nx/devkit';
-import { Linter } from '@nx/linter';
+import { Linter } from '@nx/eslint';
 import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
 import { normalizeOptions } from './normalize-options';
 
@@ -11,8 +11,8 @@ describe('normalizeOptions', () => {
   });
 
   it('should set unitTestRunner=jest and bundler=none by default', async () => {
-    const options = normalizeOptions(tree, {
-      name: 'test',
+    const options = await normalizeOptions(tree, {
+      directory: 'test',
       style: 'css',
       linter: Linter.None,
       unitTestRunner: 'jest',
@@ -27,8 +27,8 @@ describe('normalizeOptions', () => {
   });
 
   it('should set buildable to true when bundler is not "none"', async () => {
-    let options = normalizeOptions(tree, {
-      name: 'test',
+    let options = await normalizeOptions(tree, {
+      directory: 'test',
       style: 'css',
       linter: Linter.None,
       bundler: 'rollup',
@@ -39,8 +39,8 @@ describe('normalizeOptions', () => {
       bundler: 'rollup',
     });
 
-    options = normalizeOptions(tree, {
-      name: 'test',
+    options = await normalizeOptions(tree, {
+      directory: 'test',
       style: 'css',
       linter: Linter.None,
       bundler: 'vite',
@@ -53,8 +53,8 @@ describe('normalizeOptions', () => {
   });
 
   it('should set unitTestRunner=vitest by default when bundler is vite', async () => {
-    const options = normalizeOptions(tree, {
-      name: 'test',
+    const options = await normalizeOptions(tree, {
+      directory: 'test',
       style: 'css',
       linter: Linter.None,
       bundler: 'vite',
@@ -70,8 +70,8 @@ describe('normalizeOptions', () => {
   });
 
   it('should set maintain unitTestRunner when bundler is vite', async () => {
-    const options = normalizeOptions(tree, {
-      name: 'test',
+    const options = await normalizeOptions(tree, {
+      directory: 'test',
       style: 'css',
       linter: Linter.None,
       bundler: 'vite',
@@ -86,9 +86,9 @@ describe('normalizeOptions', () => {
     });
   });
 
-  it('should set bundler to rollup if buildable is true not no bundler is passed', () => {
-    const options = normalizeOptions(tree, {
-      name: 'test',
+  it('should set bundler to rollup if buildable is true not no bundler is passed', async () => {
+    const options = await normalizeOptions(tree, {
+      directory: 'test',
       style: 'css',
       linter: Linter.None,
       buildable: true,
@@ -102,9 +102,9 @@ describe('normalizeOptions', () => {
     });
   });
 
-  it('should set bundler to rollup if buildable is true and bundler is none ', () => {
-    const options = normalizeOptions(tree, {
-      name: 'test',
+  it('should set bundler to rollup if buildable is true and bundler is none ', async () => {
+    const options = await normalizeOptions(tree, {
+      directory: 'test',
       style: 'css',
       linter: Linter.None,
       buildable: true,

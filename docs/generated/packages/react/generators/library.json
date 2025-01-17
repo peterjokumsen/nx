@@ -1,8 +1,8 @@
 {
   "name": "library",
-  "factory": "./src/generators/library/library#libraryGenerator",
+  "factory": "./src/generators/library/library#libraryGeneratorInternal",
   "schema": {
-    "$schema": "http://json-schema.org/schema",
+    "$schema": "https://json-schema.org/schema",
     "cli": "nx",
     "$id": "NxReactLibrary",
     "title": "Create a React Library",
@@ -19,18 +19,16 @@
       }
     ],
     "properties": {
-      "name": {
-        "type": "string",
-        "description": "Library name",
-        "$default": { "$source": "argv", "index": 0 },
-        "x-prompt": "What name would you like to use for the library?",
-        "pattern": "^[a-zA-Z].*$",
-        "x-priority": "important"
-      },
       "directory": {
         "type": "string",
         "description": "A directory where the lib is placed.",
         "alias": "dir",
+        "$default": { "$source": "argv", "index": 0 },
+        "x-prompt": "Which directory do you want to create the library in?"
+      },
+      "name": {
+        "type": "string",
+        "description": "Library name",
         "x-priority": "important"
       },
       "style": {
@@ -45,11 +43,15 @@
             { "value": "css", "label": "CSS" },
             {
               "value": "scss",
-              "label": "SASS(.scss)       [ http://sass-lang.com          ]"
+              "label": "SASS(.scss)       [ https://sass-lang.com          ]"
             },
             {
               "value": "less",
-              "label": "LESS              [ http://lesscss.org            ]"
+              "label": "LESS              [ https://lesscss.org            ]"
+            },
+            {
+              "value": "tailwind",
+              "label": "tailwind          [ https://tailwindcss.com/       ]"
             },
             {
               "value": "styled-components",
@@ -63,25 +65,33 @@
               "value": "styled-jsx",
               "label": "styled-jsx        [ https://www.npmjs.com/package/styled-jsx ]"
             },
-            { "value": "none", "label": "None" },
-            {
-              "value": "styl",
-              "label": "Stylus(.styl)     [ http://stylus-lang.com        ] (DEPRECATED)"
-            }
+            { "value": "none", "label": "None" }
           ]
         }
+      },
+      "bundler": {
+        "type": "string",
+        "description": "The bundler to use. Choosing 'none' means this library is not buildable.",
+        "enum": ["none", "vite", "rollup"],
+        "default": "none",
+        "x-prompt": "Which bundler would you like to use to build the library? Choose 'none' to skip build setup.",
+        "x-priority": "important"
       },
       "linter": {
         "description": "The tool to use for running lint checks.",
         "type": "string",
         "enum": ["eslint", "none"],
-        "default": "eslint"
+        "default": "none",
+        "x-prompt": "Which linter would you like to use?",
+        "x-priority": "important"
       },
       "unitTestRunner": {
         "type": "string",
-        "enum": ["jest", "vitest", "none"],
+        "enum": ["vitest", "jest", "none"],
+        "default": "none",
         "description": "Test runner to use for unit tests.",
-        "x-prompt": "What unit test runner should be used?"
+        "x-prompt": "What unit test runner should be used?",
+        "x-priority": "important"
       },
       "inSourceTests": {
         "type": "boolean",
@@ -104,12 +114,6 @@
         "default": false,
         "description": "Do not update `tsconfig.json` for development experience.",
         "x-priority": "internal"
-      },
-      "pascalCaseFiles": {
-        "type": "boolean",
-        "description": "Use pascal case component file name (e.g. `App.tsx`).",
-        "alias": "P",
-        "default": false
       },
       "routing": {
         "type": "boolean",
@@ -159,14 +163,6 @@
         "description": "Whether or not to configure the ESLint `parserOptions.project` option. We do not do this by default for lint performance reasons.",
         "default": false
       },
-      "bundler": {
-        "type": "string",
-        "description": "The bundler to use. Choosing 'none' means this library is not buildable.",
-        "enum": ["none", "vite", "rollup"],
-        "default": "none",
-        "x-prompt": "Which bundler would you like to use to build the library? Choose 'none' to skip build setup.",
-        "x-priority": "important"
-      },
       "compiler": {
         "type": "string",
         "enum": ["babel", "swc"],
@@ -190,13 +186,13 @@
         "default": false
       }
     },
-    "required": ["name"],
+    "required": ["directory"],
     "presets": []
   },
   "aliases": ["lib"],
   "x-type": "library",
   "description": "Create a React library.",
-  "implementation": "/packages/react/src/generators/library/library#libraryGenerator.ts",
+  "implementation": "/packages/react/src/generators/library/library#libraryGeneratorInternal.ts",
   "hidden": false,
   "path": "/packages/react/src/generators/library/schema.json",
   "type": "generator"

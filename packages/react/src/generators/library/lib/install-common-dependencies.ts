@@ -9,10 +9,12 @@ import {
   babelCoreVersion,
   babelPresetReactVersion,
   lessVersion,
-  reactDomVersion,
-  reactVersion,
   sassVersion,
-  stylusVersion,
+  testingLibraryReactVersion,
+  tsLibVersion,
+  typesNodeVersion,
+  typesReactDomVersion,
+  typesReactVersion,
 } from '../../../utils/versions';
 import { NormalizedSchema } from '../schema';
 
@@ -21,7 +23,17 @@ export function installCommonDependencies(
   options: NormalizedSchema
 ) {
   const tasks: GeneratorCallback[] = [];
-  const devDependencies = {};
+
+  const dependencies: Record<string, string> = {};
+  const devDependencies: Record<string, string> = {
+    '@types/node': typesNodeVersion,
+    '@types/react': typesReactVersion,
+    '@types/react-dom': typesReactDomVersion,
+  };
+
+  if (options.bundler !== 'vite') {
+    dependencies['tslib'] = tsLibVersion;
+  }
 
   // Vite requires style preprocessors to be installed manually.
   // `@nx/webpack` installs them automatically for now.
@@ -34,18 +46,16 @@ export function installCommonDependencies(
       case 'less':
         devDependencies['less'] = lessVersion;
         break;
-      case 'styl': // @TODO(17): deprecated, going to be removed in Nx 17
-        devDependencies['stylus'] = stylusVersion;
-        break;
     }
+  }
+
+  if (options.unitTestRunner && options.unitTestRunner !== 'none') {
+    devDependencies['@testing-library/react'] = testingLibraryReactVersion;
   }
 
   const baseInstallTask = addDependenciesToPackageJson(
     host,
-    {
-      react: reactVersion,
-      'react-dom': reactDomVersion,
-    },
+    dependencies,
     devDependencies
   );
   tasks.push(baseInstallTask);

@@ -1,5 +1,6 @@
-import minimatch = require('minimatch');
+import { minimatch } from 'minimatch';
 import type { ProjectGraphProjectNode } from '../config/project-graph';
+import { isGlobPattern } from './globs';
 
 const validPatternTypes = [
   'name', // Pattern is based on the project's name
@@ -7,7 +8,7 @@ const validPatternTypes = [
   'directory', // Pattern is based on the project's root directory
   'unlabeled', // Pattern was passed without specifying a type
 ] as const;
-type ProjectPatternType = typeof validPatternTypes[number];
+type ProjectPatternType = (typeof validPatternTypes)[number];
 
 interface ProjectPattern {
   // If true, the pattern is an exclude pattern
@@ -17,8 +18,6 @@ interface ProjectPattern {
   // The pattern to match against
   value: string;
 }
-
-const globCharacters = ['*', '|', '{', '}', '(', ')'];
 
 /**
  * Find matching project names given a list of potential project names or globs.
@@ -37,11 +36,21 @@ export function findMatchingProjects(
 
   const projectNames = Object.keys(projects);
 
-  const selectedProjects: Set<string> = new Set();
-  const excludedProjects: Set<string> = new Set();
+  const matchedProjects: Set<string> = new Set();
+
+  // If the first pattern is an exclude pattern,
+  // we add a wildcard pattern at the first to select
+  // all projects, except the ones that match the exclude pattern.
+  // e.g. ['!tag:someTag', 'project2'] will match all projects except
+  // the ones with the tag 'someTag', and also match the project 'project2',
+  // regardless of its tags.
+  if (isExcludePattern(patterns[0])) {
+    patterns.unshift('*');
+  }
 
   for (const stringPattern of patterns) {
-    if (!stringPattern.length) {
+    // Do not waste time attempting to look up cross-workspace references which will never match
+    if (!stringPattern.length || stringPattern.startsWith('nx-cloud:')) {
       continue;
     }
 
@@ -52,9 +61,9 @@ export function findMatchingProjects(
     if (pattern.value === '*') {
       for (const projectName of projectNames) {
         if (pattern.exclude) {
-          excludedProjects.add(projectName);
+          matchedProjects.delete(projectName);
         } else {
-          selectedProjects.add(projectName);
+          matchedProjects.add(projectName);
         }
       }
       continue;
@@ -66,8 +75,7 @@ export function findMatchingProjects(
           projectNames,
           projects,
           pattern,
-          excludedProjects,
-          selectedProjects
+          matchedProjects
         );
         continue;
       }
@@ -76,8 +84,7 @@ export function findMatchingProjects(
           projectNames,
           projects,
           pattern,
-          excludedProjects,
-          selectedProjects
+          matchedProjects
         );
         continue;
       }
@@ -86,8 +93,7 @@ export function findMatchingProjects(
           projectNames,
           projects,
           pattern,
-          excludedProjects,
-          selectedProjects
+          matchedProjects
         );
         continue;
       }
@@ -97,15 +103,14 @@ export function findMatchingProjects(
         // The size of the selected and excluded projects set, before we
         // start updating it with this pattern. If the size changes, we
         // know we found a match and can skip the other types.
-        const originalSize = selectedProjects.size + excludedProjects.size;
+        const originalSize = matchedProjects.size;
         addMatchingProjectsByName(
           projectNames,
           projects,
           pattern,
-          excludedProjects,
-          selectedProjects
+          matchedProjects
         );
-        if (selectedProjects.size + excludedProjects.size > originalSize) {
+        if (matchedProjects.size !== originalSize) {
           // There was some match by name, don't check other types
           continue;
         }
@@ -113,10 +118,9 @@ export function findMatchingProjects(
           projectNames,
           projects,
           pattern,
-          excludedProjects,
-          selectedProjects
+          matchedProjects
         );
-        if (selectedProjects.size + excludedProjects.size > originalSize) {
+        if (matchedProjects.size !== originalSize) {
           // There was some match by directory, don't check other types
           // Note - this doesn't do anything currently, but preps for future
           // types
@@ -126,24 +130,23 @@ export function findMatchingProjects(
     }
   }
 
-  for (const project of excludedProjects) {
-    selectedProjects.delete(project);
-  }
-
-  return Array.from(selectedProjects);
+  return Array.from(matchedProjects);
 }
 
 function addMatchingProjectsByDirectory(
   projectNames: string[],
   projects: Record<string, ProjectGraphProjectNode>,
   pattern: ProjectPattern,
-  excludedProjects: Set<string>,
-  selectedProjects: Set<string>
+  matchedProjects: Set<string>
 ) {
   for (const projectName of projectNames) {
     const root = projects[projectName].data.root;
     if (getMatchingStringsWithCache(pattern.value, [root]).length > 0) {
-      (pattern.exclude ? excludedProjects : selectedProjects).add(projectName);
+      if (pattern.exclude) {
+        matchedProjects.delete(projectName);
+      } else {
+        matchedProjects.add(projectName);
+      }
     }
   }
 }
@@ -152,15 +155,33 @@ function addMatchingProjectsByName(
   projectNames: string[],
   projects: Record<string, ProjectGraphProjectNode>,
   pattern: ProjectPattern,
-  excludedProjects: Set<string>,
-  selectedProjects: Set<string>
+  matchedProjects: Set<string>
 ) {
   if (projects[pattern.value]) {
-    (pattern.exclude ? excludedProjects : selectedProjects).add(pattern.value);
+    if (pattern.exclude) {
+      matchedProjects.delete(pattern.value);
+    } else {
+      matchedProjects.add(pattern.value);
+    }
     return;
   }
 
-  if (!globCharacters.some((c) => pattern.value.includes(c))) {
+  if (!isGlobPattern(pattern.value)) {
+    // Custom regex that is basically \b without underscores, so "foo" pattern matches "foo_bar".
+    const regex = new RegExp(
+      `(?<![a-zA-Z0-9])${pattern.value}(?![a-zA-Z0-9])`,
+      'i'
+    );
+    const matchingProjects = Object.keys(projects).filter((name) =>
+      regex.test(name)
+    );
+    for (const projectName of matchingProjects) {
+      if (pattern.exclude) {
+        matchedProjects.delete(projectName);
+      } else {
+        matchedProjects.add(projectName);
+      }
+    }
     return;
   }
 
@@ -170,9 +191,9 @@ function addMatchingProjectsByName(
   );
   for (const projectName of matchedProjectNames) {
     if (pattern.exclude) {
-      excludedProjects.add(projectName);
+      matchedProjects.delete(projectName);
     } else {
-      selectedProjects.add(projectName);
+      matchedProjects.add(projectName);
     }
   }
 }
@@ -181,32 +202,43 @@ function addMatchingProjectsByTag(
   projectNames: string[],
   projects: Record<string, ProjectGraphProjectNode>,
   pattern: ProjectPattern,
-  excludedProjects: Set<string>,
-  selectedProjects: Set<string>
+  matchedProjects: Set<string>
 ) {
   for (const projectName of projectNames) {
     const tags = projects[projectName].data.tags || [];
 
     if (tags.includes(pattern.value)) {
-      (pattern.exclude ? excludedProjects : selectedProjects).add(projectName);
+      if (pattern.exclude) {
+        matchedProjects.delete(projectName);
+      } else {
+        matchedProjects.add(projectName);
+      }
       continue;
     }
 
-    if (!globCharacters.some((c) => pattern.value.includes(c))) {
+    if (!isGlobPattern(pattern.value)) {
       continue;
     }
 
     if (getMatchingStringsWithCache(pattern.value, tags).length) {
-      (pattern.exclude ? excludedProjects : selectedProjects).add(projectName);
+      if (pattern.exclude) {
+        matchedProjects.delete(projectName);
+      } else {
+        matchedProjects.add(projectName);
+      }
     }
   }
+}
+
+function isExcludePattern(pattern: string): boolean {
+  return pattern.startsWith('!');
 }
 
 function parseStringPattern(
   pattern: string,
   projects: Record<string, ProjectGraphProjectNode>
 ): ProjectPattern {
-  const isExclude = pattern.startsWith('!');
+  const isExclude = isExcludePattern(pattern);
 
   // Support for things like: `!{type}:value`
   if (isExclude) {
@@ -245,7 +277,12 @@ export const getMatchingStringsWithCache = (() => {
     }
     const patternCache = minimatchCache.get(pattern)!;
     if (!regexCache.has(pattern)) {
-      regexCache.set(pattern, minimatch.makeRe(pattern));
+      const regex = minimatch.makeRe(pattern, { dot: true });
+      if (regex) {
+        regexCache.set(pattern, regex);
+      } else {
+        throw new Error('Invalid glob pattern ' + pattern);
+      }
     }
     const matcher = regexCache.get(pattern);
     return items.filter((item) => {

@@ -6,19 +6,19 @@ import {
   Tokenizer,
   transform,
 } from '@markdoc/markdoc';
-import { load as yamlLoad } from 'js-yaml';
+import { load as yamlLoad } from '@zkochan/js-yaml';
 import React, { ReactNode } from 'react';
-import { Fence } from './lib/nodes/fence.component';
-import { fence } from './lib/nodes/fence.schema';
 import { Heading } from './lib/nodes/heading.component';
-import { heading } from './lib/nodes/heading.schema';
+import { getHeadingSchema } from './lib/nodes/heading.schema';
 import { getImageSchema } from './lib/nodes/image.schema';
 import { CustomLink } from './lib/nodes/link.component';
 import { link } from './lib/nodes/link.schema';
 import { Callout } from './lib/tags/callout.component';
 import { callout } from './lib/tags/callout.schema';
-import { Card, Cards, TitleCard } from './lib/tags/cards.component';
-import { card, cards, titleCard } from './lib/tags/cards.schema';
+import { CallToAction } from './lib/tags/call-to-action.component';
+import { callToAction } from './lib/tags/call-to-action.schema';
+import { Card, Cards, LinkCard } from './lib/tags/cards.component';
+import { card, cards, linkCard } from './lib/tags/cards.schema';
 import { GithubRepository } from './lib/tags/github-repository.component';
 import { githubRepository } from './lib/tags/github-repository.schema';
 import { StackblitzButton } from './lib/tags/stackblitz-button.component';
@@ -29,81 +29,108 @@ import { Iframe } from './lib/tags/iframe.component';
 import { iframe } from './lib/tags/iframe.schema';
 import { InstallNxConsole } from './lib/tags/install-nx-console.component';
 import { installNxConsole } from './lib/tags/install-nx-console.schema';
-import { NxCloudSection } from './lib/tags/nx-cloud-section.component';
-import { nxCloudSection } from './lib/tags/nx-cloud-section.schema';
 import { Persona, Personas } from './lib/tags/personas.component';
 import { persona, personas } from './lib/tags/personas.schema';
+import { ProjectDetails } from './lib/tags/project-details.component';
+import { projectDetails } from './lib/tags/project-details.schema';
+import {
+  ShortEmbeds,
+  shortEmbeds,
+  shortVideo,
+  ShortVideo,
+} from './lib/tags/short-embed';
 import { SideBySide } from './lib/tags/side-by-side.component';
 import { sideBySide } from './lib/tags/side-by-side.schema';
 import { Tab, Tabs } from './lib/tags/tabs.component';
 import { tab, tabs } from './lib/tags/tabs.schema';
-import { YouTube, youtube } from './lib/tags/youtube.component';
+import { Tweet, tweet } from '@nx/nx-dev/ui-common';
+import { YouTube, youtube } from '@nx/nx-dev/ui-common';
 import {
   TerminalVideo,
   terminalVideo,
 } from './lib/tags/terminal-video.component';
 import { VideoLink, videoLink } from './lib/tags/video-link.component';
+// import { SvgAnimation, svgAnimation } from './lib/tags/svg-animation.component';
 import { Pill } from './lib/tags/pill.component';
 import { pill } from './lib/tags/pill.schema';
-
+import { fence } from './lib/nodes/fence.schema';
+import { FenceWrapper } from './lib/nodes/fence-wrapper.component';
+import { VideoPlayer, videoPlayer } from './lib/tags/video-player.component';
+import { TableOfContents } from './lib/tags/table-of-contents.component';
+import { tableOfContents } from './lib/tags/table-of-contents.schema';
 // TODO fix this export
 export { GithubRepository } from './lib/tags/github-repository.component';
 
 export const getMarkdocCustomConfig = (
-  documentFilePath: string
+  documentFilePath: string,
+  headingClass: string = ''
 ): { config: any; components: any } => ({
   config: {
     nodes: {
       fence,
-      heading,
+      heading: getHeadingSchema(headingClass),
       image: getImageSchema(documentFilePath),
       link,
     },
     tags: {
       callout,
+      'call-to-action': callToAction,
       card,
       cards,
+      'link-card': linkCard,
       'github-repository': githubRepository,
       'stackblitz-button': stackblitzButton,
       graph,
       iframe,
       'install-nx-console': installNxConsole,
-      'nx-cloud-section': nxCloudSection,
+      'video-player': videoPlayer,
       persona,
       personas,
+      'project-details': projectDetails,
       pill,
+      'short-embeds': shortEmbeds,
+      'short-video': shortVideo,
       'side-by-side': sideBySide,
       tab,
       tabs,
-      'title-card': titleCard,
-      youtube,
       'terminal-video': terminalVideo,
+      toc: tableOfContents,
+      tweet,
+      youtube,
       'video-link': videoLink,
+      // 'svg-animation': svgAnimation,
     },
   },
   components: {
     Callout,
+    CallToAction,
     Card,
     Cards,
+    LinkCard,
     CustomLink,
-    Fence,
+    FenceWrapper,
     GithubRepository,
     StackblitzButton,
     Graph,
     Heading,
     Iframe,
     InstallNxConsole,
-    NxCloudSection,
     Persona,
     Personas,
+    ProjectDetails,
     Pill,
+    ShortEmbeds,
+    ShortVideo,
     SideBySide,
     Tab,
     Tabs,
-    TitleCard,
-    YouTube,
+    TableOfContents,
     TerminalVideo,
+    Tweet,
+    YouTube,
     VideoLink,
+    VideoPlayer,
+    // SvgAnimation,
   },
 });
 
@@ -112,21 +139,34 @@ const tokenizer = new Tokenizer({
   allowComments: true,
 });
 
-export const parseMarkdown: (markdown: string) => Node = (markdown) => {
+const parseMarkdown: (markdown: string) => Node = (markdown) => {
   const tokens = tokenizer.tokenize(markdown);
   return parse(tokens);
 };
 
+export const extractFrontmatter = (
+  documentContent: string
+): Record<string, any> => {
+  const ast = parseMarkdown(documentContent);
+  const frontmatter = ast.attributes['frontmatter']
+    ? (yamlLoad(ast.attributes['frontmatter']) as Record<string, any>)
+    : {};
+  return frontmatter;
+};
+
 export const renderMarkdown: (
   documentContent: string,
-  options: { filePath: string }
+  options: { filePath: string; headingClass?: string }
 ) => {
   metadata: Record<string, any>;
   node: ReactNode;
   treeNode: RenderableTreeNode;
 } = (documentContent, options = { filePath: '' }) => {
   const ast = parseMarkdown(documentContent);
-  const configuration = getMarkdocCustomConfig(options.filePath);
+  const configuration = getMarkdocCustomConfig(
+    options.filePath,
+    options.headingClass
+  );
   const treeNode = transform(ast, configuration.config);
 
   return {

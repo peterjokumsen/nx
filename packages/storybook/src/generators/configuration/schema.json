@@ -1,14 +1,14 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "cli": "nx",
   "$id": "NxStorybookConfigure",
   "title": "Storybook Configuration",
   "description": "Add Storybook configuration to a UI library or an application.",
   "type": "object",
   "properties": {
-    "name": {
+    "project": {
       "type": "string",
-      "aliases": ["project", "projectName"],
+      "aliases": ["name", "projectName"],
       "description": "Project for which to generate Storybook configuration.",
       "$default": {
         "$source": "argv",
@@ -24,16 +24,6 @@
       "x-prompt": "Do you want to set up Storybook interaction tests?",
       "alias": ["configureTestRunner"],
       "default": true
-    },
-    "configureCypress": {
-      "type": "boolean",
-      "description": "Run the cypress-configure generator.",
-      "x-deprecated": "Use interactionTests instead. This option will be removed in v18."
-    },
-    "cypressDirectory": {
-      "type": "string",
-      "description": "A directory where the Cypress project will be placed. Added at root by default.",
-      "x-deprecated": "Use interactionTests instead. This option will be removed in v18."
     },
     "linter": {
       "description": "The tool to use for running lint checks.",
@@ -62,13 +52,6 @@
       "type": "boolean",
       "description": "Add a static-storybook to serve the static storybook built files.",
       "default": false
-    },
-    "bundler": {
-      "description": "The Storybook builder to use.",
-      "type": "string",
-      "enum": ["vite", "webpack"],
-      "default": "webpack",
-      "x-priority": "important"
     },
     "uiFramework": {
       "type": "string",
@@ -103,6 +86,6 @@
       "x-priority": "internal"
     }
   },
-  "required": ["name", "uiFramework"],
+  "required": ["project", "uiFramework"],
   "examplesFile": "../../../docs/configuration-generator-examples.md"
 }

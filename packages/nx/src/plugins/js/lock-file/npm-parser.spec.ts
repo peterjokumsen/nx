@@ -1,11 +1,22 @@
 import { joinPathFragments } from '../../../utils/path';
-import { parseNpmLockfile, stringifyNpmLockfile } from './npm-parser';
+import {
+  getNpmLockfileDependencies,
+  getNpmLockfileNodes,
+  stringifyNpmLockfile,
+} from './npm-parser';
 import { pruneProjectGraph } from './project-graph-pruning';
 import { vol } from 'memfs';
 import { ProjectGraph } from '../../../config/project-graph';
 import { ProjectGraphBuilder } from '../../../project-graph/project-graph-builder';
+import { CreateDependenciesContext } from '../../../project-graph/plugins';
 
-jest.mock('fs', () => require('memfs').fs);
+jest.mock('fs', () => {
+  const memFs = require('memfs').fs;
+  return {
+    ...memFs,
+    existsSync: (p) => (p.endsWith('.node') ? true : memFs.existsSync(p)),
+  };
+});
 
 describe('NPM lock file utility', () => {
   afterEach(() => {
@@ -21,8 +32,45 @@ describe('NPM lock file utility', () => {
     let graph: ProjectGraph;
 
     beforeEach(() => {
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(rootLockFile), builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(rootLockFile),
+        hash
+      );
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const pg: ProjectGraph = {
+        dependencies: {},
+        nodes: {},
+        externalNodes,
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(rootLockFile),
+        hash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       graph = builder.getUpdatedProjectGraph();
     });
 
@@ -41,8 +89,45 @@ describe('NPM lock file utility', () => {
       ));
 
       // this is original generated lock file
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(appLockFile), builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(appLockFile),
+        hash
+      );
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(appLockFile),
+        hash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const appGraph = builder.getUpdatedProjectGraph();
       expect(Object.keys(appGraph.externalNodes).length).toEqual(984);
 
@@ -89,8 +174,45 @@ describe('NPM lock file utility', () => {
         '__fixtures__/auxiliary-packages/package-lock.json'
       ));
 
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(rootLockFile), builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(rootLockFile),
+        hash
+      );
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(rootLockFile),
+        hash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
 
       expect(Object.keys(graph.externalNodes).length).toEqual(212); // 202
@@ -148,9 +270,47 @@ describe('NPM lock file utility', () => {
         '__fixtures__/auxiliary-packages/package-lock-v2.json'
       ));
 
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(rootV2LockFile), builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(rootV2LockFile),
+        hash
+      );
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(rootV2LockFile),
+        hash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       expect(Object.keys(graph.externalNodes).length).toEqual(212);
 
       expect(graph.externalNodes['npm:minimatch']).toMatchInlineSnapshot(`
@@ -246,9 +406,47 @@ describe('NPM lock file utility', () => {
       cleanupTypes(prunedV2LockFile.packages);
       cleanupTypes(prunedV2LockFile.dependencies, true);
 
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(rootV2LockFile), builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(rootV2LockFile),
+        hash
+      );
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(rootV2LockFile),
+        hash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       const prunedGraph = pruneProjectGraph(graph, normalizedPackageJson);
       const result = stringifyNpmLockfile(
         prunedGraph,
@@ -333,9 +531,47 @@ describe('NPM lock file utility', () => {
         '__fixtures__/duplicate-package/package-lock-v1.json'
       ));
 
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(rootLockFile), builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(rootLockFile),
+        hash
+      );
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(rootLockFile),
+        hash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       expect(Object.keys(graph.externalNodes).length).toEqual(369);
     });
     it('should parse v3', async () => {
@@ -344,9 +580,47 @@ describe('NPM lock file utility', () => {
         '__fixtures__/duplicate-package/package-lock.json'
       ));
 
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(rootLockFile), builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(rootLockFile),
+        hash
+      );
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(rootLockFile),
+        hash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       expect(Object.keys(graph.externalNodes).length).toEqual(369);
     });
   });
@@ -361,9 +635,45 @@ describe('NPM lock file utility', () => {
         __dirname,
         '__fixtures__/optional/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(lockFile), builder);
+
+      const hash = uniq('mock-hash');
+      const externalNodes = getNpmLockfileNodes(JSON.stringify(lockFile), hash);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(lockFile),
+        hash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       expect(Object.keys(graph.externalNodes).length).toEqual(8);
 
       const prunedGraph = pruneProjectGraph(graph, packageJson);
@@ -386,9 +696,48 @@ describe('NPM lock file utility', () => {
         __dirname,
         '__fixtures__/pruning/typescript/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(rootLockFile), builder);
+
+      const hash = uniq('mock-hash');
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(rootLockFile),
+        hash
+      );
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(rootLockFile),
+        hash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       const prunedGraph = pruneProjectGraph(graph, typescriptPackageJson);
       const result = stringifyNpmLockfile(
         prunedGraph,
@@ -413,9 +762,48 @@ describe('NPM lock file utility', () => {
         __dirname,
         '__fixtures__/pruning/devkit-yargs/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(rootLockFile), builder);
+
+      const hash = uniq('mock-hash');
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(rootLockFile),
+        hash
+      );
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(rootLockFile),
+        hash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       const prunedGraph = pruneProjectGraph(graph, multiPackageJson);
       const result = stringifyNpmLockfile(
         prunedGraph,
@@ -436,6 +824,83 @@ describe('NPM lock file utility', () => {
     });
   });
 
+  describe('pruning handling npm hoisting', () => {
+    let rootLockFile;
+
+    beforeAll(() => {
+      rootLockFile = require(joinPathFragments(
+        __dirname,
+        '__fixtures__/npm-hoisting/package-lock.json'
+      ));
+    });
+
+    it('should prune correctly', () => {
+      const appPackageJson = require(joinPathFragments(
+        __dirname,
+        '__fixtures__/npm-hoisting/app/package.json'
+      ));
+
+      const hash = uniq('mock-hash');
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(rootLockFile),
+        hash
+      );
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(rootLockFile),
+        hash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
+      const graph = builder.getUpdatedProjectGraph();
+
+      const prunedGraph = pruneProjectGraph(graph, appPackageJson);
+      const result = stringifyNpmLockfile(
+        prunedGraph,
+        JSON.stringify(rootLockFile),
+        appPackageJson
+      );
+
+      expect(result).toEqual(
+        JSON.stringify(
+          require(joinPathFragments(
+            __dirname,
+            '__fixtures__/npm-hoisting/app/package-lock.json'
+          )),
+          null,
+          2
+        )
+      );
+    });
+  });
+
   describe('workspaces', () => {
     let lockFile;
 
@@ -444,10 +909,13 @@ describe('NPM lock file utility', () => {
         __dirname,
         '__fixtures__/workspaces/package-lock.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(lockFile), builder);
-      const result = builder.getUpdatedProjectGraph();
-      expect(Object.keys(result.externalNodes).length).toEqual(5);
+
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(lockFile),
+        uniq('mock-hash')
+      );
+
+      expect(Object.keys(externalNodes).length).toEqual(5);
     });
 
     it('should parse v1 lock file', async () => {
@@ -455,10 +923,476 @@ describe('NPM lock file utility', () => {
         __dirname,
         '__fixtures__/workspaces/package-lock.v1.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseNpmLockfile(JSON.stringify(lockFile), builder);
-      const result = builder.getUpdatedProjectGraph();
-      expect(Object.keys(result.externalNodes).length).toEqual(5);
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(lockFile),
+        uniq('mock')
+      );
+      expect(Object.keys(externalNodes).length).toEqual(5);
+    });
+  });
+
+  describe('mixed keys', () => {
+    let lockFile, lockFileHash;
+
+    beforeEach(() => {
+      lockFile = require(joinPathFragments(
+        __dirname,
+        '__fixtures__/mixed-keys/package-lock.json'
+      ));
+      lockFileHash = '__fixtures__/mixed-keys/package-lock.json';
+    });
+
+    it('should parse and prune packages with mixed keys', () => {
+      const packageJson = require(joinPathFragments(
+        __dirname,
+        '__fixtures__/mixed-keys/package.json'
+      ));
+
+      const externalNodes = getNpmLockfileNodes(
+        JSON.stringify(lockFile),
+        lockFileHash
+      );
+      let graph: ProjectGraph = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getNpmLockfileDependencies(
+        JSON.stringify(lockFile),
+        lockFileHash,
+        ctx
+      );
+
+      const builder = new ProjectGraphBuilder(graph);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
+      graph = builder.getUpdatedProjectGraph();
+
+      expect(graph.externalNodes).toMatchInlineSnapshot(`
+        {
+          "npm:@isaacs/cliui": {
+            "data": {
+              "hash": "sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==",
+              "packageName": "@isaacs/cliui",
+              "version": "8.0.2",
+            },
+            "name": "npm:@isaacs/cliui",
+            "type": "npm",
+          },
+          "npm:ansi-regex": {
+            "data": {
+              "hash": "sha512-n5M855fKb2SsfMIiFFoVrABHJC8QtHwVx+mHWP3QcEqBHYienj5dHSgjbxtC0WEZXYt4wcD6zrQElDPhFuZgfA==",
+              "packageName": "ansi-regex",
+              "version": "6.0.1",
+            },
+            "name": "npm:ansi-regex",
+            "type": "npm",
+          },
+          "npm:ansi-regex@5.0.1": {
+            "data": {
+              "hash": "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==",
+              "packageName": "ansi-regex",
+              "version": "5.0.1",
+            },
+            "name": "npm:ansi-regex@5.0.1",
+            "type": "npm",
+          },
+          "npm:ansi-styles": {
+            "data": {
+              "hash": "sha512-bN798gFfQX+viw3R7yrGWRqnrN2oRkEkUjjl4JNn4E8GxxbjtG3FbrEIIY3l8/hrwUwIeCZvi4QuOTP4MErVug==",
+              "packageName": "ansi-styles",
+              "version": "6.2.1",
+            },
+            "name": "npm:ansi-styles",
+            "type": "npm",
+          },
+          "npm:ansi-styles@4.3.0": {
+            "data": {
+              "hash": "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==",
+              "packageName": "ansi-styles",
+              "version": "4.3.0",
+            },
+            "name": "npm:ansi-styles@4.3.0",
+            "type": "npm",
+          },
+          "npm:cliui": {
+            "data": {
+              "hash": "sha512-BSeNnyus75C4//NQ9gQt1/csTXyo/8Sb+afLAkzAptFuMsod9HFokGNudZpi/oQV73hnVK+sR+5PVRMd+Dr7YQ==",
+              "packageName": "cliui",
+              "version": "8.0.1",
+            },
+            "name": "npm:cliui",
+            "type": "npm",
+          },
+          "npm:color-convert": {
+            "data": {
+              "hash": "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==",
+              "packageName": "color-convert",
+              "version": "2.0.1",
+            },
+            "name": "npm:color-convert",
+            "type": "npm",
+          },
+          "npm:color-name": {
+            "data": {
+              "hash": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==",
+              "packageName": "color-name",
+              "version": "1.1.4",
+            },
+            "name": "npm:color-name",
+            "type": "npm",
+          },
+          "npm:eastasianwidth": {
+            "data": {
+              "hash": "sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==",
+              "packageName": "eastasianwidth",
+              "version": "0.2.0",
+            },
+            "name": "npm:eastasianwidth",
+            "type": "npm",
+          },
+          "npm:emoji-regex": {
+            "data": {
+              "hash": "sha512-L18DaJsXSUk2+42pv8mLs5jJT2hqFkFE4j21wOmgbUqsZ2hL72NsUU785g9RXgo3s0ZNgVl42TiHp3ZtOv/Vyg==",
+              "packageName": "emoji-regex",
+              "version": "9.2.2",
+            },
+            "name": "npm:emoji-regex",
+            "type": "npm",
+          },
+          "npm:emoji-regex@8.0.0": {
+            "data": {
+              "hash": "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==",
+              "packageName": "emoji-regex",
+              "version": "8.0.0",
+            },
+            "name": "npm:emoji-regex@8.0.0",
+            "type": "npm",
+          },
+          "npm:is-fullwidth-code-point": {
+            "data": {
+              "hash": "sha512-zymm5+u+sCsSWyD9qNaejV3DFvhCKclKdizYaJUuHA83RLjb7nSuGnddCHGv0hk+KY7BMAlsWeK4Ueg6EV6XQg==",
+              "packageName": "is-fullwidth-code-point",
+              "version": "3.0.0",
+            },
+            "name": "npm:is-fullwidth-code-point",
+            "type": "npm",
+          },
+          "npm:string-width": {
+            "data": {
+              "hash": "sha512-HnLOCR3vjcY8beoNLtcjZ5/nxn2afmME6lhrDrebokqMap+XbeW8n9TXpPDOqdGK5qcI3oT0GKTW6wC7EMiVqA==",
+              "packageName": "string-width",
+              "version": "5.1.2",
+            },
+            "name": "npm:string-width",
+            "type": "npm",
+          },
+          "npm:string-width-cjs": {
+            "data": {
+              "hash": "sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==",
+              "packageName": "string-width-cjs",
+              "version": "npm:string-width@4.2.3",
+            },
+            "name": "npm:string-width-cjs",
+            "type": "npm",
+          },
+          "npm:string-width@4.2.3": {
+            "data": {
+              "hash": "sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==",
+              "packageName": "string-width",
+              "version": "4.2.3",
+            },
+            "name": "npm:string-width@4.2.3",
+            "type": "npm",
+          },
+          "npm:strip-ansi": {
+            "data": {
+              "hash": "sha512-iq6eVVI64nQQTRYq2KtEg2d2uU7LElhTJwsH4YzIHZshxlgZms/wIc4VoDQTlG/IvVIrBKG06CrZnp0qv7hkcQ==",
+              "packageName": "strip-ansi",
+              "version": "7.1.0",
+            },
+            "name": "npm:strip-ansi",
+            "type": "npm",
+          },
+          "npm:strip-ansi-cjs": {
+            "data": {
+              "hash": "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==",
+              "packageName": "strip-ansi-cjs",
+              "version": "npm:strip-ansi@6.0.1",
+            },
+            "name": "npm:strip-ansi-cjs",
+            "type": "npm",
+          },
+          "npm:strip-ansi@6.0.1": {
+            "data": {
+              "hash": "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==",
+              "packageName": "strip-ansi",
+              "version": "6.0.1",
+            },
+            "name": "npm:strip-ansi@6.0.1",
+            "type": "npm",
+          },
+          "npm:wrap-ansi": {
+            "data": {
+              "hash": "sha512-si7QWI6zUMq56bESFvagtmzMdGOtoxfR+Sez11Mobfc7tm+VkUckk9bW2UeffTGVUbOksxmSw0AA2gs8g71NCQ==",
+              "packageName": "wrap-ansi",
+              "version": "8.1.0",
+            },
+            "name": "npm:wrap-ansi",
+            "type": "npm",
+          },
+          "npm:wrap-ansi-cjs": {
+            "data": {
+              "hash": "sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==",
+              "packageName": "wrap-ansi-cjs",
+              "version": "npm:wrap-ansi@7.0.0",
+            },
+            "name": "npm:wrap-ansi-cjs",
+            "type": "npm",
+          },
+          "npm:wrap-ansi@7.0.0": {
+            "data": {
+              "hash": "sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==",
+              "packageName": "wrap-ansi",
+              "version": "7.0.0",
+            },
+            "name": "npm:wrap-ansi@7.0.0",
+            "type": "npm",
+          },
+        }
+      `);
+
+      expect(graph.dependencies).toMatchInlineSnapshot(`
+        {
+          "npm:@isaacs/cliui": [
+            {
+              "source": "npm:@isaacs/cliui",
+              "target": "npm:string-width",
+              "type": "static",
+            },
+            {
+              "source": "npm:@isaacs/cliui",
+              "target": "npm:string-width-cjs",
+              "type": "static",
+            },
+            {
+              "source": "npm:@isaacs/cliui",
+              "target": "npm:strip-ansi",
+              "type": "static",
+            },
+            {
+              "source": "npm:@isaacs/cliui",
+              "target": "npm:strip-ansi-cjs",
+              "type": "static",
+            },
+            {
+              "source": "npm:@isaacs/cliui",
+              "target": "npm:wrap-ansi",
+              "type": "static",
+            },
+            {
+              "source": "npm:@isaacs/cliui",
+              "target": "npm:wrap-ansi-cjs",
+              "type": "static",
+            },
+          ],
+          "npm:ansi-styles@4.3.0": [
+            {
+              "source": "npm:ansi-styles@4.3.0",
+              "target": "npm:color-convert",
+              "type": "static",
+            },
+          ],
+          "npm:cliui": [
+            {
+              "source": "npm:cliui",
+              "target": "npm:string-width@4.2.3",
+              "type": "static",
+            },
+            {
+              "source": "npm:cliui",
+              "target": "npm:strip-ansi@6.0.1",
+              "type": "static",
+            },
+            {
+              "source": "npm:cliui",
+              "target": "npm:wrap-ansi@7.0.0",
+              "type": "static",
+            },
+          ],
+          "npm:color-convert": [
+            {
+              "source": "npm:color-convert",
+              "target": "npm:color-name",
+              "type": "static",
+            },
+          ],
+          "npm:string-width": [
+            {
+              "source": "npm:string-width",
+              "target": "npm:eastasianwidth",
+              "type": "static",
+            },
+            {
+              "source": "npm:string-width",
+              "target": "npm:emoji-regex",
+              "type": "static",
+            },
+            {
+              "source": "npm:string-width",
+              "target": "npm:strip-ansi",
+              "type": "static",
+            },
+          ],
+          "npm:string-width-cjs": [
+            {
+              "source": "npm:string-width-cjs",
+              "target": "npm:emoji-regex@8.0.0",
+              "type": "static",
+            },
+            {
+              "source": "npm:string-width-cjs",
+              "target": "npm:is-fullwidth-code-point",
+              "type": "static",
+            },
+            {
+              "source": "npm:string-width-cjs",
+              "target": "npm:strip-ansi@6.0.1",
+              "type": "static",
+            },
+          ],
+          "npm:string-width@4.2.3": [
+            {
+              "source": "npm:string-width@4.2.3",
+              "target": "npm:emoji-regex@8.0.0",
+              "type": "static",
+            },
+            {
+              "source": "npm:string-width@4.2.3",
+              "target": "npm:is-fullwidth-code-point",
+              "type": "static",
+            },
+            {
+              "source": "npm:string-width@4.2.3",
+              "target": "npm:strip-ansi@6.0.1",
+              "type": "static",
+            },
+          ],
+          "npm:strip-ansi": [
+            {
+              "source": "npm:strip-ansi",
+              "target": "npm:ansi-regex",
+              "type": "static",
+            },
+          ],
+          "npm:strip-ansi-cjs": [
+            {
+              "source": "npm:strip-ansi-cjs",
+              "target": "npm:ansi-regex@5.0.1",
+              "type": "static",
+            },
+          ],
+          "npm:strip-ansi@6.0.1": [
+            {
+              "source": "npm:strip-ansi@6.0.1",
+              "target": "npm:ansi-regex@5.0.1",
+              "type": "static",
+            },
+          ],
+          "npm:wrap-ansi": [
+            {
+              "source": "npm:wrap-ansi",
+              "target": "npm:ansi-styles",
+              "type": "static",
+            },
+            {
+              "source": "npm:wrap-ansi",
+              "target": "npm:string-width",
+              "type": "static",
+            },
+            {
+              "source": "npm:wrap-ansi",
+              "target": "npm:strip-ansi",
+              "type": "static",
+            },
+          ],
+          "npm:wrap-ansi-cjs": [
+            {
+              "source": "npm:wrap-ansi-cjs",
+              "target": "npm:ansi-styles@4.3.0",
+              "type": "static",
+            },
+            {
+              "source": "npm:wrap-ansi-cjs",
+              "target": "npm:string-width@4.2.3",
+              "type": "static",
+            },
+            {
+              "source": "npm:wrap-ansi-cjs",
+              "target": "npm:strip-ansi@6.0.1",
+              "type": "static",
+            },
+          ],
+          "npm:wrap-ansi@7.0.0": [
+            {
+              "source": "npm:wrap-ansi@7.0.0",
+              "target": "npm:ansi-styles@4.3.0",
+              "type": "static",
+            },
+            {
+              "source": "npm:wrap-ansi@7.0.0",
+              "target": "npm:string-width@4.2.3",
+              "type": "static",
+            },
+            {
+              "source": "npm:wrap-ansi@7.0.0",
+              "target": "npm:strip-ansi@6.0.1",
+              "type": "static",
+            },
+          ],
+        }
+      `);
+
+      const prunedGraph = pruneProjectGraph(graph, packageJson);
+      const result = stringifyNpmLockfile(
+        prunedGraph,
+        JSON.stringify(lockFile),
+        packageJson
+      );
+      expect(result).toEqual(
+        JSON.stringify(
+          require(joinPathFragments(
+            __dirname,
+            '__fixtures__/mixed-keys/package-lock.json'
+          )),
+          null,
+          2
+        )
+      );
     });
   });
 });
+
+function uniq(str: string) {
+  return `str-${(Math.random() * 10000).toFixed(0)}`;
+}

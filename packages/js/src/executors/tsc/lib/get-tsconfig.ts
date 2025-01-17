@@ -39,7 +39,7 @@ function generateTaskProjectTsConfig(
   context: ExecutorContext,
   taskInMemoryTsConfigMap: Record<string, TypescriptInMemoryTsConfig>
 ): string {
-  const { project } = parseTargetString(task, context.projectGraph);
+  const { project } = parseTargetString(task, context);
   if (projectTsConfigCache.has(project)) {
     const { tsConfig, tsConfigPath } = projectTsConfigCache.get(project);
     taskInMemoryTsConfigMap[task] = tsConfig;
@@ -103,26 +103,28 @@ function getDependencyTasksInOtherProjects(
   project: string,
   context: ExecutorContext
 ): string[] {
-  return context.taskGraph.dependencies[task].filter(
-    (t) =>
-      t !== task &&
-      parseTargetString(t, context.projectGraph).project !== project
+  const implicitDependencies = new Set(
+    context.projectGraph.nodes[project].data.implicitDependencies ?? []
   );
+  return context.taskGraph.dependencies[task].filter((t) => {
+    const { project: dependencyProject } = parseTargetString(t, context);
+    // Tasks for implicit dependencies are skipped since incremental builds only apply to explicit dependencies
+    return (
+      t !== task &&
+      dependencyProject !== project &&
+      !implicitDependencies.has(dependencyProject)
+    );
+  });
 }
 
 function getDependencyTasksInSameProject(
   task: string,
   context: ExecutorContext
 ): string[] {
-  const { project: taskProject } = parseTargetString(
-    task,
-    context.projectGraph
-  );
+  const { project: taskProject } = parseTargetString(task, context);
 
   return Object.keys(context.taskGraph.tasks).filter(
-    (t) =>
-      t !== task &&
-      parseTargetString(t, context.projectGraph).project === taskProject
+    (t) => t !== task && parseTargetString(t, context).project === taskProject
   );
 }
 
@@ -167,7 +169,7 @@ function getInMemoryTsConfig(
 }
 
 function hasTscExecutor(task: string, context: ExecutorContext): boolean {
-  const { project, target } = parseTargetString(task, context.projectGraph);
+  const { project, target } = parseTargetString(task, context);
 
   return (
     context.projectGraph.nodes[project].data.targets[target].executor ===

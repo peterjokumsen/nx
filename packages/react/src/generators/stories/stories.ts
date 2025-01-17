@@ -1,25 +1,22 @@
 import componentStoryGenerator from '../component-story/component-story';
-import componentCypressSpecGenerator from '../component-cypress-spec/component-cypress-spec';
 import {
   findExportDeclarationsForJsx,
   getComponentNode,
 } from '../../utils/ast-utils';
 import {
   addDependenciesToPackageJson,
-  convertNxGenerator,
   ensurePackage,
   formatFiles,
   GeneratorCallback,
   getProjects,
   joinPathFragments,
-  logger,
   ProjectConfiguration,
   runTasksInSerial,
   Tree,
   visitNotIgnoredFiles,
 } from '@nx/devkit';
 import { basename, join } from 'path';
-import minimatch = require('minimatch');
+import { minimatch } from 'minimatch';
 import { ensureTypescript } from '@nx/js/src/utils/typescript/ensure-typescript';
 import { nxVersion } from '../../utils/versions';
 
@@ -31,23 +28,16 @@ export interface StorybookStoriesSchema {
   js?: boolean;
   ignorePaths?: string[];
   skipFormat?: boolean;
-  cypressProject?: string;
-  generateCypressSpecs?: boolean;
 }
 
 export async function projectRootPath(
   tree: Tree,
   config: ProjectConfiguration
 ): Promise<string> {
-  const { findStorybookAndBuildTargetsAndCompiler } = await import(
-    '@nx/storybook/src/utils/utilities'
-  );
   let projectDir: string;
   if (config.projectType === 'application') {
-    const { nextBuildTarget } = findStorybookAndBuildTargetsAndCompiler(
-      config.targets
-    );
-    if (!!nextBuildTarget) {
+    const isNextJs = await isNextJsProject(tree, config);
+    if (isNextJs) {
       // Next.js apps
       projectDir = 'components';
     } else {
@@ -57,8 +47,10 @@ export async function projectRootPath(
   } else if (config.projectType == 'library') {
     // libs/test-lib/src/lib
     projectDir = 'lib';
+  } else {
+    projectDir = '.';
   }
-  return joinPathFragments(config.sourceRoot, projectDir);
+  return joinPathFragments(config.sourceRoot ?? config.root, projectDir);
 }
 
 export function containsComponentDeclaration(
@@ -94,8 +86,6 @@ export async function createAllStories(
   js: boolean,
   projects: Map<string, ProjectConfiguration>,
   projectConfiguration: ProjectConfiguration,
-  generateCypressSpecs?: boolean,
-  cypressProject?: string,
   ignorePaths?: string[]
 ) {
   const { isTheFileAStory } = await import('@nx/storybook/src/utils/utilities');
@@ -129,18 +119,12 @@ export async function createAllStories(
     }
   });
 
-  const e2eProjectName = cypressProject || `${projectName}-e2e`;
-  const e2eProject = projects.get(e2eProjectName);
-
-  if (generateCypressSpecs && !e2eProject) {
-    logger.info(
-      `There was no e2e project "${e2eProjectName}" found, so cypress specs will not be generated. Pass "--cypressProject" to specify a different e2e project name`
-    );
-  }
-
   await Promise.all(
     componentPaths.map(async (componentPath) => {
-      const relativeCmpDir = componentPath.replace(join(sourceRoot, '/'), '');
+      const relativeCmpDir = componentPath.replace(
+        join(sourceRoot ?? root, '/'),
+        ''
+      );
 
       if (!containsComponentDeclaration(tree, componentPath)) {
         return;
@@ -152,16 +136,6 @@ export async function createAllStories(
         skipFormat: true,
         interactionTests,
       });
-
-      if (generateCypressSpecs && e2eProject) {
-        await componentCypressSpecGenerator(tree, {
-          project: projectName,
-          componentPath: relativeCmpDir,
-          js,
-          cypressProject,
-          skipFormat: true,
-        });
-      }
     })
   );
 }
@@ -180,8 +154,6 @@ export async function storiesGenerator(
     schema.js,
     projects,
     projectConfiguration,
-    schema.generateCypressSpecs,
-    schema.cypressProject,
     schema.ignorePaths
   );
 
@@ -202,5 +174,25 @@ export async function storiesGenerator(
   return runTasksInSerial(...tasks);
 }
 
+async function isNextJsProject(tree: Tree, config: ProjectConfiguration) {
+  const { findStorybookAndBuildTargetsAndCompiler } = await import(
+    '@nx/storybook/src/utils/utilities'
+  );
+
+  const { nextBuildTarget } = findStorybookAndBuildTargetsAndCompiler(
+    config.targets
+  );
+  if (nextBuildTarget) {
+    return true;
+  }
+
+  for (const configFile of ['next.config.js', 'next.config.ts']) {
+    if (tree.exists(join(config.root, configFile))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export default storiesGenerator;
-export const storiesSchematic = convertNxGenerator(storiesGenerator);

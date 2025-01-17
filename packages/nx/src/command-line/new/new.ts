@@ -1,5 +1,6 @@
 import { flushChanges, FsTree } from '../../generators/tree';
-import { combineOptionsForGenerator, handleErrors } from '../../utils/params';
+import { combineOptionsForGenerator } from '../../utils/params';
+import { handleErrors } from '../../utils/handle-errors';
 import { getGeneratorInformation } from '../generate/generator-utils';
 
 function removeSpecialFlags(generatorOptions: { [p: string]: any }): void {
@@ -16,7 +17,12 @@ export async function newWorkspace(cwd: string, args: { [k: string]: any }) {
     async () => {
       const isInteractive = args.interactive;
       const { normalizedGeneratorName, schema, implementationFactory } =
-        getGeneratorInformation('@nx/workspace/generators.json', 'new', null);
+        getGeneratorInformation(
+          '@nx/workspace/generators.json',
+          'new',
+          null,
+          {}
+        );
       removeSpecialFlags(args);
       const combinedOpts = await combineOptionsForGenerator(
         args,

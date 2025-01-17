@@ -1,6 +1,6 @@
 import { Tree } from '@nx/devkit';
 import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
-import { Linter } from '@nx/linter';
+import { Linter } from '@nx/eslint';
 import { createFiles } from './create-files';
 
 describe('Create Files', () => {
@@ -12,9 +12,8 @@ describe('Create Files', () => {
 
   it('should generate files', () => {
     createFiles(tree, {
-      e2eName: 'my-app-e2e',
+      e2eDirectory: 'my-app-e2e',
       e2eProjectName: 'my-app-e2e',
-      e2eProjectDirectory: 'apps',
       e2eProjectRoot: 'apps/my-app-e2e',
       appProject: 'my-app',
       appFileName: 'my-app',

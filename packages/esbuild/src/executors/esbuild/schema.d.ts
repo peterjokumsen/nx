@@ -5,11 +5,11 @@ type Compiler = 'babel' | 'swc';
 
 export interface EsBuildExecutorOptions {
   additionalEntryPoints?: string[];
-  assets: (AssetGlob | string)[];
-  buildableProjectDepsInPackageJsonType?: 'dependencies' | 'peerDependencies';
+  assets?: (AssetGlob | string)[];
   bundle?: boolean;
+  declaration?: boolean;
+  declarationRootDir?: string;
   deleteOutputPath?: boolean;
-  dependenciesFieldType?: boolean;
   esbuildOptions?: Record<string, any>;
   esbuildConfig?: string;
   external?: string[];
@@ -32,7 +32,9 @@ export interface EsBuildExecutorOptions {
 
 export interface NormalizedEsBuildExecutorOptions
   extends Omit<EsBuildExecutorOptions, 'esbuildOptions' | 'esbuildConfig'> {
+  assets: (AssetGlob | string)[];
   singleEntry: boolean;
   external: string[];
-  userDefinedBuildOptions: esbuild.BuildOptions;
+  userDefinedBuildOptions: esbuild.BuildOptions | undefined;
+  isTsSolutionSetup?: boolean;
 }

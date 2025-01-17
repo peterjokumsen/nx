@@ -30,12 +30,37 @@ These manual steps are not required if you use the generator from the previous s
 
 ### Step 1: Install Tailwind Dependencies
 
-```shell
-npm install -D tailwindcss@latest postcss@latest autoprefixer@latest
+{% tabs %}
+{% tab label="npm" %}
 
-# or with yarn
+```shell
+npm add -D tailwindcss@latest postcss@latest autoprefixer@latest
+```
+
+{% /tab %}
+{% tab label="yarn" %}
+
+```shell
 yarn add -D tailwindcss@latest postcss@latest autoprefixer@latest
 ```
+
+{% /tab %}
+{% tab label="pnpm" %}
+
+```shell
+pnpm add -D tailwindcss@latest postcss@latest autoprefixer@latest
+```
+
+{% /tab %}
+
+{% tab label="bun" %}
+
+```shell
+bun add -D tailwindcss@latest postcss@latest autoprefixer@latest
+```
+
+{% /tab %}
+{% /tabs %}
 
 This installs the requisite tailwind dependencies.
 
@@ -142,3 +167,15 @@ By specifying the `postcssConfig` option, the PostCSS and Tailwind configuration
 {% callout type="note" title="Using library-specific configuration files" %}
 If your libraries have their own `postcss.config.js` and `tailwind.config.js` files then you should not use the `postcssConfig` option. Doing so will ignore the library-specific configuration and apply the application's configuration to everything.
 {%/ callout %}
+
+<!-- {% short-embeds %}
+{% short-video
+title="The Best Way to Add Tailwind"
+embedUrl="https://www.youtube.com/embed/AktHLfCnpqA" /%}
+{% short-video
+title="Convert CRA to Vite"
+embedUrl="https://www.youtube.com/embed/VVj1UdxNp0o" /%}
+{% short-video
+title="Customize React Webpack Config"
+embedUrl="https://www.youtube.com/embed/vgs7LTuuhO8" /%}
+{% /short-embeds %} -->

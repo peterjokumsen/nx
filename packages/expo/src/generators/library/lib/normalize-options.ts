@@ -1,50 +1,58 @@
-import { getWorkspaceLayout, joinPathFragments, names, Tree } from '@nx/devkit';
-import { getImportPath } from '@nx/js/src/utils/get-import-path';
+import { readNxJson, Tree } from '@nx/devkit';
+import {
+  determineProjectNameAndRootOptions,
+  ensureProjectName,
+} from '@nx/devkit/src/generators/project-name-and-root-utils';
 import { Schema } from '../schema';
+import { isUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
 
 export interface NormalizedSchema extends Schema {
   name: string;
   fileName: string;
   projectRoot: string;
   routePath: string;
-  projectDirectory: string;
   parsedTags: string[];
   appMain: string;
+  isUsingTsSolutionConfig: boolean;
 }
 
-export function normalizeOptions(
+export async function normalizeOptions(
   host: Tree,
   options: Schema
-): NormalizedSchema {
-  const name = names(options.name).fileName;
-  const projectDirectory = options.directory
-    ? `${names(options.directory).fileName}/${name}`
-    : name;
-
-  const projectName = projectDirectory.replace(new RegExp('/', 'g'), '-');
-  const fileName = projectName;
-  const { libsDir } = getWorkspaceLayout(host);
-  const projectRoot = joinPathFragments(libsDir, projectDirectory);
+): Promise<NormalizedSchema> {
+  await ensureProjectName(host, options, 'library');
+  const {
+    projectName,
+    names: projectNames,
+    projectRoot,
+    importPath,
+  } = await determineProjectNameAndRootOptions(host, {
+    name: options.name,
+    projectType: 'library',
+    directory: options.directory,
+    importPath: options.importPath,
+  });
+  const nxJson = readNxJson(host);
+  const addPluginDefault =
+    process.env.NX_ADD_PLUGINS !== 'false' &&
+    nxJson.useInferencePlugins !== false;
+  options.addPlugin ??= addPluginDefault;
 
   const parsedTags = options.tags
     ? options.tags.split(',').map((s) => s.trim())
     : [];
-
-  const importPath =
-    options.importPath || getImportPath(host, projectDirectory);
-
   const appMain = options.js ? 'src/index.js' : 'src/index.ts';
 
   const normalized: NormalizedSchema = {
     ...options,
-    fileName,
-    routePath: `/${name}`,
+    fileName: projectName,
+    routePath: `/${projectNames.projectSimpleName}`,
     name: projectName,
     projectRoot,
-    projectDirectory,
     parsedTags,
     importPath,
     appMain,
+    isUsingTsSolutionConfig: isUsingTsSolutionSetup(host),
   };
 
   return normalized;

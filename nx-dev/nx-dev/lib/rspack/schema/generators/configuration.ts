@@ -3,7 +3,7 @@ export const schema = {
   factory:
     './src/generators/configuration/configuration#configurationGenerator',
   schema: {
-    $schema: 'http://json-schema.org/schema',
+    $schema: 'https://json-schema.org/schema',
     cli: 'nx',
     $id: 'Rspack',
     title: '',
@@ -85,6 +85,6 @@ export const schema = {
   hidden: false,
   implementation:
     '/packages/rspack/src/generators/configuration/configuration#configurationGenerator.ts',
-  path: '/packages/rspack/src/generators/configuration/schema.json',
+  path: '/nx-api/rspack/src/generators/configuration/schema.json',
   type: 'generator',
 };

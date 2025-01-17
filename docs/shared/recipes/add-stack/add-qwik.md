@@ -8,17 +8,16 @@ The code for this example is available on GitHub:
 
 We'll be using an Nx Plugin for Qwik called [qwik-nx](https://github.com/qwikifiers/qwik-nx).
 
-{% pill url="/core-features/run-tasks" %}✅ Run Tasks{% /pill %}
-{% pill url="/core-features/cache-task-results" %}✅ Cache Task Results{% /pill %}
-{% pill url="/core-features/remote-cache" %}✅ Share Your Cache{% /pill %}
-{% pill url="/core-features/explore-graph" %}✅ Explore the Graph{% /pill %}
-{% pill url="/core-features/distribute-task-execution" %}✅ Distribute Task Execution{% /pill %}
-{% pill url="/core-features/integrate-with-editors" %}✅ Integrate with Editors{% /pill %}
-{% pill url="/core-features/automate-updating-dependencies" %}✅ Automate Updating Nx{% /pill %}
-{% pill url="/core-features/enforce-module-boundaries" %}✅ Enforce Module Boundaries{% /pill %}
-{% pill url="/core-features/plugin-features/use-task-executors" %}✅ Use Task Executors{% /pill %}
-{% pill url="/core-features/plugin-features/use-code-generators" %}✅ Use Code Generators{% /pill %}
-{% pill url="/core-features/automate-updating-dependencies" %}✅ Automate Updating Framework Dependencies{% /pill %}
+{% pill url="/features/run-tasks" %}✅ Run Tasks{% /pill %}
+{% pill url="/features/cache-task-results" %}✅ Cache Task Results{% /pill %}
+{% pill url="/ci/features/remote-cache" %}✅ Share Your Cache{% /pill %}
+{% pill url="/features/explore-graph" %}✅ Explore the Graph{% /pill %}
+{% pill url="/ci/features/distribute-task-execution" %}✅ Distribute Task Execution{% /pill %}
+{% pill url="/getting-started/editor-setup" %}✅ Integrate with Editors{% /pill %}
+{% pill url="/features/automate-updating-dependencies" %}✅ Automate Updating Nx{% /pill %}
+{% pill url="/features/enforce-module-boundaries" %}✅ Enforce Module Boundaries{% /pill %}
+{% pill url="/features/generate-code" %}✅ Use Code Generators{% /pill %}
+{% pill url="/features/automate-updating-dependencies" %}✅ Automate Updating Framework Dependencies{% /pill %}
 
 ## Install the qwik-nx Plugin
 
@@ -28,21 +27,29 @@ Install the `qwik-nx` plugin:
 {%tab label="npm"%}
 
 ```shell
-npm i --save-dev qwik-nx
+npm add -D qwik-nx
 ```
 
 {% /tab %}
 {%tab label="yarn"%}
 
 ```shell
-yarn add --dev qwik-nx
+yarn add -D qwik-nx
 ```
 
 {% /tab %}
 {%tab label="pnpm"%}
 
 ```shell
-pnpm i --dev qwik-nx
+pnpm add -D qwik-nx
+```
+
+{% /tab %}
+
+{% tab label="bun" %}
+
+```shell
+bun add -D qwik-nx
 ```
 
 {% /tab %}
@@ -61,7 +68,7 @@ If you need help finding the version of `nx` you are currently using, run `nx re
 Let's generate a new application using `qwik-nx`.
 
 ```shell
-nx g qwik-nx:app todo
+nx g qwik-nx:app todo --directory=apps/todo
 ```
 
 ## Create a library
@@ -69,7 +76,7 @@ nx g qwik-nx:app todo
 Let's generate a new library using `qwik-nx`.
 
 ```shell
-nx g qwik-nx:lib data-access
+nx g qwik-nx:lib data-access --directory=libs/data-access
 ```
 
 ## Create a Context in the library

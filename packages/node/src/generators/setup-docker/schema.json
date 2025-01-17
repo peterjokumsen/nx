@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "cli": "nx",
   "$id": "SchematicsNxSetupDocker",
   "title": "Nx Node Docker Options Schema",
@@ -24,6 +24,10 @@
       "description": "The name of the build target",
       "type": "string",
       "default": "build"
+    },
+    "outputPath": {
+      "description": "The output path for the node application",
+      "type": "string"
     }
   }
 }

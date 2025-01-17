@@ -1,4 +1,4 @@
-import { output, PackageManager } from '@nx/devkit';
+import { output, PackageManager, ProjectConfiguration } from '@nx/devkit';
 import { packageInstall, tmpProjPath } from './create-project-utils';
 import {
   detectPackageManager,
@@ -14,8 +14,7 @@ import { TargetConfiguration } from '@nx/devkit';
 import { ChildProcess, exec, execSync, ExecSyncOptions } from 'child_process';
 import { join } from 'path';
 import * as isCI from 'is-ci';
-import { Workspaces } from '../../packages/nx/src/config/workspaces';
-import { fileExists, readJson, updateFile } from './file-utils';
+import { fileExists, readJson, updateJson } from './file-utils';
 import { logError, stripConsoleColors } from './log-utils';
 import { existsSync } from 'fs-extra';
 
@@ -34,13 +33,9 @@ export interface RunCmdOpts {
  *
  * maxWorkers required for: node, web, jest
  */
-export function setMaxWorkers() {
+export function setMaxWorkers(projectJsonPath: string) {
   if (isCI) {
-    const ws = new Workspaces(tmpProjPath());
-    const projectsConfigurations = ws.readProjectsConfigurations();
-
-    Object.keys(projectsConfigurations.projects).forEach((appName) => {
-      let project = projectsConfigurations.projects[appName];
+    updateJson<ProjectConfiguration>(projectJsonPath, (project) => {
       const { build } = project.targets as {
         [targetName: string]: TargetConfiguration<any>;
       };
@@ -58,10 +53,7 @@ export function setMaxWorkers() {
         build.options.maxWorkers = 4;
       }
 
-      updateFile(
-        join(project.root, 'project.json'),
-        JSON.stringify(project, null, 2)
-      );
+      return project;
     });
   }
 }
@@ -179,13 +171,30 @@ export function getPackageManagerCommand({
       list: 'pnpm ls --depth 10',
       runLerna: `pnpm exec lerna`,
     },
+    bun: {
+      createWorkspace: `bunx create-nx-workspace@${publishedVersion}`,
+      run: (script: string, args: string) => `bun run ${script} -- ${args}`,
+      runNx: `bunx nx`,
+      runNxSilent: `bunx nx`,
+      runUninstalledPackage: `bunx --yes`,
+      install: 'bun install',
+      ciInstall: 'bun install --no-cache',
+      addProd: 'bun install',
+      addDev: 'bun install -D',
+      list: 'bun pm ls',
+      runLerna: `bunx lerna`,
+    },
   }[packageManager.trim() as PackageManager];
 }
 
-export function runE2ETests() {
+export function runE2ETests(runner?: 'cypress' | 'playwright') {
   if (process.env.NX_E2E_RUN_E2E === 'true') {
-    ensureCypressInstallation();
-    ensurePlaywrightBrowsersInstallation();
+    if (!runner || runner === 'cypress') {
+      ensureCypressInstallation();
+    }
+    if (!runner || runner === 'playwright') {
+      ensurePlaywrightBrowsersInstallation();
+    }
     return true;
   }
 
@@ -223,13 +232,25 @@ export function runCommandAsync(
       },
       (err, stdout, stderr) => {
         if (!opts.silenceError && err) {
+          logError(`Original command: ${command}`, `${stdout}\n\n${stderr}`);
           reject(err);
         }
-        resolve({
+
+        const outputs = {
           stdout: stripConsoleColors(stdout),
           stderr: stripConsoleColors(stderr),
           combinedOutput: stripConsoleColors(`${stdout}${stderr}`),
-        });
+        };
+
+        if (opts.verbose ?? isVerboseE2ERun()) {
+          output.log({
+            title: `Original command: ${command}`,
+            bodyLines: [outputs.combinedOutput],
+            color: 'green',
+          });
+        }
+
+        resolve(outputs);
       }
     );
   });
@@ -237,7 +258,10 @@ export function runCommandAsync(
 
 export function runCommandUntil(
   command: string,
-  criteria: (output: string) => boolean
+  criteria: (output: string) => boolean,
+  opts: RunCmdOpts = {
+    env: undefined,
+  }
 ): Promise<ChildProcess> {
   const pm = getPackageManagerCommand();
   const p = exec(`${pm.runNx} ${command}`, {
@@ -246,8 +270,10 @@ export function runCommandUntil(
     env: {
       CI: 'true',
       ...getStrippedEnvironmentVariables(),
+      ...opts.env,
       FORCE_COLOR: 'false',
     },
+    windowsHide: false,
   });
   return new Promise((res, rej) => {
     let output = '';
@@ -289,10 +315,11 @@ export function runCLIAsync(
   }
 ): Promise<{ stdout: string; stderr: string; combinedOutput: string }> {
   const pm = getPackageManagerCommand();
-  return runCommandAsync(
-    `${opts.silent ? pm.runNxSilent : pm.runNx} ${command}`,
-    opts
-  );
+  const commandToRun = `${opts.silent ? pm.runNxSilent : pm.runNx} ${command} ${
+    opts.verbose ?? isVerboseE2ERun() ? ' --verbose' : ''
+  }${opts.redirectStderr ? ' 2>&1' : ''}`;
+
+  return runCommandAsync(commandToRun, opts);
 }
 
 export function runNgAdd(
@@ -372,10 +399,6 @@ export function runCLI(
     }
 
     const r = stripConsoleColors(logs);
-    const needsMaxWorkers = /g.*(express|nest|node|web|react):app.*/;
-    if (needsMaxWorkers.test(command)) {
-      setMaxWorkers();
-    }
 
     return r;
   } catch (e) {

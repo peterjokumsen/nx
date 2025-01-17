@@ -11,15 +11,15 @@ describe('component', () => {
   beforeEach(async () => {
     projectName = 'my-app';
     appRouterProjectName = 'my-app-router';
-    tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
+    tree = createTreeWithEmptyWorkspace();
     await applicationGenerator(tree, {
-      name: projectName,
+      directory: projectName,
       style: 'css',
       appDir: false,
     });
 
     await applicationGenerator(tree, {
-      name: appRouterProjectName,
+      directory: appRouterProjectName,
       style: 'css',
     });
   });
@@ -28,35 +28,27 @@ describe('component', () => {
     it('should generate component in pages directory', async () => {
       await pageGenerator(tree, {
         name: 'hello',
-        project: projectName,
+        path: 'my-app/pages/hello',
         style: 'css',
       });
 
-      expect(tree.exists('apps/my-app/pages/hello/index.tsx')).toBeTruthy();
-      expect(
-        tree.exists('apps/my-app/pages/hello/index.module.css')
-      ).toBeTruthy();
+      expect(tree.exists('my-app/pages/hello/index.tsx')).toBeTruthy();
+      expect(tree.exists('my-app/pages/hello/index.module.css')).toBeTruthy();
     });
 
     it('should support dynamic routes and directories', async () => {
       await pageGenerator(tree, {
         name: '[dynamic]',
-        directory: 'posts',
-        project: projectName,
+        path: 'my-app/pages/posts/[dynamic]',
         style: 'css',
       });
 
       expect(
-        tree.exists('apps/my-app/pages/posts/[dynamic]/index.tsx')
+        tree.exists('my-app/pages/posts/[dynamic]/index.tsx')
       ).toBeTruthy();
       expect(
-        tree.exists('apps/my-app/pages/posts/[dynamic]/index.module.css')
+        tree.exists('my-app/pages/posts/[dynamic]/index.module.css')
       ).toBeTruthy();
-
-      const content = tree
-        .read('apps/my-app/pages/posts/[dynamic]/index.tsx')
-        .toString();
-      expect(content).toMatch(/DynamicProps/);
     });
   });
 
@@ -64,39 +56,37 @@ describe('component', () => {
     it('should generate component in app directory', async () => {
       await pageGenerator(tree, {
         name: 'about',
-        project: appRouterProjectName,
+        path: `${appRouterProjectName}/app/about`,
         style: 'css',
       });
 
       expect(
-        tree.exists(`apps/${appRouterProjectName}/app/about/page.tsx`)
+        tree.exists(`${appRouterProjectName}/app/about/page.tsx`)
       ).toBeTruthy();
       expect(
-        tree.exists(`apps/${appRouterProjectName}/app/about/page.module.css`)
+        tree.exists(`${appRouterProjectName}/app/about/page.module.css`)
       ).toBeTruthy();
     });
 
     it('should support dynamic routes and directories', async () => {
       await pageGenerator(tree, {
         name: '[dynamic]',
-        project: appRouterProjectName,
-        directory: 'posts',
+        path: `${appRouterProjectName}/app/posts/[dynamic]`,
         style: 'css',
       });
 
       expect(
-        tree.exists(`apps/${appRouterProjectName}/app/posts/[dynamic]/page.tsx`)
+        tree.exists(`${appRouterProjectName}/app/posts/[dynamic]/page.tsx`)
       ).toBeTruthy();
       expect(
         tree.exists(
-          `apps/${appRouterProjectName}/app/posts/[dynamic]/page.module.css`
+          `${appRouterProjectName}/app/posts/[dynamic]/page.module.css`
         )
       ).toBeTruthy();
 
       const content = tree
-        .read(`apps/${appRouterProjectName}/app/posts/[dynamic]/page.tsx`)
+        .read(`${appRouterProjectName}/app/posts/[dynamic]/page.tsx`)
         .toString();
-      expect(content).toMatch(/DynamicProps/);
     });
   });
 });

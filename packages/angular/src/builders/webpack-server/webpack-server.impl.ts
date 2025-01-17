@@ -1,13 +1,15 @@
-import { joinPathFragments } from '@nx/devkit';
+import {
+  joinPathFragments,
+  normalizePath,
+  targetToTargetString,
+} from '@nx/devkit';
 import { existsSync } from 'fs';
+import { relative } from 'path';
 import { Observable, from } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
-import { lt } from 'semver';
-import { getInstalledAngularVersionInfo } from '../../executors/utilities/angular-version-utils';
 import { createTmpTsConfigForBuildableLibs } from '../utilities/buildable-libs';
 import { mergeCustomWebpackConfig } from '../utilities/webpack';
 import { Schema } from './schema';
-import { validateOptions } from './validate-options';
 
 function buildServerApp(
   options: Schema,
@@ -52,7 +54,7 @@ function buildServerAppWithCustomWebpackConfiguration(
     switchMap(({ executeServerBuilder }) =>
       executeServerBuilder(options, context as any, {
         webpackConfiguration: async (baseWebpackConfig) => {
-          // Angular 15 auto includes code from @angular/platform-server
+          // Angular auto includes code from @angular/platform-server
           // This includes the code outside the shared scope created by ModuleFederation
           // This code will be included in the generated code from our generators,
           // maintaining it within the shared scope.
@@ -65,11 +67,7 @@ function buildServerAppWithCustomWebpackConfiguration(
             context.target
           );
 
-          if (
-            mergedConfig.plugins
-              .map((p) => p.constructor.name)
-              .includes('UniversalFederationPlugin')
-          ) {
+          if (mergedConfig.target === 'async-node') {
             mergedConfig.entry.main = mergedConfig.entry.main.filter(
               (m) => !m.startsWith('@angular/platform-server/init')
             );
@@ -93,25 +91,19 @@ export function executeWebpackServerBuilder(
   options: Schema,
   context: import('@angular-devkit/architect').BuilderContext
 ): Observable<import('@angular-devkit/build-angular').ServerBuilderOutput> {
-  validateOptions(options);
-
-  const installedAngularVersionInfo = getInstalledAngularVersionInfo();
-  // default bundleDependencies to true if supported by Angular version
-  if (
-    lt(installedAngularVersionInfo.version, '15.0.0') &&
-    options.bundleDependencies === undefined
-  ) {
-    options.bundleDependencies = true;
-  }
-
   options.buildLibsFromSource ??= true;
+
+  process.env.NX_BUILD_LIBS_FROM_SOURCE = `${options.buildLibsFromSource}`;
+  process.env.NX_BUILD_TARGET = targetToTargetString({ ...context.target });
 
   if (!options.buildLibsFromSource) {
     const { tsConfigPath } = createTmpTsConfigForBuildableLibs(
       options.tsConfig,
       context
     );
-    options.tsConfig = tsConfigPath;
+    options.tsConfig = normalizePath(
+      relative(context.workspaceRoot, tsConfigPath)
+    );
   }
 
   return buildServerApp(options, context);

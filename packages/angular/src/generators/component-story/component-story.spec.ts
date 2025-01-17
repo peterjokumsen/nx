@@ -1,3 +1,5 @@
+import 'nx/src/internal-testing-utils/mock-project-graph';
+
 import type { Tree } from '@nx/devkit';
 import * as devkit from '@nx/devkit';
 import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
@@ -9,19 +11,20 @@ import { componentStoryGenerator } from './component-story';
 describe('componentStory generator', () => {
   let tree: Tree;
   const libName = 'ng-lib1';
-  const storyFile = `libs/${libName}/src/lib/test-button/test-button.component.stories.ts`;
+  const storyFile = `${libName}/src/lib/test-button/test-button.component.stories.ts`;
 
   beforeEach(async () => {
     tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
 
-    await generateTestLibrary(tree, { name: libName });
+    await generateTestLibrary(tree, { directory: libName, skipFormat: true });
     await componentGenerator(tree, {
       name: 'test-button',
-      project: libName,
+      path: `${libName}/src/lib/test-button`,
+      skipFormat: true,
     });
 
     tree.write(
-      `libs/${libName}/src/lib/test-button/test-button.component.ts`,
+      `${libName}/src/lib/test-button/test-button.component.ts`,
       `import { Component, Input } from '@angular/core';
 
         export type ButtonStyle = 'default' | 'primary' | 'accent';
@@ -52,7 +55,8 @@ describe('componentStory generator', () => {
       componentFileName: 'test-button.component',
       componentName: 'TestButtonComponent',
       componentPath: `src/lib/test-button`,
-      projectPath: `libs/${libName}`,
+      projectPath: `${libName}`,
+      skipFormat: true,
     });
 
     expect(storybookUtils.getComponentProps).not.toHaveBeenCalled();
@@ -65,7 +69,8 @@ describe('componentStory generator', () => {
       componentFileName: 'test-button.component',
       componentName: 'TestButtonComponent',
       componentPath: `src/lib/test-button`,
-      projectPath: `libs/${libName}`,
+      projectPath: `${libName}`,
+      skipFormat: true,
     });
 
     expect(tree.exists(storyFile)).toBe(true);
@@ -76,7 +81,7 @@ describe('componentStory generator', () => {
       componentFileName: 'test-button.component',
       componentName: 'TestButtonComponent',
       componentPath: `src/lib/test-button`,
-      projectPath: `libs/${libName}`,
+      projectPath: `${libName}`,
     });
 
     expect(tree.read(storyFile).toString()).toMatchSnapshot();

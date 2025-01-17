@@ -4,7 +4,15 @@
   "overrides": [
     {
       "files": ["*.ts", "*.tsx", "*.js", "*.jsx"],
-      "rules": {}
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "name": "chalk",
+            "message": "Please use `picocolors` in place of `chalk` for rendering terminal colors"
+          }
+        ]
+      }
     },
     {
       "files": ["**/*.ts"],
@@ -45,7 +53,7 @@
               "eslint",
               "http-server", // Used by readModulePackageJson
               // Installed by ensurePackage
-              "@nx/linter",
+              "@nx/eslint",
               "@nx/cypress",
               "@nx/playwright",
               "@nx/vite",

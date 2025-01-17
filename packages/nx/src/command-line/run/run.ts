@@ -1,23 +1,10 @@
-import {
-  combineOptionsForExecutor,
-  handleErrors,
-  Schema,
-} from '../../utils/params';
+import { env as appendLocalEnv } from 'npm-run-path';
+import { combineOptionsForExecutor, Schema } from '../../utils/params';
+import { handleErrors } from '../../utils/handle-errors';
 import { printHelp } from '../../utils/print-help';
 import { NxJsonConfiguration } from '../../config/nx-json';
-import { readJsonFile } from '../../utils/fileutils';
-import { buildTargetFromScript, PackageJson } from '../../utils/package-json';
-import { join, relative } from 'path';
-import { existsSync } from 'fs';
-import {
-  loadNxPlugins,
-  mergePluginTargetsWithNxTargets,
-} from '../../utils/nx-plugin';
-import {
-  ProjectConfiguration,
-  TargetConfiguration,
-  ProjectsConfigurations,
-} from '../../config/workspace-json-project-json';
+import { relative } from 'path';
+import { ProjectsConfigurations } from '../../config/workspace-json-project-json';
 import { Executor, ExecutorContext } from '../../config/misc-interfaces';
 import { TaskGraph } from '../../config/task-graph';
 import { serializeOverridesIntoCommandLine } from '../../utils/serialize-overrides-into-command-line';
@@ -32,6 +19,11 @@ import {
   isAsyncIterator,
 } from '../../utils/async-iterator';
 import { getExecutorInformation } from './executor-utils';
+import {
+  getPseudoTerminal,
+  PseudoTerminal,
+} from '../../tasks-runner/pseudo-terminal';
+import { exec } from 'child_process';
 
 export interface Target {
   project: string;
@@ -75,55 +67,17 @@ async function* promiseToIterator<T extends { success: boolean }>(
 async function iteratorToProcessStatusCode(
   i: AsyncIterableIterator<{ success: boolean }>
 ): Promise<number> {
-  // This is a workaround to fix an issue that only happens with
-  // the @angular-devkit/build-angular:browser builder. Starting
-  // on version 12.0.1, a SASS compilation implementation was
-  // introduced making use of workers and it's unref()-ing the worker
-  // too early, causing the process to exit early in environments
-  // like CI or when running Docker builds.
-  const keepProcessAliveInterval = setInterval(() => {}, 1000);
-  try {
-    const { success } = await getLastValueFromAsyncIterableIterator(i);
-    return success ? 0 : 1;
-  } finally {
-    clearInterval(keepProcessAliveInterval);
-  }
-}
-
-function createImplicitTargetConfig(
-  root: string,
-  proj: ProjectConfiguration,
-  targetName: string
-): TargetConfiguration | null {
-  const packageJsonPath = join(root, proj.root, 'package.json');
-  if (!existsSync(packageJsonPath)) {
-    return null;
-  }
-  const { scripts, nx } = readJsonFile<PackageJson>(packageJsonPath);
-  if (
-    !(targetName in (scripts || {})) ||
-    !(nx.includedScripts && nx.includedScripts.includes(targetName))
-  ) {
-    return null;
-  }
-  return buildTargetFromScript(targetName, nx);
+  const { success } = await getLastValueFromAsyncIterableIterator(i);
+  return success ? 0 : 1;
 }
 
 async function parseExecutorAndTarget(
-  { project, target, configuration }: Target,
+  { project, target }: Target,
   root: string,
-  projectsConfigurations: ProjectsConfigurations,
-  nxJsonConfiguration: NxJsonConfiguration
+  projectsConfigurations: ProjectsConfigurations
 ) {
   const proj = projectsConfigurations.projects[project];
-  const targetConfig =
-    proj.targets?.[target] ||
-    createImplicitTargetConfig(root, proj, target) ||
-    mergePluginTargetsWithNxTargets(
-      proj.root,
-      proj.targets,
-      await loadNxPlugins(nxJsonConfiguration.plugins, [root], root)
-    )[target];
+  const targetConfig = proj.targets?.[target];
 
   if (!targetConfig) {
     throw new Error(`Cannot find target '${target}' for project '${project}'`);
@@ -133,30 +87,62 @@ async function parseExecutorAndTarget(
   const { schema, implementationFactory } = getExecutorInformation(
     nodeModule,
     executor,
-    root
+    root,
+    projectsConfigurations.projects
   );
 
   return { executor, implementationFactory, nodeModule, schema, targetConfig };
 }
 
 async function printTargetRunHelpInternal(
-  { project, target, configuration }: Target,
+  { project, target }: Target,
   root: string,
-  projectsConfigurations: ProjectsConfigurations,
-  nxJsonConfiguration: NxJsonConfiguration
+  projectsConfigurations: ProjectsConfigurations
 ) {
-  const { executor, nodeModule, schema } = await parseExecutorAndTarget(
-    { project, target, configuration },
-    root,
-    projectsConfigurations,
-    nxJsonConfiguration
-  );
+  const { executor, nodeModule, schema, targetConfig } =
+    await parseExecutorAndTarget(
+      { project, target },
+      root,
+      projectsConfigurations
+    );
 
   printRunHelp({ project, target }, schema, {
     plugin: nodeModule,
     entity: executor,
   });
-  process.exit(0);
+
+  if (
+    nodeModule === 'nx' &&
+    executor === 'run-commands' &&
+    targetConfig.options.command
+  ) {
+    const command = targetConfig.options.command.split(' ')[0];
+    const helpCommand = `${command} --help`;
+    const localEnv = appendLocalEnv();
+    const env = {
+      ...process.env,
+      ...localEnv,
+    };
+    if (PseudoTerminal.isSupported()) {
+      const terminal = getPseudoTerminal();
+      await new Promise(() => {
+        const cp = terminal.runCommand(helpCommand, { jsEnv: env });
+        cp.onExit((code) => {
+          process.exit(code);
+        });
+      });
+    } else {
+      const cp = exec(helpCommand, {
+        env,
+        windowsHide: false,
+      });
+      cp.on('exit', (code) => {
+        process.exit(code);
+      });
+    }
+  } else {
+    process.exit(0);
+  }
 }
 
 async function runExecutorInternal<T extends { success: boolean }>(
@@ -176,8 +162,7 @@ async function runExecutorInternal<T extends { success: boolean }>(
     await parseExecutorAndTarget(
       { project, target, configuration },
       root,
-      projectsConfigurations,
-      nxJsonConfiguration
+      projectsConfigurations
     );
   configuration ??= targetConfig.defaultConfiguration;
 
@@ -187,18 +172,24 @@ async function runExecutorInternal<T extends { success: boolean }>(
     targetConfig,
     schema,
     project,
-    relative(cwd, root),
+    relative(root, cwd),
     isVerbose
   );
 
-  if (getExecutorInformation(nodeModule, executor, root).isNxExecutor) {
+  if (
+    getExecutorInformation(
+      nodeModule,
+      executor,
+      root,
+      projectsConfigurations.projects
+    ).isNxExecutor
+  ) {
     const implementation = implementationFactory() as Executor<any>;
     const r = implementation(combinedOptions, {
       root,
       target: targetConfig,
       projectsConfigurations,
       nxJsonConfiguration,
-      workspace: { ...projectsConfigurations, ...nxJsonConfiguration },
       projectName: project,
       targetName: target,
       configurationName: configuration,
@@ -227,6 +218,7 @@ async function runExecutorInternal<T extends { success: boolean }>(
         target,
         configuration,
         runOptions: combinedOptions,
+        projects: projectsConfigurations.projects,
       },
       isVerbose
     );
@@ -286,13 +278,11 @@ export function printTargetRunHelp(targetDescription: Target, root: string) {
   return handleErrors(false, async () => {
     const projectsConfigurations =
       readProjectsConfigurationFromProjectGraph(projectGraph);
-    const nxJsonConfiguration = readNxJson();
 
-    printTargetRunHelpInternal(
+    await printTargetRunHelpInternal(
       targetDescription,
       root,
-      projectsConfigurations,
-      nxJsonConfiguration
+      projectsConfigurations
     );
   });
 }

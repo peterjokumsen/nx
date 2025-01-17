@@ -1,33 +1,53 @@
 import type { Tree } from '@nx/devkit';
-import { readProjectConfiguration } from '@nx/devkit';
+import { names, readProjectConfiguration } from '@nx/devkit';
+import { determineArtifactNameAndDirectoryOptions } from '@nx/devkit/src/generators/artifact-name-and-directory-utils';
 import type { AngularProjectConfiguration } from '../../../utils/types';
-import { normalizeNameAndPaths } from '../../utils/path';
-import { buildSelector } from '../../utils/selector';
+import { buildSelector, validateHtmlSelector } from '../../utils/selector';
+import { validateClassName } from '../../utils/validations';
 import type { NormalizedSchema, Schema } from '../schema';
 
-export function normalizeOptions(
+export async function normalizeOptions(
   tree: Tree,
   options: Schema
-): NormalizedSchema {
-  const { directory, name, path } = normalizeNameAndPaths(tree, {
-    ...options,
-    type: 'directive',
+): Promise<NormalizedSchema> {
+  const {
+    artifactName: name,
+    directory,
+    fileName,
+    filePath,
+    project: projectName,
+  } = await determineArtifactNameAndDirectoryOptions(tree, {
+    name: options.name,
+    path: options.path,
+    suffix: 'directive',
+    allowedFileExtensions: ['ts'],
+    fileExtension: 'ts',
   });
+
+  const { className } = names(name);
+  const { className: suffixClassName } = names('directive');
+  const symbolName = `${className}${suffixClassName}`;
+  validateClassName(symbolName);
 
   const { prefix } = readProjectConfiguration(
     tree,
-    options.project
+    projectName
   ) as AngularProjectConfiguration;
 
   const selector =
     options.selector ??
-    buildSelector(tree, name, options.prefix, prefix, 'propertyName');
+    buildSelector(name, options.prefix, prefix, 'propertyName');
+  validateHtmlSelector(selector);
 
   return {
     ...options,
-    directory,
+    projectName,
     name,
-    path,
+    directory,
+    fileName,
+    filePath,
+    symbolName,
     selector,
+    standalone: options.standalone ?? true,
   };
 }

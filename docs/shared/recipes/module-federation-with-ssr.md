@@ -8,25 +8,27 @@ This guide will walk you through creating a Module Federated setup with Server S
 
 Run the following command with the options listed to create an empty workspace.
 
-```{% command="npx create-nx-workspace@latest" path="~" %}
+```{% command="npx create-nx-workspace@latest myorg --preset=apps" path="~" %}
 
- >  NX   Let's create a new workspace [https://nx.dev/getting-started/intro]
+NX   Let's create a new workspace [https://nx.dev/getting-started/intro]
 
-✔ Where would you like to create your workspace? · myorg
-✔ Which stack do you want to use? · none
-✔ Package-based or integrated? · integrated
-✔ Enable distributed caching to make your CI faster · Yes
+✔ Which CI provider would you like to use? · skip
+✔ Would you like remote caching to make your build faster? · skip
 ```
 
-{% card title="Opting into Nx Cloud" description="You will also be prompted whether to add Nx Cloud to your workspace. We won't address this in this recipe, but you can see the introduction to Nx Cloud for more details." url="/nx-cloud/intro/what-is-nx-cloud" /%}
+{% card title="Opting into Nx Cloud" description="You will also be prompted whether to add Nx Cloud to your workspace. We won't address this in this recipe, but you can see the introduction to Nx Cloud for more details." url="/ci/intro/ci-with-nx" /%}
 
 ### Install your framework plugin
+
+{% callout type="note" title="Keep Nx Package Versions In Sync" %}
+Make sure to install the `@nx/angular` or `@nx/react` versions that matches the version of `nx` in your repository. If the version numbers get out of sync, you can encounter some difficult to debug errors. You can [fix Nx version mismatches with this recipe](/recipes/tips-n-tricks/keep-nx-versions-in-sync).
+{% /callout %}
 
 {% tabs %}
 
 {% tab label="Angular" %}
 
-```{% command="npm install --save-dev @nx/angular" path="~/myorg" %}
+```{% command="nx add @nx/angular" path="~/myorg" %}
 
 ```
 
@@ -34,7 +36,7 @@ Run the following command with the options listed to create an empty workspace.
 
 {% tab label="React" %}
 
-```{% command="npm install --save-dev @nx/react" path="~/myorg" %}
+```{% command="nx add @nx/react" path="~/myorg" %}
 
 ```
 
@@ -57,7 +59,7 @@ Nx allows you to do this with a single command:
 
 {% tab label="Angular" %}
 
-```{% command="npx nx g @nx/angular:host store --ssr --remotes=product,checkout" path="~/myorg" %}
+```{% command="npx nx g @nx/angular:host apps/store --ssr --remotes=product,checkout" path="~/myorg" %}
 
 ```
 
@@ -65,7 +67,7 @@ Nx allows you to do this with a single command:
 
 {% tab label="React" %}
 
-```{% command="npx nx g @nx/react:host store --ssr --remotes=product,checkout" path="~/myorg" %}
+```{% command="npx nx g @nx/react:host apps/store --ssr --remotes=product,checkout" path="~/myorg" %}
 
 ```
 
@@ -133,5 +135,6 @@ To serve the `store` application and watch for changes on the `checkout` applica
 
 To learn more about Module Federation, we have some resources you might find useful:
 
-- [Guide: Faster Builds with Module Federation](/concepts/more-concepts/faster-builds-with-module-federation)
+- [Concepts: Nx Module Federation Technical Overview](/concepts/module-federation/nx-module-federation-technical-overview)
+- [Guide: Faster Builds with Module Federation](/concepts/module-federation/faster-builds-with-module-federation)
 - [Video: Speed up your Angular serve and build times with Module Federation and Nx](https://www.youtube.com/watch?v=JkcaGzhRjkc)

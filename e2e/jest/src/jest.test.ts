@@ -1,17 +1,19 @@
 import { stripIndents } from '@angular-devkit/core/src/utils/literals';
 import {
+  cleanupProject,
+  expectJestTestsToPass,
+  getStrippedEnvironmentVariables,
   newProject,
   runCLI,
   runCLIAsync,
   uniq,
   updateFile,
-  expectJestTestsToPass,
-  cleanupProject,
+  updateJson,
 } from '@nx/e2e/utils';
 
 describe('Jest', () => {
   beforeAll(() => {
-    newProject({ name: uniq('proj-jest') });
+    newProject({ name: uniq('proj-jest'), packages: ['@nx/js', '@nx/node'] });
   });
 
   afterAll(() => cleanupProject());
@@ -20,15 +22,31 @@ describe('Jest', () => {
     await expectJestTestsToPass('@nx/js:lib --unitTestRunner=jest');
   }, 500000);
 
+  it('should be resilient against NODE_ENV values', async () => {
+    const name = uniq('lib');
+    runCLI(
+      `generate @nx/js:lib ${name} --unitTestRunner=jest --no-interactive`
+    );
+
+    const results = await runCLIAsync(`test ${name} --skip-nx-cache`, {
+      silenceError: true,
+      env: {
+        ...process.env, // need to set this for some reason, or else get "env: node: No such file or directory"
+        NODE_ENV: 'foobar',
+      },
+    });
+    expect(results.combinedOutput).toContain('Test Suites: 1 passed, 1 total');
+  });
+
   it('should merge with jest config globals', async () => {
     const testGlobal = `'My Test Global'`;
     const mylib = uniq('mylib');
     const utilLib = uniq('util-lib');
     runCLI(
-      `generate @nx/js:lib ${mylib} --unitTestRunner=jest --no-interactive`
+      `generate @nx/js:lib libs/${mylib} --unitTestRunner=jest --no-interactive`
     );
     runCLI(
-      `generate @nx/js:lib ${utilLib} --importPath=@global-fun/globals --unitTestRunner=jest --no-interactive`
+      `generate @nx/js:lib libs/${utilLib} --importPath=@global-fun/globals --unitTestRunner=jest --no-interactive`
     );
     updateFile(
       `libs/${utilLib}/src/index.ts`,
@@ -53,7 +71,8 @@ describe('Jest', () => {
       `libs/${mylib}/setup.ts`,
       stripIndents`
       const { registerTsProject } = require('@nx/js/src/internal');
-      const cleanup = registerTsProject('.', 'tsconfig.base.json');
+      const { join } = require('path');
+      const cleanup = registerTsProject(join(__dirname, '../../tsconfig.base.json'));
 
       import {setup} from '@global-fun/globals';
       export default async function() {setup();}
@@ -66,7 +85,8 @@ describe('Jest', () => {
       `libs/${mylib}/teardown.ts`,
       stripIndents`
       const { registerTsProject } = require('@nx/js/src/internal');
-      const cleanup = registerTsProject('.', 'tsconfig.base.json');
+      const { join } = require('path');
+      const cleanup = registerTsProject(join(__dirname, '../../tsconfig.base.json'));
 
       import {teardown} from '@global-fun/globals';
       export default async function() {teardown();}
@@ -102,7 +122,7 @@ describe('Jest', () => {
 
   it('should set the NODE_ENV to `test`', async () => {
     const mylib = uniq('mylib');
-    runCLI(`generate @nx/js:lib ${mylib} --unitTestRunner=jest`);
+    runCLI(`generate @nx/js:lib libs/${mylib} --unitTestRunner=jest`);
 
     updateFile(
       `libs/${mylib}/src/lib/${mylib}.spec.ts`,
@@ -118,37 +138,35 @@ describe('Jest', () => {
     );
   }, 90000);
 
-  it('should support multiple `coverageReporters` through CLI', async () => {
-    const mylib = uniq('mylib');
-    runCLI(`generate @nx/js:lib ${mylib} --unitTestRunner=jest`);
-
-    updateFile(
-      `libs/${mylib}/src/lib/${mylib}.spec.ts`,
-      `
-        test('can access jest global', () => {
-          expect(true).toBe(true);
-        });
-        `
-    );
-
-    const result = await runCLIAsync(
-      `test ${mylib} --no-watch --code-coverage --coverageReporters=text --coverageReporters=text-summary`
-    );
-    expect(result.stdout).toContain(
-      'File      | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s'
-    ); // text
-    expect(result.stdout).toContain('Coverage summary'); // text-summary
-  }, 90000);
-
   it('should be able to test node lib with babel-jest', async () => {
     const libName = uniq('babel-test-lib');
     runCLI(
-      `generate @nx/node:lib ${libName} --buildable --importPath=@some-org/babel-test --publishable --babelJest`
+      `generate @nx/node:lib libs/${libName} --buildable --importPath=@some-org/babel-test --publishable --babelJest --unitTestRunner=jest`
     );
 
     const cliResults = await runCLIAsync(`test ${libName}`);
     expect(cliResults.combinedOutput).toContain(
       'Test Suites: 1 passed, 1 total'
     );
+  }, 90000);
+
+  it('should be able to run e2e tests split by tasks', async () => {
+    const libName = uniq('lib');
+    runCLI(`generate @nx/js:lib libs/${libName} --unitTestRunner=jest`);
+    updateJson('nx.json', (json) => {
+      const jestPlugin = json.plugins.find(
+        (plugin) => plugin.plugin === '@nx/jest/plugin'
+      );
+
+      jestPlugin.options.ciTargetName = 'e2e-ci';
+      return json;
+    });
+
+    await runCLIAsync(`e2e-ci ${libName}`, {
+      env: {
+        ...getStrippedEnvironmentVariables(),
+        NX_SKIP_ATOMIZER_VALIDATION: 'true',
+      },
+    });
   }, 90000);
 });

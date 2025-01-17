@@ -15,7 +15,10 @@ export function exportComponentInEntryPoint(
     return;
   }
 
-  const { root, projectType } = readProjectConfiguration(tree, schema.project);
+  const { root, projectType } = readProjectConfiguration(
+    tree,
+    schema.projectName
+  );
 
   if (projectType === 'application') {
     return;
@@ -51,7 +54,7 @@ export function exportComponentInEntryPoint(
     entryPointPath,
     'utf-8'
   )}
-    export * from "${relativePathFromEntryPoint}";`;
+    export * from '${relativePathFromEntryPoint}';`;
 
   tree.write(entryPointPath, updateEntryPointContent);
 }

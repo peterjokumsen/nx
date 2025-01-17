@@ -9,7 +9,8 @@ import {
   updateNxJson,
   writeJson,
 } from '@nx/devkit';
-import { Linter, lintInitGenerator } from '@nx/linter';
+import { lintInitGenerator } from '@nx/eslint';
+import { setupRootEsLint } from '@nx/eslint/src/generators/lint-project/setup-root-eslint';
 import {
   getRootTsConfigPathInTree,
   initGenerator as jsInitGenerator,
@@ -21,6 +22,7 @@ import { angularDevkitVersion, nxVersion } from '../../../utils/versions';
 import type { ProjectMigrator } from '../migrators';
 import type { GeneratorOptions } from '../schema';
 import type { WorkspaceRootFileTypesInfo } from './types';
+import { join } from 'path';
 
 export function validateWorkspace(tree: Tree): void {
   const errors: string[] = [];
@@ -48,22 +50,7 @@ export function createNxJson(
   const targets = getWorkspaceCommonTargets(tree);
 
   writeJson<NxJsonConfiguration>(tree, 'nx.json', {
-    affected: {
-      defaultBase: options.defaultBase ?? deduceDefaultBase(),
-    },
-    tasksRunnerOptions: {
-      default: {
-        runner: 'nx/tasks-runners/default',
-        options: {
-          cacheableOperations: [
-            'build',
-            targets.test ? 'test' : undefined,
-            targets.lint ? 'lint' : undefined,
-            targets.e2e ? 'e2e' : undefined,
-          ].filter(Boolean),
-        },
-      },
-    },
+    defaultBase: options.defaultBase ?? deduceDefaultBase(),
     namedInputs: {
       sharedGlobals: [],
       default: ['{projectRoot}/**/*', 'sharedGlobals'],
@@ -76,27 +63,40 @@ export function createNxJson(
               '!{projectRoot}/karma.conf.js',
             ]
           : []),
-        targets.lint ? '!{projectRoot}/.eslintrc.json' : undefined,
+        ...(targets.lint
+          ? [
+              '!{projectRoot}/.eslintrc.json',
+              '!{projectRoot}/eslint.config.cjs',
+            ]
+          : []),
       ].filter(Boolean),
     },
     targetDefaults: {
       build: {
         dependsOn: ['^build'],
         inputs: ['production', '^production'],
+        cache: true,
       },
       test: targets.test
         ? {
             inputs: ['default', '^production', '{workspaceRoot}/karma.conf.js'],
+            cache: true,
           }
         : undefined,
       lint: targets.lint
         ? {
-            inputs: ['default', '{workspaceRoot}/.eslintrc.json'],
+            inputs: [
+              'default',
+              '{workspaceRoot}/.eslintrc.json',
+              '{workspaceRoot}/eslint.config.cjs',
+            ],
+            cache: true,
           }
         : undefined,
       e2e: targets.e2e
         ? {
             inputs: ['default', '^production'],
+            cache: true,
           }
         : undefined,
     },
@@ -186,30 +186,23 @@ export function updatePackageJson(tree: Tree): void {
   });
 }
 
-export function updateRootEsLintConfig(
+export async function updateRootEsLintConfig(
   tree: Tree,
   existingEsLintConfig: any | undefined,
   unitTestRunner?: string
-): void {
-  if (tree.exists('.eslintrc.json')) {
-    /**
-     * If it still exists it means that there was no project at the root of the
-     * workspace, so it was not moved. In that case, we remove the file so the
-     * init generator do its work. We still receive the content of the file,
-     * so we update it after the init generator has run.
-     */
-    tree.delete('.eslintrc.json');
-  }
-
-  lintInitGenerator(tree, { linter: Linter.EsLint, unitTestRunner });
+): Promise<void> {
+  await lintInitGenerator(tree, {
+    addPlugin: false,
+  });
 
   if (!existingEsLintConfig) {
-    // There was no eslint config in the root, so we keep the generated one as-is.
+    // There was no eslint config in the root, so we set it up and use it as-is
+    setupRootEsLint(tree, { unitTestRunner });
     return;
   }
 
   existingEsLintConfig.ignorePatterns = ['**/*'];
-  if (!(existingEsLintConfig.plugins ?? []).includes('@nrwl/nx')) {
+  if (!(existingEsLintConfig.plugins ?? []).includes('@nx')) {
     existingEsLintConfig.plugins = Array.from(
       new Set([...(existingEsLintConfig.plugins ?? []), '@nx'])
     );
@@ -268,7 +261,7 @@ export async function createWorkspaceFiles(tree: Tree): Promise<void> {
 
   await jsInitGenerator(tree, { skipFormat: true });
 
-  generateFiles(tree, joinPathFragments(__dirname, '../files/root'), '.', {
+  generateFiles(tree, join(__dirname, '../files/root'), '.', {
     tmpl: '',
     dot: '.',
     rootTsConfigPath: getRootTsConfigPathInTree(tree),

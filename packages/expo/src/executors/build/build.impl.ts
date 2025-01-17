@@ -1,12 +1,20 @@
-import { ExecutorContext, names, output } from '@nx/devkit';
-import { normalize, sep, resolve as pathResolve, dirname } from 'path';
+import {
+  detectPackageManager,
+  ExecutorContext,
+  names,
+  PackageManager,
+  readJsonFile,
+  writeJsonFile,
+} from '@nx/devkit';
+import { getLockFileName } from '@nx/js';
 import { ChildProcess, fork } from 'child_process';
+import { copyFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
+import { resolve as pathResolve } from 'path';
+import type { PackageJson } from 'nx/src/utils/package-json';
 
-import { ensureNodeModulesSymlink } from '../../utils/ensure-node-modules-symlink';
-import { unzipBuild } from '../download/download.impl';
+import { resolveEas } from '../../utils/resolve-eas';
 
 import { ExpoEasBuildOptions } from './schema';
-import { removeSync } from 'fs-extra';
 
 export interface ReactNativeBuildOutput {
   success: boolean;
@@ -21,25 +29,19 @@ export default async function* buildExecutor(
   const projectRoot =
     context.projectsConfigurations.projects[context.projectName].root;
 
+  let resetLocalFunction;
+
   try {
-    // remove the output app if it already existed
-    if (options.local && options.output) {
-      removeSync(options.output);
-      if (options.output.endsWith('.tar.gz')) {
-        // remove unzipped app if it already existed
-        removeSync(options.output.replace('.tar.gz', '.app'));
-      }
-    }
-
+    resetLocalFunction = copyPackageJsonAndLock(
+      detectPackageManager(context.root),
+      context.root,
+      projectRoot
+    );
     await runCliBuild(context.root, projectRoot, options);
-
-    // unzip the build if it's a tar.gz
-    if (options.local && options.output && options.output.endsWith('.tar.gz')) {
-      const outputDirectory = dirname(options.output);
-      await unzipBuild(options.output, outputDirectory);
-    }
     yield { success: true };
   } finally {
+    resetLocalFunction();
+
     if (childProcess) {
       childProcess.kill();
     }
@@ -53,11 +55,14 @@ function runCliBuild(
 ) {
   return new Promise((resolve, reject) => {
     childProcess = fork(
-      require.resolve('eas-cli/bin/run'),
+      resolveEas(workspaceRoot),
       ['build', ...createBuildOptions(options)],
       {
         cwd: pathResolve(workspaceRoot, projectRoot),
-        env: process.env,
+        env: {
+          ...(options.local ? { YARN_ENABLE_IMMUTABLE_INSTALLS: 'false' } : {}),
+          ...process.env,
+        },
       }
     );
 
@@ -101,4 +106,86 @@ function createBuildOptions(options: ExpoEasBuildOptions) {
     }
     return acc;
   }, []);
+}
+
+/**
+ * This function:
+ * - copies the root package.json and lock file to the project directory
+ * - returns a function that resets the project package.json and removes the lock file
+ */
+function copyPackageJsonAndLock(
+  packageManager: PackageManager,
+  workspaceRoot: string,
+  projectRoot: string
+): () => void {
+  const packageJson = pathResolve(workspaceRoot, 'package.json');
+  const rootPackageJson = readJsonFile<PackageJson>(packageJson);
+  // do not copy package.json and lock file if workspaces are enabled
+  if (
+    (packageManager === 'pnpm' &&
+      existsSync(pathResolve(workspaceRoot, 'pnpm-workspace.yaml'))) ||
+    rootPackageJson.workspaces
+  ) {
+    // no resource taken, no resource cleaned up
+    return () => {};
+  }
+
+  const packageJsonProject = pathResolve(projectRoot, 'package.json');
+  const projectPackageJson = readJsonFile<PackageJson>(packageJsonProject);
+
+  const lockFile = getLockFileName(detectPackageManager(workspaceRoot));
+  const lockFileProject = pathResolve(projectRoot, lockFile);
+
+  const rootPackageJsonDependencies = rootPackageJson.dependencies;
+  const projectPackageJsonDependencies = { ...projectPackageJson.dependencies };
+
+  const rootPackageJsonDevDependencies = rootPackageJson.devDependencies;
+  const projectPackageJsonDevDependencies = {
+    ...projectPackageJson.devDependencies,
+  };
+
+  projectPackageJson.dependencies = rootPackageJsonDependencies;
+  projectPackageJson.devDependencies = rootPackageJsonDevDependencies;
+
+  const projectOverrides = projectPackageJson.overrides;
+  const projectResolutions = projectPackageJson.resolutions;
+
+  if (rootPackageJson.overrides) {
+    projectPackageJson.overrides = rootPackageJson.overrides;
+  }
+  // if overrides exists, give precedence to it over resolutions
+  if (!rootPackageJson.overrides && rootPackageJson.resolutions) {
+    projectPackageJson.resolutions = rootPackageJson.resolutions;
+  }
+
+  // Copy dependencies from root package.json to project package.json
+  writeJsonFile(packageJsonProject, projectPackageJson);
+
+  // Copy lock file from root to project
+  copyFileSync(lockFile, lockFileProject);
+
+  return () => {
+    // Reset project package.json to original state
+    projectPackageJson.dependencies = projectPackageJsonDependencies;
+    projectPackageJson.devDependencies = projectPackageJsonDevDependencies;
+
+    if (projectOverrides) {
+      projectPackageJson.overrides = projectOverrides;
+    } else {
+      delete projectPackageJson.overrides;
+    }
+    if (projectResolutions) {
+      projectPackageJson.resolutions = projectResolutions;
+    } else {
+      delete projectPackageJson.resolutions;
+    }
+
+    writeFileSync(
+      packageJsonProject,
+      JSON.stringify(projectPackageJson, null, 2)
+    );
+
+    // Remove lock file from project
+    rmSync(lockFileProject, { recursive: true, force: true });
+  };
 }

@@ -1,5 +1,5 @@
 {
-  "name": "<%= formattedNames.fileName %>",
+  "name": "@<%= formattedNames.fileName %>/source",
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
@@ -10,5 +10,8 @@
   "devDependencies": {
     "@nx/workspace": "<%= nxVersion %>",
     "nx": "<%= nxVersion %>"
+  },
+  "nx": {
+    "includedScripts": []
   }
 }

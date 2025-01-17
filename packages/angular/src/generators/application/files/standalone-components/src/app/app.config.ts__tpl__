@@ -1,7 +1,7 @@
-import { ApplicationConfig } from '@angular/core';<% if (routing) { %>
-import { provideRouter, withEnabledBlockingInitialNavigation } from '@angular/router';
+import { ApplicationConfig<% if (useEventCoalescing) { %>, provideZoneChangeDetection<% } %> } from '@angular/core';<% if (routing) { %>
+import { provideRouter } from '@angular/router';
 import { appRoutes } from './app.routes';<% } %>
 
 export const appConfig: ApplicationConfig = {
-  providers: [<% if (routing) { %>provideRouter(appRoutes, withEnabledBlockingInitialNavigation()) <% } %>]
+  providers: [<% if (useEventCoalescing) { %>provideZoneChangeDetection({ eventCoalescing: true }), <% } %><% if (routing) { %>provideRouter(appRoutes) <% } %>]
 };

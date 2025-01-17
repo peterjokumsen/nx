@@ -4,6 +4,7 @@ exports[`new --preset should generate necessary npm dependencies for empty prese
 {
   "dependencies": {},
   "devDependencies": {
+    "@nx/js": "0.0.1",
     "@nx/workspace": "0.0.1",
     "nx": "0.0.1",
   },
@@ -28,29 +29,21 @@ exports[`new should generate an empty nx.json 1`] = `
     ],
     "sharedGlobals": [],
   },
-  "targetDefaults": {
-    "build": {
-      "dependsOn": [
-        "^build",
-      ],
-      "inputs": [
-        "production",
-        "^production",
-      ],
-    },
-  },
-  "tasksRunnerOptions": {
-    "default": {
-      "options": {
-        "cacheableOperations": [
-          "build",
-          "lint",
-          "test",
-          "e2e",
-        ],
-      },
-      "runner": "nx/tasks-runners/default",
-    },
+}
+`;
+
+exports[`new should skip install 1`] = `
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals",
+    ],
+    "production": [
+      "default",
+    ],
+    "sharedGlobals": [],
   },
 }
 `;

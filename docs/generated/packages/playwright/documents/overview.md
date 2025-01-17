@@ -1,3 +1,8 @@
+---
+title: Overview of the Nx Playwright Plugin
+description: The Nx Plugin for Playwright contains executors and generators that support e2e testing with Playwright. This page also explains how to configure Playwright on your Nx workspace.
+---
+
 Playwright is a modern web test runner. With included features such as:
 
 - Cross browser support, including mobile browsers
@@ -6,29 +11,73 @@ Playwright is a modern web test runner. With included features such as:
 - Test generation
 - Screenshots and videos
 
-## Setting Up Playwright
+## Setting Up @nx/playwright
 
-If the `@nx/playwright` package is not installed, install the version that matches your `nx` package version.
+### Installation
+
+{% callout type="note" title="Keep Nx Package Versions In Sync" %}
+Make sure to install the `@nx/playwright` version that matches the version of `nx` in your repository. If the version numbers get out of sync, you can encounter some difficult to debug errors. You can [fix Nx version mismatches with this recipe](/recipes/tips-n-tricks/keep-nx-versions-in-sync).
+{% /callout %}
+
+In any Nx workspace, you can install `@nx/playwright` by running the following command:
 
 {% tabs %}
-{% tab label="npm" %}
+{% tab label="Nx 18+" %}
 
-```shell
-npm install --save-dev @nx/playwright
+```shell {% skipRescope=true %}
+nx add @nx/playwright
 ```
 
-{% /tab %}
-{% tab label="yarn" %}
+This will install the correct version of `@nx/playwright`.
 
-```shell
-yarn add --dev @nx/playwright
+### How @nx/playwright Infers Tasks
+
+The `@nx/playwright` plugin will create a task for any project that has a Playwright configuration file present. Any of the following files will be recognized as a Playwright configuration file:
+
+- `playwright.config.js`
+- `playwright.config.ts`
+- `playwright.config.mjs`
+- `playwright.config.mts`
+- `playwright.config.cjs`
+- `playwright.config.cts`
+
+### View Inferred Tasks
+
+To view inferred tasks for a project, open the [project details view](/concepts/inferred-tasks) in Nx Console or run `nx show project my-project --web` in the command line.
+
+### @nx/playwright Configuration
+
+The `@nx/playwright/plugin` is configured in the `plugins` array in `nx.json`.
+
+```json {% fileName="nx.json" %}
+{
+  "plugins": [
+    {
+      "plugin": "@nx/playwright/plugin",
+      "options": {
+        "ciTargetName": "e2e-ci",
+        "targetName": "e2e"
+      }
+    }
+  ]
+}
 ```
 
-{% /tab %}
-{% tab label="pnpm" %}
+The `targetName` and `ciTargetName` options control the name of the inferred Playwright tasks. The default names are `e2e` and `e2e-ci`.
 
-```shell
-pnpm i -D @nx/playwright
+### Splitting E2E Tests
+
+`@nx/playwright/plugin` leverages Nx Atomizer to split your e2e tests into smaller tasks in a fully automated way. This allows for a much more efficient distribution of tasks in CI. You can read more about the Atomizer feature [here](/ci/features/split-e2e-tasks).
+
+If you would like to disable Atomizer for Playwright tasks, set `ciTargetName` to `false`.
+
+{% /tab %}
+{% tab label="Nx < 18" %}
+
+Install the `@nx/playwright` package with your package manager.
+
+```shell {% skipRescope=true %}
+npm add -D @nx/playwright
 ```
 
 {% /tab %}
@@ -39,7 +88,7 @@ pnpm i -D @nx/playwright
 By default, when creating a new frontend application, Nx will prompt for which e2e test runner to use. Select `playwright` or pass in the arg `--e2eTestRunner=playwright`
 
 ```shell
-nx g @nx/web:app frontend --e2eTestRunner=playwright
+nx g @nx/web:app apps/frontend --e2eTestRunner=playwright
 ```
 
 ### Add Playwright e2e to an existing project
@@ -47,7 +96,7 @@ nx g @nx/web:app frontend --e2eTestRunner=playwright
 To generate an E2E project for an existing project, run the following generator
 
 ```shell
-nx g @nx/playwright:configuration --project=your-app-name --project=your-app-name
+nx g @nx/playwright:configuration --project=your-app-name
 ```
 
 Optionally, you can use the `--webServerCommand` and `--webServerAddress` option, to auto setup the [web server option](https://playwright.dev/docs/test-webserver) in the playwright config
@@ -93,6 +142,46 @@ nx e2e <your-app-name> --ui
 ```
 
 You can also use `--headed` flag to run Playwright where the browser can be seen without using the [Playwright UI](https://playwright.dev/docs/test-ui-mode)
+
+### Specifying a Project/Target Browser
+
+The default generated Playwright configuration will contain a `projects` property that contains a list of browsers to run the tests against.
+
+It should look similar to this:
+
+```ts
+export default defineConfig({
+  ...,
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+    },
+
+    {
+      name: "firefox",
+      use: { ...devices["Desktop Firefox"] },
+    },
+
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+    }
+  ]
+});
+```
+
+By default, Playwright will run tests against all browsers in the `projects` list.
+
+You can specify a specific browser to run the tests against by passing the `--project` flag to the `nx e2e` command.
+
+```shell
+nx e2e frontend-e2e -- --project=firefox
+```
+
+{% callout type="note" title="Argument Forwarding" %}
+As Nx also has a `--project` argument, you need to use `--` to forward the argument to the Playwright configuration.
+{% /callout %}
 
 ### Specifying a Base Url
 

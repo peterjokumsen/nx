@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "$id": "NxJestProject",
   "cli": "nx",
   "title": "Add Jest Configuration to a project",
@@ -74,6 +74,10 @@
       "type": "boolean",
       "default": false,
       "description": "Use JavaScript instead of TypeScript for config files"
+    },
+    "runtimeTsconfigFileName": {
+      "type": "string",
+      "description": "The name of the project's tsconfig file that includes the runtime source files. If not provided, it will default to `tsconfig.lib.json` for libraries and `tsconfig.app.json` for applications."
     }
   },
   "required": []

@@ -1,22 +1,20 @@
-import { Linter } from '@nx/linter';
-import { UiFramework7, UiFramework } from '../../utils/models';
+import { Linter, LinterType } from '@nx/eslint';
+import { UiFramework } from '../../utils/models';
 
 export interface StorybookConfigureSchema {
-  name: string;
-  uiFramework?: UiFramework7;
-  linter?: Linter;
+  project: string;
+  uiFramework?: UiFramework;
+  linter?: Linter | LinterType;
   js?: boolean;
   interactionTests?: boolean;
   tsConfiguration?: boolean;
   standaloneConfig?: boolean;
   configureStaticServe?: boolean;
   skipFormat?: boolean;
+  addPlugin?: boolean;
+
   /**
-   * @deprecated Use interactionTests instead. This option will be removed in v18.
+   * @internal
    */
-  configureCypress?: boolean;
-  /**
-   * @deprecated Use interactionTests instead. This option will be removed in v18.
-   */
-  cypressDirectory?: string;
+  addExplicitTargets?: boolean;
 }

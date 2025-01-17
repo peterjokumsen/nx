@@ -4,31 +4,21 @@
   "title": "Angular Component Schema",
   "cli": "nx",
   "type": "object",
-  "description": "Creates a new, generic Angular component definition in the given or default project.",
+  "description": "Creates a new Angular component.",
   "additionalProperties": false,
   "properties": {
     "path": {
       "type": "string",
-      "format": "path",
-      "description": "The path at which to create the component file, relative to the current workspace. Default is a folder with the same name as the component in the project root.",
-      "visible": false
-    },
-    "project": {
-      "type": "string",
-      "description": "The name of the project.",
-      "$default": {
-        "$source": "projectName"
-      },
-      "x-dropdown": "projects"
-    },
-    "name": {
-      "type": "string",
-      "description": "The name of the component.",
+      "description": "The file path to the component. Relative to the current working directory.",
       "$default": {
         "$source": "argv",
         "index": 0
       },
-      "x-prompt": "What name would you like to use for the component?"
+      "x-prompt": "What is the component file path?"
+    },
+    "name": {
+      "type": "string",
+      "description": "The component symbol name. Defaults to the last segment of the file path."
     },
     "prefix": {
       "type": "string",
@@ -54,9 +44,9 @@
       "alias": "t"
     },
     "standalone": {
-      "description": "Whether the generated component is standalone. _Note: This is only supported in Angular versions >= 14.1.0_.",
+      "description": "Whether the generated component is standalone.",
       "type": "boolean",
-      "default": false,
+      "default": true,
       "x-priority": "important"
     },
     "viewEncapsulation": {
@@ -88,11 +78,6 @@
       "description": "Do not create `spec.ts` test files for the new component.",
       "default": false
     },
-    "flat": {
-      "type": "boolean",
-      "description": "Create the new files at the top level of the current project.",
-      "default": false
-    },
     "skipImport": {
       "type": "boolean",
       "description": "Do not import this component into the owning NgModule.",
@@ -119,6 +104,11 @@
       "default": false,
       "x-priority": "important"
     },
+    "exportDefault": {
+      "type": "boolean",
+      "default": false,
+      "description": "Use default export for the component instead of a named export."
+    },
     "skipFormat": {
       "description": "Skip formatting files.",
       "type": "boolean",
@@ -126,6 +116,6 @@
       "x-priority": "internal"
     }
   },
-  "required": ["name", "project"],
+  "required": ["path"],
   "examplesFile": "../../../docs/component-examples.md"
 }

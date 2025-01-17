@@ -47,8 +47,11 @@ export interface WebpackExecutorOptions {
   extractLicenses?: boolean;
   fileReplacements?: FileReplacement[];
   generatePackageJson?: boolean;
+  // TODO(v21): Remove this option
+  /** @deprecated set webpackConfig and provide an explicit webpack.config.js file (See: https://nx.dev/recipes/webpack/webpack-config-setup) */
   isolatedConfig?: boolean;
-  main: string;
+  standardWebpackConfigFunction?: boolean;
+  main?: string;
   memoryLimit?: number;
   namedChunks?: boolean;
   optimization?: boolean | OptimizationOptions;
@@ -59,11 +62,11 @@ export interface WebpackExecutorOptions {
   polyfills?: string;
   progress?: boolean;
   runtimeChunk?: boolean;
-  sourceMap?: boolean | 'hidden';
+  sourceMap?: boolean | string;
   statsJson?: boolean;
-  target?: 'node' | 'web' | 'webworker';
+  target?: string;
   transformers?: TransformerEntry[];
-  tsConfig: string;
+  tsConfig?: string;
   vendorChunk?: boolean;
   verbose?: boolean;
   watch?: boolean;
@@ -81,13 +84,16 @@ export interface WebpackExecutorOptions {
   stylePreprocessorOptions?: any;
   styles?: Array<ExtraEntryPointClass | string>;
   subresourceIntegrity?: boolean;
+  publicPath?: string;
+  rebaseRootRelative?: boolean;
 }
 
 export interface NormalizedWebpackExecutorOptions
   extends WebpackExecutorOptions {
   outputFileName: string;
-  assets?: AssetGlobPattern[];
-  root?: string;
-  projectRoot?: string;
-  sourceRoot?: string;
+  assets: AssetGlobPattern[];
+  root: string;
+  projectRoot: string;
+  sourceRoot: string;
+  useTsconfigPaths: boolean;
 }

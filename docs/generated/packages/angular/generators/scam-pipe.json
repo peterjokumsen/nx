@@ -9,8 +9,16 @@
     "type": "object",
     "examples": [
       {
-        "command": "nx g @nx/angular:scam-pipe --project=my-lib --flat=false my-transformation",
-        "description": "Generates a `MyTransformationPipe` in a `my-transformation` folder in the `my-lib` project"
+        "description": "Generate a pipe with the exported symbol matching the file name. It results in the pipe `FooPipe` at `mylib/src/lib/foo.pipe.ts`",
+        "command": "nx g @nx/angular:scam-pipe mylib/src/lib/foo.pipe.ts"
+      },
+      {
+        "description": "Generate a pipe without providing the file extension. It results in the pipe `FooPipe` at `mylib/src/lib/foo.pipe.ts`",
+        "command": "nx g @nx/angular:scam-pipe mylib/src/lib/foo"
+      },
+      {
+        "description": "Generate a pipe with the exported symbol different from the file name. It results in the pipe `CustomPipe` at `mylib/src/lib/foo.pipe.ts`",
+        "command": "nx g @nx/angular:scam-pipe mylib/src/lib/foo --name=custom"
       }
     ],
     "description": "Creates a new, generic Angular pipe definition in the given or default project.",
@@ -18,22 +26,13 @@
     "properties": {
       "path": {
         "type": "string",
-        "format": "path",
-        "description": "The path at which to create the pipe file, relative to the current workspace. Default is a folder with the same name as the pipe in the project root.",
-        "visible": false
-      },
-      "project": {
-        "type": "string",
-        "description": "The name of the project.",
-        "$default": { "$source": "projectName" },
-        "x-dropdown": "projects"
+        "description": "The file path to the SCAM pipe. Relative to the current working directory.",
+        "$default": { "$source": "argv", "index": 0 },
+        "x-prompt": "What is the SCAM pipe file path?"
       },
       "name": {
         "type": "string",
-        "description": "The name of the pipe.",
-        "$default": { "$source": "argv", "index": 0 },
-        "x-prompt": "What name would you like to use for the pipe?",
-        "x-priority": "important"
+        "description": "The pipe symbol name. Defaults to the last segment of the file path."
       },
       "skipTests": {
         "type": "boolean",
@@ -46,19 +45,20 @@
         "default": true,
         "x-priority": "important"
       },
-      "flat": {
-        "type": "boolean",
-        "description": "Create the new files at the top level of the current project.",
-        "default": true
-      },
       "export": {
         "type": "boolean",
         "description": "Specifies if the SCAM should be exported from the project's entry point (normally `index.ts`). It only applies to libraries.",
         "default": true,
         "x-priority": "important"
+      },
+      "skipFormat": {
+        "description": "Skip formatting files.",
+        "type": "boolean",
+        "default": false,
+        "x-priority": "internal"
       }
     },
-    "required": ["name", "project"],
+    "required": ["path"],
     "presets": []
   },
   "description": "Generate a pipe with an accompanying Single Component Angular Module (SCAM).",

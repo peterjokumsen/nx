@@ -1,7 +1,6 @@
 export interface Schema {
-  name: string;
-  project: string;
-  path?: string;
+  path: string;
+  name?: string;
   displayBlock?: boolean;
   inlineStyle?: boolean;
   inlineTemplate?: boolean;
@@ -11,7 +10,6 @@ export interface Schema {
   skipTests?: boolean;
   inlineScam?: boolean;
   type?: string;
-  flat?: boolean;
   prefix?: string;
   selector?: string;
   skipSelector?: boolean;
@@ -20,9 +18,12 @@ export interface Schema {
 }
 
 export interface NormalizedSchema extends Schema {
+  name: string;
   directory: string;
+  projectName: string;
   fileName: string;
   filePath: string;
+  symbolName: string;
   export: boolean;
   inlineScam: boolean;
 }

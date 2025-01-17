@@ -15,11 +15,12 @@ export function callUpgrade(schema: Schema): 1 | Buffer {
     });
 
     execSync(
-      `${pm.exec} storybook@latest upgrade ${
+      `${pm.dlx} storybook@latest upgrade ${
         schema.autoAcceptAllPrompts ? '--yes' : ''
       }`,
       {
         stdio: [0, 1, 2],
+        windowsHide: false,
       }
     );
 
@@ -73,7 +74,7 @@ export function callAutomigrate(
   Object.entries(allStorybookProjects).forEach(
     ([projectName, storybookProjectInfo]) => {
       const pm = getPackageManagerCommand();
-      const commandToRun = `${pm.exec} storybook@latest automigrate --config-dir ${storybookProjectInfo.configDir} --renderer ${storybookProjectInfo.uiFramework}`;
+      const commandToRun = `${pm.dlx} storybook@latest automigrate --config-dir ${storybookProjectInfo.configDir} --renderer ${storybookProjectInfo.uiFramework}`;
       try {
         output.log({
           title: `Calling sb automigrate for ${projectName}`,
@@ -85,6 +86,7 @@ export function callAutomigrate(
           `${commandToRun}  ${schema.autoAcceptAllPrompts ? '--yes' : ''}`,
           {
             stdio: 'inherit',
+            windowsHide: false,
           }
         );
 

@@ -2,25 +2,24 @@
 
 The code for this example is available on GitHub:
 
-{% github-repository url="https://github.com/nrwl/nx-recipes/tree/main/solidjs" %}
+{% github-repository url="https://github.com/nrwl/nx-recipes/tree/main/solidjs" /%}
 
 **Supported Features**
 
-Because we are not using an Nx plugin for Solid, there are few items we'll have to configure manually. We'll have to
+Because we are not using an Nx plugin for Solid, there are a few items we'll have to configure manually. We'll have to
 configure our own build system. There are no pre-created Solid-specific code generators. And we'll have to take care of
 updating any framework dependencies as needed.
 
-{% pill url="/core-features/run-tasks" %}✅ Run Tasks{% /pill %}
-{% pill url="/core-features/cache-task-results" %}✅ Cache Task Results{% /pill %}
-{% pill url="/core-features/remote-cache" %}✅ Share Your Cache{% /pill %}
-{% pill url="/core-features/explore-graph" %}✅ Explore the Graph{% /pill %}
-{% pill url="/core-features/distribute-task-execution" %}✅ Distribute Task Execution{% /pill %}
-{% pill url="/core-features/integrate-with-editors" %}✅ Integrate with Editors{% /pill %}
-{% pill url="/core-features/automate-updating-dependencies" %}✅ Automate Updating Nx{% /pill %}
-{% pill url="/core-features/enforce-module-boundaries" %}✅ Enforce Module Boundaries{% /pill %}
-{% pill url="/core-features/plugin-features/use-task-executors" %}🚫 Use Task Executors{% /pill %}
-{% pill url="/core-features/plugin-features/use-code-generators" %}🚫 Use Code Generators{% /pill %}
-{% pill url="/core-features/automate-updating-dependencies" %}🚫 Automate Updating Framework Dependencies{% /pill %}
+{% pill url="/features/run-tasks" %}✅ Run Tasks{% /pill %}
+{% pill url="/features/cache-task-results" %}✅ Cache Task Results{% /pill %}
+{% pill url="/ci/features/remote-cache" %}✅ Share Your Cache{% /pill %}
+{% pill url="/features/explore-graph" %}✅ Explore the Graph{% /pill %}
+{% pill url="/ci/features/distribute-task-execution" %}✅ Distribute Task Execution{% /pill %}
+{% pill url="/getting-started/editor-setup" %}✅ Integrate with Editors{% /pill %}
+{% pill url="/features/automate-updating-dependencies" %}✅ Automate Updating Nx{% /pill %}
+{% pill url="/features/enforce-module-boundaries" %}✅ Enforce Module Boundaries{% /pill %}
+{% pill url="/features/generate-code" %}🚫 Use Code Generators{% /pill %}
+{% pill url="/features/automate-updating-dependencies" %}🚫 Automate Updating Framework Dependencies{% /pill %}
 
 ## Install Solid and Other Dependencies
 
@@ -28,8 +27,9 @@ updating any framework dependencies as needed.
 {% tab label="npm" %}
 
 ```shell
-npm i solid-js
-npm i --save-dev @nx/web solid-devtools vite-plugin-solid
+npm add solid-js
+npm add -D solid-devtools vite-plugin-solid vite-tsconfig-paths
+nx add @nx/web
 ```
 
 {% /tab %}
@@ -37,15 +37,27 @@ npm i --save-dev @nx/web solid-devtools vite-plugin-solid
 
 ```shell
 yarn add solid-js
-yarn add --dev @nx/web solid-devtools vite-plugin-solid
+yarn add -D solid-devtools vite-plugin-solid vite-tsconfig-paths
+nx add @nx/web
 ```
 
 {% /tab %}
 {% tab label="pnpm" %}
 
 ```shell
-pnpm i solid-js
-pnpm i --save-dev @nx/web solid-devtools vite-plugin-solid
+pnpm add solid-js
+pnpm add -D solid-devtools vite-plugin-solid vite-tsconfig-paths
+nx add @nx/web
+```
+
+{% /tab %}
+
+{% tab label="bun" %}
+
+```shell
+bun add solid-js
+bun add -D solid-devtools vite-plugin-solid vite-tsconfig-paths
+nx add @nx/web
 ```
 
 {% /tab %}
@@ -57,17 +69,17 @@ We'll start with a web application and then tweak the settings to match what we 
 workspace with the following command:
 
 ```shell
-nx g @nx/web:app my-solid-app --bundler=vite
+nx g @nx/web:app apps/my-solid-app --bundler=vite
 ```
 
 The `@nx/web:app` generator will create some files that are unnecessary for our Solid application.
 
-The files to be deleted are:
+The files and folders to be deleted are:
 
-- `apps/my-solid-app/src/public`
-- `apps/my-solid-app/src/app`
-- `apps/my-solid-app/main.ts`
-- `apps/my-solid-app/styles.css`
+- `apps/my-solid-app/public/`
+- `apps/my-solid-app/src/app/`
+- `apps/my-solid-app/src/main.ts`
+- `apps/my-solid-app/src/styles.css`
 - `apps/my-solid-app/.babelrc`
 
 ### Turn the Application into a Solid Application
@@ -147,7 +159,7 @@ import solidPlugin from 'vite-plugin-solid';
 import viteTsConfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
-  cacheDir: '../../node_modules/.vite/my-solid-app',
+  cacheDir: '../../node_modules/.vite/apps/my-solid-app',
 
   server: {
     port: 3000,
@@ -181,7 +193,7 @@ export default defineConfig({
   test: {
     globals: true,
     cache: {
-      dir: '../../node_modules/.vitest',
+      dir: '../../node_modules/.vitest/apps/my-solid-app',
     },
     environment: 'jsdom',
     include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
@@ -232,7 +244,7 @@ Let's create a library that our Solid application is going to consume. To create
 package and run:
 
 ```shell
-nx g @nx/js:lib my-lib
+nx g @nx/js:lib libs/my-lib
 ```
 
 Once the library is created, update the following files.
@@ -304,7 +316,7 @@ Now when you serve your application, you'll see the content from the library bei
 
 ## More Documentation
 
-- [@nx/vite](/packages/vite)
-- [@nx/js](/packages/js)
-- [@nx/web](/packages/web)
+- [@nx/vite](/nx-api/vite)
+- [@nx/js](/nx-api/js)
+- [@nx/web](/nx-api/web)
 - [Solid](https://www.solidjs.com/)

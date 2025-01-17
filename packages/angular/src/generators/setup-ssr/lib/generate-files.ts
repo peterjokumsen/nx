@@ -4,60 +4,51 @@ import {
   joinPathFragments,
   readProjectConfiguration,
 } from '@nx/devkit';
-import { lt } from 'semver';
+import { join } from 'path';
 import { getInstalledAngularVersionInfo } from '../../utils/version-utils';
-import type { Schema } from '../schema';
+import type { NormalizedGeneratorOptions } from '../schema';
 
-export function generateSSRFiles(tree: Tree, schema: Schema) {
-  const projectConfig = readProjectConfiguration(tree, schema.project);
-  const projectRoot = projectConfig.root;
-  const browserBundleOutputPath =
-    projectConfig.targets.build.options.outputPath;
+export function generateSSRFiles(
+  tree: Tree,
+  options: NormalizedGeneratorOptions
+) {
+  const project = readProjectConfiguration(tree, options.project);
 
-  const pathToFiles = joinPathFragments(__dirname, '..', 'files');
+  if (
+    project.targets.server ||
+    (options.isUsingApplicationBuilder &&
+      project.targets.build.options?.server !== undefined)
+  ) {
+    // server has already been added
+    return;
+  }
 
-  generateFiles(tree, joinPathFragments(pathToFiles, 'base'), projectRoot, {
-    ...schema,
-    tpl: '',
-  });
-
-  if (schema.standalone) {
-    generateFiles(
-      tree,
-      joinPathFragments(pathToFiles, 'standalone'),
-      projectRoot,
-
-      { ...schema, browserBundleOutputPath, tpl: '' }
+  const { major: angularMajorVersion } = getInstalledAngularVersionInfo(tree);
+  const baseFilesPath = join(__dirname, '..', 'files');
+  let pathToFiles: string;
+  if (angularMajorVersion >= 19) {
+    pathToFiles = join(
+      baseFilesPath,
+      'v19+',
+      options.isUsingApplicationBuilder
+        ? 'application-builder'
+        : 'server-builder',
+      options.standalone ? 'standalone-src' : 'ngmodule-src'
     );
   } else {
-    generateFiles(
-      tree,
-      joinPathFragments(pathToFiles, 'ngmodule', 'base'),
-      projectRoot,
-
-      { ...schema, browserBundleOutputPath, tpl: '' }
+    pathToFiles = join(
+      baseFilesPath,
+      'pre-v19',
+      options.standalone ? 'standalone-src' : 'ngmodule-src'
     );
+  }
 
-    const { major: angularMajorVersion, version: angularVersion } =
-      getInstalledAngularVersionInfo(tree);
+  const sourceRoot =
+    project.sourceRoot ?? joinPathFragments(project.root, 'src');
 
-    if (angularMajorVersion < 15) {
-      generateFiles(
-        tree,
-        joinPathFragments(pathToFiles, 'ngmodule', 'v14'),
-        projectRoot,
+  generateFiles(tree, pathToFiles, sourceRoot, { ...options, tpl: '' });
 
-        { ...schema, browserBundleOutputPath, tpl: '' }
-      );
-    }
-    if (lt(angularVersion, '15.2.0')) {
-      generateFiles(
-        tree,
-        joinPathFragments(pathToFiles, 'ngmodule', 'pre-v15-2'),
-        projectRoot,
-
-        { ...schema, browserBundleOutputPath, tpl: '' }
-      );
-    }
+  if (angularMajorVersion >= 19 && !options.serverRouting) {
+    tree.delete(joinPathFragments(sourceRoot, 'app/app.routes.server.ts'));
   }
 }

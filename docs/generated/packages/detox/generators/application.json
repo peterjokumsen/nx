@@ -1,8 +1,8 @@
 {
   "name": "application",
-  "factory": "./src/generators/application/application#detoxApplicationGenerator",
+  "factory": "./src/generators/application/application#detoxApplicationGeneratorInternal",
   "schema": {
-    "$schema": "http://json-schema.org/schema",
+    "$schema": "https://json-schema.org/schema",
     "title": "Create Detox Configuration for the workspace",
     "description": "Create Detox Configuration for the workspace.",
     "type": "object",
@@ -13,11 +13,15 @@
         "$default": { "$source": "projectName" },
         "x-prompt": "What is the name of the frontend project to test?"
       },
+      "e2eDirectory": {
+        "type": "string",
+        "description": "A directory where the project is placed relative current working directory (CWD).",
+        "$default": { "$source": "argv", "index": 0 },
+        "x-prompt": "Which directory do you want to create the E2E project in?"
+      },
       "e2eName": {
         "type": "string",
-        "description": "Name of the E2E Project.",
-        "$default": { "$source": "argv", "index": 0 },
-        "x-prompt": "What name would you like to use for the E2E project?"
+        "description": "Name of the E2E Project."
       },
       "appName": {
         "type": "string",
@@ -32,10 +36,6 @@
         "description": "App framework to test",
         "enum": ["react-native", "expo"],
         "x-prompt": "What app framework should detox test?"
-      },
-      "e2eDirectory": {
-        "type": "string",
-        "description": "A directory where the project is placed relative to apps directory."
       },
       "linter": {
         "description": "The tool to use for running lint checks.",
@@ -60,13 +60,13 @@
         "default": false
       }
     },
-    "required": ["e2eName", "appProject", "framework"],
+    "required": ["e2eDirectory", "appProject", "framework"],
     "presets": []
   },
   "aliases": ["app"],
   "x-type": "application",
   "description": "Create a Detox application.",
-  "implementation": "/packages/detox/src/generators/application/application#detoxApplicationGenerator.ts",
+  "implementation": "/packages/detox/src/generators/application/application#detoxApplicationGeneratorInternal.ts",
   "hidden": false,
   "path": "/packages/detox/src/generators/application/schema.json",
   "type": "generator"

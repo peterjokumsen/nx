@@ -1,7 +1,7 @@
 import { Tree } from '@nx/devkit';
 
 import { libraryGenerator } from '@nx/js';
-import { Linter } from '@nx/linter';
+import { Linter } from '@nx/eslint';
 
 export async function createTestUILibNoNgDevkit(
   appTree: Tree,
@@ -12,7 +12,7 @@ export async function createTestUILibNoNgDevkit(
     skipFormat: true,
     skipTsConfig: false,
     unitTestRunner: 'none',
-    name: libName,
+    directory: libName,
   });
 
   return appTree;

@@ -6,23 +6,26 @@ import {
   promisifiedTreeKill,
   readFile,
   runCLI,
-  runCLIAsync,
   runCommandUntil,
-  tmpProjPath,
   uniq,
   updateFile,
 } from '@nx/e2e/utils';
-import { execSync } from 'child_process';
 
 describe('Node Applications + esbuild', () => {
-  beforeEach(() => newProject());
+  beforeAll(() =>
+    newProject({
+      packages: ['@nx/node'],
+    })
+  );
 
-  afterEach(() => cleanupProject());
+  afterAll(() => cleanupProject());
 
   it('should generate an app using esbuild', async () => {
     const app = uniq('nodeapp');
 
-    runCLI(`generate @nx/node:app ${app} --bundler=esbuild --no-interactive`);
+    runCLI(
+      `generate @nx/node:app apps/${app} --bundler=esbuild --no-interactive --linter=eslint --unitTestRunner=jest`
+    );
 
     checkFilesDoNotExist(`apps/${app}/webpack.config.js`);
 

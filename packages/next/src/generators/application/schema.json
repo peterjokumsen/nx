@@ -1,26 +1,25 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "cli": "nx",
   "$id": "NxNextApp",
   "title": "Create a Next.js Application for Nx",
   "description": "Create a Next.js Application for Nx.",
   "type": "object",
   "properties": {
-    "name": {
-      "description": "The name of the application.",
+    "directory": {
+      "description": "The directory of the new application.",
       "type": "string",
+      "alias": "dir",
       "$default": {
         "$source": "argv",
         "index": 0
       },
-      "x-prompt": "What name would you like to use for the application?",
-      "pattern": "^[a-zA-Z].*$",
-      "x-priority": "important"
+      "x-prompt": "Which directory do you want to create the application in?"
     },
-    "directory": {
-      "description": "The directory of the new application.",
+    "name": {
+      "description": "The name of the application.",
       "type": "string",
-      "alias": "d",
+      "pattern": "^[a-zA-Z][^:]*$",
       "x-priority": "important"
     },
     "style": {
@@ -32,14 +31,21 @@
         "message": "Which stylesheet format would you like to use?",
         "type": "list",
         "items": [
-          { "value": "css", "label": "CSS" },
+          {
+            "value": "css",
+            "label": "CSS"
+          },
           {
             "value": "scss",
-            "label": "SASS(.scss)       [ http://sass-lang.com          ]"
+            "label": "SASS(.scss)       [ https://sass-lang.com          ]"
           },
           {
             "value": "less",
-            "label": "LESS              [ http://lesscss.org            ]"
+            "label": "LESS              [ https://lesscss.org            ]"
+          },
+          {
+            "value": "tailwind",
+            "label": "tailwind          [ https://tailwindcss.com/       ]"
           },
           {
             "value": "styled-components",
@@ -56,10 +62,6 @@
           {
             "value": "none",
             "label": "None"
-          },
-          {
-            "value": "styl",
-            "label": "Stylus(.styl)     [ http://stylus-lang.com        ] (DEPRECATED)"
           }
         ]
       }
@@ -67,8 +69,10 @@
     "linter": {
       "description": "The tool to use for running lint checks.",
       "type": "string",
-      "enum": ["eslint"],
-      "default": "eslint"
+      "enum": ["eslint", "none"],
+      "default": "none",
+      "x-prompt": "Which linter would you like to use?",
+      "x-priority": "important"
     },
     "skipFormat": {
       "description": "Skip formatting files.",
@@ -80,14 +84,16 @@
       "type": "string",
       "enum": ["jest", "none"],
       "description": "Test runner to use for unit tests.",
-      "default": "jest"
+      "default": "none",
+      "x-prompt": "What unit test runner should be used?",
+      "x-priority": "important"
     },
     "e2eTestRunner": {
       "type": "string",
-      "enum": ["cypress", "playwright", "none"],
+      "enum": ["playwright", "cypress", "none"],
       "description": "Test runner to use for end to end (E2E) tests.",
       "x-prompt": "Which E2E test runner would you like to use?",
-      "default": "cypress"
+      "default": "playwright"
     },
     "tags": {
       "type": "string",
@@ -126,6 +132,12 @@
       "description": "Enable the App Router for this project.",
       "x-prompt": "Would you like to use the App Router (recommended)?"
     },
+    "src": {
+      "type": "boolean",
+      "default": true,
+      "description": "Generate a `src` directory for the project.",
+      "x-prompt": "Would you like to use `src/` directory?"
+    },
     "rootProject": {
       "description": "Create an application at the root of the workspace.",
       "type": "boolean",
@@ -134,6 +146,6 @@
       "x-priority": "internal"
     }
   },
-  "required": [],
+  "required": ["directory"],
   "examplesFile": "../../../docs/application-examples.md"
 }

@@ -4,7 +4,6 @@
   "sourceRoot": "packages/nest",
   "projectType": "library",
   "targets": {
-    "test": {},
     "build-base": {
       "executor": "@nx/js:tsc",
       "options": {
@@ -48,13 +47,9 @@
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/build/packages/nest"],
       "options": {
-        "commands": [
-          "node ./scripts/copy-readme.js nest",
-          "node ./scripts/add-dependency-to-build.js nest @nrwl/nest"
-        ]
+        "command": "node ./scripts/copy-readme.js nest"
       }
-    },
-    "lint": {}
+    }
   },
-  "implicitDependencies": ["node", "linter"]
+  "implicitDependencies": ["node", "eslint"]
 }

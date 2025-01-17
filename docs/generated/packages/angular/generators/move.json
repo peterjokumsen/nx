@@ -2,7 +2,7 @@
   "name": "move",
   "factory": "./src/generators/move/move#angularMoveGenerator",
   "schema": {
-    "$schema": "http://json-schema.org/schema",
+    "$schema": "https://json-schema.org/schema",
     "$id": "NxAngularMove",
     "cli": "nx",
     "title": "Nx Angular Move",
@@ -20,6 +20,13 @@
         "alias": "project",
         "description": "The name of the Angular project to move.",
         "x-dropdown": "projects",
+        "x-priority": "important"
+      },
+      "newProjectName": {
+        "type": "string",
+        "alias": "project",
+        "description": "The new name of the project after the move.",
+        "pattern": "(?:^@[a-zA-Z0-9-*~][a-zA-Z0-9-*._~]*\\/[a-zA-Z0-9-~][a-zA-Z0-9-._~]*|^[a-zA-Z][^:]*)$",
         "x-priority": "important"
       },
       "destination": {
@@ -50,6 +57,7 @@
   },
   "aliases": ["mv"],
   "description": "Moves an Angular application or library to another folder within the workspace and updates the project configuration.",
+  "x-deprecated": "Use the `@nx/workspace:move` generator instead. This generator will be removed in Nx v19.",
   "implementation": "/packages/angular/src/generators/move/move#angularMoveGenerator.ts",
   "hidden": false,
   "path": "/packages/angular/src/generators/move/schema.json",

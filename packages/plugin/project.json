@@ -1,10 +1,9 @@
 {
   "name": "plugin",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "packages/plugin",
+  "sourceRoot": "packages/plugin/src",
   "projectType": "library",
   "targets": {
-    "test": {},
     "build-base": {
       "executor": "@nx/js:tsc",
       "options": {
@@ -48,12 +47,8 @@
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/build/packages/plugin"],
       "options": {
-        "commands": [
-          "node ./scripts/copy-readme.js plugin",
-          "node ./scripts/add-dependency-to-build.js plugin @nrwl/nx-plugin"
-        ]
+        "command": "node ./scripts/copy-readme.js plugin"
       }
-    },
-    "lint": {}
+    }
   }
 }

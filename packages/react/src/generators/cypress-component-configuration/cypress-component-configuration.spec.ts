@@ -7,11 +7,6 @@ import {
   updateProjectConfiguration,
 } from '@nx/devkit';
 import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
-import { Linter } from '@nx/linter';
-import { applicationGenerator } from '../application/application';
-import { componentGenerator } from '../component/component';
-import { libraryGenerator } from '../library/library';
-import { cypressComponentConfigGenerator } from './cypress-component-configuration';
 
 let projectGraph: ProjectGraph;
 jest.mock('@nx/devkit', () => ({
@@ -21,6 +16,13 @@ jest.mock('@nx/devkit', () => ({
     .fn()
     .mockImplementation(async () => projectGraph),
 }));
+
+import { Linter } from '@nx/eslint';
+import { applicationGenerator } from '../application/application';
+import { componentGenerator } from '../component/component';
+import { libraryGenerator } from '../library/library';
+import { cypressComponentConfigGenerator } from './cypress-component-configuration';
+
 jest.mock('@nx/cypress/src/utils/cypress-version');
 // nested code imports graph from the repo, which might have innacurate graph version
 jest.mock('nx/src/project-graph/project-graph', () => ({
@@ -33,11 +35,27 @@ describe('React:CypressComponentTestConfiguration', () => {
   let mockedAssertCypressVersion: jest.Mock<
     ReturnType<typeof assertMinimumCypressVersion>
   > = assertMinimumCypressVersion as never;
+  // TODO(@jaysoo): Turn this back to adding the plugin
+  let originalEnv: string;
+
   beforeEach(() => {
-    tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
+    originalEnv = process.env.NX_ADD_PLUGINS;
+    process.env.NX_ADD_PLUGINS = 'false';
   });
 
   afterEach(() => {
+    process.env.NX_ADD_PLUGINS = originalEnv;
+  });
+  beforeEach(() => {
+    tree = createTreeWithEmptyWorkspace();
+
+    projectGraph = {
+      nodes: {},
+      dependencies: {},
+    };
+  });
+
+  afterAll(() => {
     jest.clearAllMocks();
   });
 
@@ -50,12 +68,12 @@ describe('React:CypressComponentTestConfiguration', () => {
       skipFormat: true,
       style: 'scss',
       unitTestRunner: 'none',
-      name: 'my-app',
+      directory: 'my-app',
       bundler: 'vite',
     });
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
@@ -93,7 +111,7 @@ describe('React:CypressComponentTestConfiguration', () => {
       buildTarget: 'my-app:build',
     });
 
-    const config = tree.read('libs/some-lib/cypress.config.ts', 'utf-8');
+    const config = tree.read('some-lib/cypress.config.ts', 'utf-8');
     expect(config).toMatchSnapshot();
   });
 
@@ -106,12 +124,12 @@ describe('React:CypressComponentTestConfiguration', () => {
       skipFormat: true,
       style: 'scss',
       unitTestRunner: 'none',
-      name: 'my-app',
+      directory: 'my-app',
       bundler: 'vite',
     });
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
@@ -149,7 +167,7 @@ describe('React:CypressComponentTestConfiguration', () => {
       buildTarget: 'my-app:build',
     });
 
-    const config = tree.read('libs/some-lib/cypress.config.ts', 'utf-8');
+    const config = tree.read('some-lib/cypress.config.ts', 'utf-8');
     expect(config).toMatchSnapshot();
 
     expect(
@@ -157,7 +175,7 @@ describe('React:CypressComponentTestConfiguration', () => {
     ).toEqual({
       executor: '@nx/cypress:cypress',
       options: {
-        cypressConfig: 'libs/some-lib/cypress.config.ts',
+        cypressConfig: 'some-lib/cypress.config.ts',
         devServerTarget: 'my-app:build',
         skipServe: true,
         testingType: 'component',
@@ -173,12 +191,12 @@ describe('React:CypressComponentTestConfiguration', () => {
       skipFormat: true,
       style: 'scss',
       unitTestRunner: 'none',
-      name: 'my-app',
+      directory: 'my-app',
       bundler: 'vite',
     });
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
@@ -215,7 +233,7 @@ describe('React:CypressComponentTestConfiguration', () => {
       generateTests: false,
     });
 
-    const config = tree.read('libs/some-lib/cypress.config.ts', 'utf-8');
+    const config = tree.read('some-lib/cypress.config.ts', 'utf-8');
     expect(config).toMatchSnapshot();
 
     expect(
@@ -223,7 +241,7 @@ describe('React:CypressComponentTestConfiguration', () => {
     ).toEqual({
       executor: '@nx/cypress:cypress',
       options: {
-        cypressConfig: 'libs/some-lib/cypress.config.ts',
+        cypressConfig: 'some-lib/cypress.config.ts',
         devServerTarget: 'my-app:build',
         skipServe: true,
         testingType: 'component',
@@ -239,12 +257,12 @@ describe('React:CypressComponentTestConfiguration', () => {
       skipFormat: true,
       style: 'scss',
       unitTestRunner: 'none',
-      name: 'my-app',
+      directory: 'my-app',
       bundler: 'webpack',
     });
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
@@ -281,7 +299,7 @@ describe('React:CypressComponentTestConfiguration', () => {
       generateTests: false,
     });
 
-    const config = tree.read('libs/some-lib/cypress.config.ts', 'utf-8');
+    const config = tree.read('some-lib/cypress.config.ts', 'utf-8');
     expect(config).toMatchSnapshot();
 
     expect(
@@ -289,7 +307,7 @@ describe('React:CypressComponentTestConfiguration', () => {
     ).toEqual({
       executor: '@nx/cypress:cypress',
       options: {
-        cypressConfig: 'libs/some-lib/cypress.config.ts',
+        cypressConfig: 'some-lib/cypress.config.ts',
         devServerTarget: 'my-app:build',
         skipServe: true,
         testingType: 'component',
@@ -304,12 +322,12 @@ describe('React:CypressComponentTestConfiguration', () => {
       skipFormat: true,
       style: 'scss',
       unitTestRunner: 'none',
-      name: 'my-app',
+      directory: 'my-app',
       bundler: 'vite',
     });
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
@@ -318,7 +336,7 @@ describe('React:CypressComponentTestConfiguration', () => {
     });
     await componentGenerator(tree, {
       name: 'another-cmp',
-      project: 'some-lib',
+      path: 'some-lib/src/lib/another-cmp/another-cmp',
       style: 'scss',
     });
 
@@ -328,20 +346,17 @@ describe('React:CypressComponentTestConfiguration', () => {
       buildTarget: 'my-app:build',
     });
 
-    expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
-    const compTest = tree.read(
-      'libs/some-lib/src/lib/some-lib.cy.tsx',
-      'utf-8'
-    );
+    expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+    const compTest = tree.read('some-lib/src/lib/some-lib.cy.tsx', 'utf-8');
     expect(compTest).toMatchSnapshot();
-    expect(tree.exists('libs/some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
+    expect(tree.exists('some-lib/src/lib/some-lib.cy.tsx')).toBeTruthy();
     const compTestNested = tree.read(
-      'libs/some-lib/src/lib/another-cmp/another-cmp.cy.tsx',
+      'some-lib/src/lib/another-cmp/another-cmp.cy.tsx',
       'utf-8'
     );
     expect(compTestNested).toMatchSnapshot();
     expect(
-      tree.exists('libs/some-lib/src/lib/another-cmp/another-cmp.spec.cy.tsx')
+      tree.exists('some-lib/src/lib/another-cmp/another-cmp.spec.cy.tsx')
     ).toBeFalsy();
   });
   it('should generate tests for existing js components', async () => {
@@ -352,12 +367,12 @@ describe('React:CypressComponentTestConfiguration', () => {
       skipFormat: true,
       style: 'scss',
       unitTestRunner: 'none',
-      name: 'my-app',
+      directory: 'my-app',
       bundler: 'vite',
     });
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
@@ -366,14 +381,13 @@ describe('React:CypressComponentTestConfiguration', () => {
     });
     await componentGenerator(tree, {
       name: 'some-cmp',
-      flat: true,
-      project: 'some-lib',
+      path: 'some-lib/src/lib/some-cmp',
       style: 'scss',
       js: true,
     });
     await componentGenerator(tree, {
       name: 'another-cmp',
-      project: 'some-lib',
+      path: 'some-lib/src/lib/another-cmp/another-cmp',
       style: 'scss',
       js: true,
     });
@@ -384,23 +398,23 @@ describe('React:CypressComponentTestConfiguration', () => {
       buildTarget: 'my-app:build',
     });
 
-    expect(tree.exists('libs/some-lib/src/lib/some-cmp.cy.js')).toBeTruthy();
-    const compTest = tree.read('libs/some-lib/src/lib/some-cmp.cy.js', 'utf-8');
+    expect(tree.exists('some-lib/src/lib/some-cmp.cy.js')).toBeTruthy();
+    const compTest = tree.read('some-lib/src/lib/some-cmp.cy.js', 'utf-8');
     expect(compTest).toMatchSnapshot();
     expect(
-      tree.exists('libs/some-lib/src/lib/another-cmp/another-cmp.cy.js')
+      tree.exists('some-lib/src/lib/another-cmp/another-cmp.cy.js')
     ).toBeTruthy();
     const compTestNested = tree.read(
-      'libs/some-lib/src/lib/another-cmp/another-cmp.cy.js',
+      'some-lib/src/lib/another-cmp/another-cmp.cy.js',
       'utf-8'
     );
     expect(compTestNested).toMatchSnapshot();
     expect(
-      tree.exists('libs/some-lib/src/lib/another-cmp/another-cmp.spec.cy.js')
+      tree.exists('some-lib/src/lib/another-cmp/another-cmp.spec.cy.js')
     ).toBeFalsy();
   });
 
-  it('should not throw error when an invalid --build-target is provided', async () => {
+  it('should throw error when an invalid --build-target is provided', async () => {
     mockedAssertCypressVersion.mockReturnValue();
     await applicationGenerator(tree, {
       e2eTestRunner: 'none',
@@ -408,11 +422,11 @@ describe('React:CypressComponentTestConfiguration', () => {
       skipFormat: true,
       style: 'scss',
       unitTestRunner: 'none',
-      name: 'my-app',
+      directory: 'my-app',
       bundler: 'vite',
     });
     await libraryGenerator(tree, {
-      name: 'some-lib',
+      directory: 'some-lib',
       style: 'scss',
       unitTestRunner: 'none',
       linter: Linter.None,
@@ -422,6 +436,7 @@ describe('React:CypressComponentTestConfiguration', () => {
     const appConfig = readProjectConfiguration(tree, 'my-app');
     appConfig.targets['build'].executor = 'something/else';
     updateProjectConfiguration(tree, 'my-app', appConfig);
+    jest.clearAllMocks();
     projectGraph = {
       nodes: {
         'my-app': {
@@ -441,16 +456,17 @@ describe('React:CypressComponentTestConfiguration', () => {
       },
       dependencies: {},
     };
-    await expect(async () => {
-      await cypressComponentConfigGenerator(tree, {
+
+    await expect(
+      cypressComponentConfigGenerator(tree, {
         project: 'some-lib',
         generateTests: true,
         buildTarget: 'my-app:build',
-      });
-    }).resolves;
-    expect(
-      require('@nx/devkit').createProjectGraphAsync
-    ).not.toHaveBeenCalled();
+      })
+    ).rejects.toThrow();
+    expect(require('@nx/devkit').createProjectGraphAsync).toHaveBeenCalledTimes(
+      1
+    );
   });
 
   it('should setup cypress config files correctly', async () => {
@@ -462,12 +478,12 @@ describe('React:CypressComponentTestConfiguration', () => {
       skipFormat: true,
       style: 'scss',
       unitTestRunner: 'none',
-      name: 'my-app',
+      directory: 'my-app',
       bundler: 'vite',
     });
     await libraryGenerator(tree, {
       linter: Linter.EsLint,
-      name: 'some-lib',
+      directory: 'some-lib',
       skipFormat: true,
       skipTsConfig: false,
       style: 'scss',
@@ -505,7 +521,7 @@ describe('React:CypressComponentTestConfiguration', () => {
       buildTarget: 'my-app:build',
     });
 
-    const config = tree.read('libs/some-lib/cypress.config.ts', 'utf-8');
+    const config = tree.read('some-lib/cypress.config.ts', 'utf-8');
     expect(config).toMatchInlineSnapshot(`
       "import { nxComponentTestingPreset } from '@nx/react/plugins/component-testing';
       import { defineConfig } from 'cypress';
@@ -515,7 +531,7 @@ describe('React:CypressComponentTestConfiguration', () => {
       });
       "
     `);
-    expect(tree.read('libs/some-lib/cypress/support/component.ts', 'utf-8'))
+    expect(tree.read('some-lib/cypress/support/component.ts', 'utf-8'))
       .toMatchInlineSnapshot(`
       "import { mount } from 'cypress/react18';
       // ***********************************************************

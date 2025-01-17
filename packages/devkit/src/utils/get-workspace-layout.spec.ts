@@ -1,6 +1,8 @@
-// eslint-disable-next-line @nx/enforce-module-boundaries
-import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
-import { getWorkspaceLayout } from './get-workspace-layout';
+import { createTreeWithEmptyWorkspace } from 'nx/src/devkit-testing-exports';
+import {
+  getWorkspaceLayout,
+  extractLayoutDirectory,
+} from './get-workspace-layout';
 
 describe('getWorkspaceLayout', () => {
   it('should return selected values', () => {
@@ -57,6 +59,27 @@ describe('getWorkspaceLayout', () => {
       libsDir: '.',
       npmScope: undefined,
       standaloneAsDefault: true,
+    });
+  });
+});
+
+describe('extractLayoutDirectory', () => {
+  it('should extract layout directory', () => {
+    expect(extractLayoutDirectory('apps/my-app')).toEqual({
+      layoutDirectory: 'apps',
+      projectDirectory: 'my-app',
+    });
+    expect(extractLayoutDirectory('libs/my-lib')).toEqual({
+      layoutDirectory: 'libs',
+      projectDirectory: 'my-lib',
+    });
+    expect(extractLayoutDirectory('packages/my-package')).toEqual({
+      layoutDirectory: 'packages',
+      projectDirectory: 'my-package',
+    });
+    expect(extractLayoutDirectory(undefined)).toEqual({
+      layoutDirectory: null,
+      projectDirectory: undefined,
     });
   });
 });

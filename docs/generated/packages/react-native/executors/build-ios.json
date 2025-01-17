@@ -2,7 +2,7 @@
   "name": "build-ios",
   "implementation": "/packages/react-native/src/executors/build-ios/build-ios.impl.ts",
   "schema": {
-    "$schema": "http://json-schema.org/schema",
+    "$schema": "https://json-schema.org/schema",
     "version": 2,
     "cli": "nx",
     "title": "React Native Build iOS executor",
@@ -74,28 +74,10 @@
         ],
         "description": "Custom params that will be passed to xcodebuild command."
       },
-      "install": {
-        "type": "boolean",
-        "description": "Runs `pod install` for native modules before building iOS app.",
-        "x-deprecated": "Add pod-install to dependsOn in project.json for this target instead",
-        "default": true
-      },
-      "sync": {
-        "type": "boolean",
-        "description": "Syncs npm dependencies to `package.json` (for React Native autolink).",
-        "x-deprecated": "Add sync-deps to dependsOn in project.json for this target instead",
-        "default": true
-      },
       "resetCache": {
         "type": "boolean",
         "description": "Resets metro cache.",
         "default": false
-      },
-      "packager": {
-        "type": "boolean",
-        "description": "Launch packager while building",
-        "default": true,
-        "x-deprecated": "Run `nx run <project>:start` instead. Will be removed in Nx 17."
       }
     },
     "required": [],

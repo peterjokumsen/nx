@@ -15,7 +15,6 @@ async function addMigrationPackageGroup(
 ) {
   angularPackageMigrations.packageJsonUpdates[targetNxVersion] = {
     version: `${targetNxMigrationVersion}`,
-    packages: {},
   };
 
   const promptAndRequirements = await getPromptAndRequiredVersions(
@@ -35,10 +34,18 @@ async function addMigrationPackageGroup(
     };
   }
 
-  for (const [pkgName, version] of packageVersionMap.entries()) {
+  angularPackageMigrations.packageJsonUpdates[targetNxVersion].packages = {};
+  for (const [pkgName, version] of packageVersionMap) {
     if (
       pkgName.startsWith('@angular/') &&
-      !['@angular/core', '@angular/material', '@angular/cdk'].includes(pkgName)
+      ![
+        '@angular/core',
+        '@angular/material',
+        '@angular/cdk',
+        '@angular/ssr',
+        '@angular/pwa',
+        '@angular/build',
+      ].includes(pkgName)
     ) {
       continue;
     }

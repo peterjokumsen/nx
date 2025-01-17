@@ -1,4 +1,4 @@
-import 'nx/src/utils/testing/mock-fs';
+import 'nx/src/internal-testing-utils/mock-fs';
 
 import {
   ProjectGraph,
@@ -7,17 +7,20 @@ import {
 } from '@nx/devkit';
 import {
   DepConstraint,
+  appIsMFERemote,
   findConstraintsFor,
   findTransitiveExternalDependencies,
+  getSourceFilePath,
   hasBannedDependencies,
   hasBannedImport,
   hasNoneOfTheseTags,
-  isAngularSecondaryEntrypoint,
+  belongsToDifferentNgEntryPoint,
   isTerminalRun,
 } from './runtime-lint-utils';
 import { vol } from 'memfs';
 
-jest.mock('nx/src/utils/workspace-root', () => ({
+jest.mock('@nx/devkit', () => ({
+  ...jest.requireActual<any>('@nx/devkit'),
   workspaceRoot: '/root',
 }));
 
@@ -454,82 +457,96 @@ describe('isAngularSecondaryEntrypoint', () => {
           '@project/standard/secondary': [
             'libs/standard/secondary/src/index.ts',
           ],
-          '@project/standard/tertiary': [
-            'libs/standard/tertiary/src/public_api.ts',
-          ],
-          '@project/features': ['libs/features/src/index.ts'],
+          '@project/features': ['libs/features/index.ts'],
           '@project/features/*': ['libs/features/*/random/folder/api.ts'],
-          '@project/buildable': ['libs/buildable/src/index.ts'],
         },
       },
     };
     const fsJson = {
       'tsconfig.base.json': JSON.stringify(tsConfig),
-      'apps/app.ts': '',
       'libs/standard/package.json': '{ "version": "0.0.0" }',
+      'libs/standard/src/index.ts': 'const bla = "foo"',
       'libs/standard/secondary/ng-package.json': JSON.stringify({
         lib: { entryFile: 'src/index.ts' },
       }),
       'libs/standard/secondary/src/index.ts': 'const bla = "foo"',
-      'libs/standard/tertiary/ng-package.json': JSON.stringify({
-        lib: { entryFile: 'src/public_api.ts' },
-      }),
-      'libs/standard/tertiary/src/public_api.ts': 'const bla = "foo"',
       'libs/features/package.json': '{ "version": "0.0.0" }',
+      'libs/features/ng-package.json': JSON.stringify({
+        lib: { entryFile: 'index.ts' },
+      }),
+      'libs/features/index.ts': 'const bla = "foo"',
       'libs/features/secondary/ng-package.json': JSON.stringify({
         lib: { entryFile: 'random/folder/api.ts' },
       }),
       'libs/features/secondary/random/folder/api.ts': 'const bla = "foo"',
-      'libs/buildable/ng-package.json': JSON.stringify({
-        lib: { entryFile: 'src/index.ts' },
-      }),
     };
     vol.fromJSON(fsJson, '/root');
   });
 
-  it('should return true for secondary entrypoints', () => {
+  it('should return false if they belong to same entrypoints', () => {
+    // main
     expect(
-      isAngularSecondaryEntrypoint(
+      belongsToDifferentNgEntryPoint(
         '@project/standard',
-        'apps/app.ts',
+        'libs/standard/src/subfolder/index.ts',
         'libs/standard'
       )
     ).toBe(false);
     expect(
-      isAngularSecondaryEntrypoint(
-        '@project/standard/secondary',
-        'apps/app.ts',
-        'libs/standard'
-      )
-    ).toBe(true);
-    expect(
-      isAngularSecondaryEntrypoint(
-        '@project/standard/tertiary',
-        'apps/app.ts',
-        'libs/standard'
-      )
-    ).toBe(true);
-    expect(
-      isAngularSecondaryEntrypoint(
+      belongsToDifferentNgEntryPoint(
         '@project/features',
-        'apps/app.ts',
+        'libs/features/src/subfolder/index.ts',
         'libs/features'
       )
     ).toBe(false);
+    // secondary
     expect(
-      isAngularSecondaryEntrypoint(
+      belongsToDifferentNgEntryPoint(
+        '@project/standard/secondary',
+        'libs/standard/secondary/src/subfolder/index.ts',
+        'libs/standard'
+      )
+    ).toBe(false);
+    expect(
+      belongsToDifferentNgEntryPoint(
         '@project/features/secondary',
-        'apps/app.ts',
+        'libs/features/secondary/random/folder/src/index.ts',
         'libs/features'
+      )
+    ).toBe(false);
+  });
+
+  it('should return true if they belong to different entrypoints', () => {
+    // main
+    expect(
+      belongsToDifferentNgEntryPoint(
+        '@project/standard',
+        'libs/standard/secondary/src/subfolder/index.ts',
+        'libs/standard'
       )
     ).toBe(true);
     expect(
-      isAngularSecondaryEntrypoint(
-        '@project/buildable',
-        'apps/app.ts',
-        'libs/buildable'
+      belongsToDifferentNgEntryPoint(
+        '@project/features',
+        'libs/features/secondary/random/folder/src/index.ts',
+        'libs/features'
       )
-    ).toBe(false);
+    ).toBe(true);
+    // secondary
+    expect(
+      belongsToDifferentNgEntryPoint(
+        '@project/standard/secondary',
+        'libs/standard/src/subfolder/index.ts',
+        'libs/standard'
+      )
+    ).toBe(true);
+    expect(
+      belongsToDifferentNgEntryPoint(
+        '@project/features/secondary',
+        'libs/features/src/subfolder/index.ts',
+        'libs/features'
+      )
+    ).toBe(true);
   });
 });
 
@@ -557,4 +574,86 @@ describe('hasNoneOfTheseTags', () => {
       expect(hasNoneOfTheseTags(source, tags)).toBe(expected);
     }
   );
+});
+
+describe('getSourceFilePath', () => {
+  it.each([
+    ['/root/libs/dev-kit/package.json', '/root'],
+    ['/root/libs/dev-kit/package.json', 'C:\\root'],
+    ['C:\\root\\libs\\dev-kit\\package.json', '/root'],
+    ['C:\\root\\libs\\dev-kit\\package.json', 'C:\\root'],
+  ])(
+    'should return "libs/dev-kit/package.json" when sourceFileName is "%s" and projectPath is "%s"',
+    (sourceFileName, projectPath) => {
+      expect(getSourceFilePath(sourceFileName, projectPath)).toBe(
+        'libs/dev-kit/package.json'
+      );
+    }
+  );
+});
+
+describe('appIsMFERemote', () => {
+  const targetJs: ProjectGraphProjectNode = {
+    type: 'lib',
+    name: 'aApp',
+    data: {
+      tags: ['abc'],
+      root: 'apps/remote1',
+    } as any,
+  };
+  const targetTs: ProjectGraphProjectNode = {
+    type: 'lib',
+    name: 'bApp',
+    data: {
+      tags: ['abc'],
+      root: 'apps/remote2',
+    } as any,
+  };
+  const targetNoExposes: ProjectGraphProjectNode = {
+    type: 'lib',
+    name: 'cApp',
+    data: {
+      tags: ['abc'],
+      root: 'apps/remote3',
+    } as any,
+  };
+  const targetNone: ProjectGraphProjectNode = {
+    type: 'lib',
+    name: 'dApp',
+    data: {
+      tags: ['abc'],
+      root: 'apps/nonremote',
+    } as any,
+  };
+  const fsJson = {
+    'apps/remote1/module-federation.config.js': JSON.stringify({
+      name: 'remote1',
+      exposes: {
+        './Module': './apps/remote1/src/app/remote-entry/entry.module.ts',
+      },
+    }),
+    'apps/remote2/module-federation.config.ts': JSON.stringify({
+      name: 'remote2',
+      exposes: {
+        './Module': './apps/remote2/src/app/remote-entry/entry.module.ts',
+      },
+    }),
+    'apps/remote3/module-federation.config.js': JSON.stringify({
+      name: 'remote3',
+    }),
+  };
+  vol.fromJSON(fsJson, '/root');
+
+  it('should return true for remote apps with JS mfe config', () => {
+    expect(appIsMFERemote(targetJs)).toBe(true);
+  });
+  it('should return true for remote apps with TS mfe config', () => {
+    expect(appIsMFERemote(targetTs)).toBe(true);
+  });
+  it('should return true for remote apps with no exposes mfe config', () => {
+    expect(appIsMFERemote(targetNoExposes)).toBe(false);
+  });
+  it('should return true for remote apps with no mfe config', () => {
+    expect(appIsMFERemote(targetNone)).toBe(false);
+  });
 });

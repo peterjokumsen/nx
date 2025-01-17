@@ -1,14 +1,14 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "$id": "NxAngularStorybookConfigurationGenerator",
   "title": "Adds Storybook configuration to a project.",
   "description": "Adds Storybook configuration to a project to be able to use and create stories.",
   "cli": "nx",
   "type": "object",
   "properties": {
-    "name": {
+    "project": {
       "type": "string",
-      "aliases": ["project", "projectName"],
+      "aliases": ["name", "projectName"],
       "description": "Project for which to generate Storybook configuration.",
       "$default": {
         "$source": "argv",
@@ -26,10 +26,6 @@
       "x-priority": "important",
       "default": true
     },
-    "configureCypress": {
-      "type": "boolean",
-      "description": "Specifies whether to configure Cypress or not."
-    },
     "generateStories": {
       "type": "boolean",
       "description": "Specifies whether to automatically generate `*.stories.ts` files for components declared in this project or not.",
@@ -37,20 +33,12 @@
       "default": true,
       "x-priority": "important"
     },
-    "generateCypressSpecs": {
-      "type": "boolean",
-      "description": "Specifies whether to automatically generate test files in the generated Cypress e2e app."
-    },
     "configureStaticServe": {
       "type": "boolean",
       "description": "Specifies whether to configure a static file server target for serving storybook. Helpful for speeding up CI build/test times.",
       "x-prompt": "Configure a static file server for the storybook instance?",
       "default": true,
       "x-priority": "important"
-    },
-    "cypressDirectory": {
-      "type": "string",
-      "description": "A directory where the Cypress project will be placed. Placed at the root by default."
     },
     "linter": {
       "description": "The tool to use for running lint checks.",
@@ -77,6 +65,9 @@
         "type": "string",
         "description": "Path to ignore."
       },
+      "default": [
+        "*.stories.ts,*.stories.tsx,*.stories.js,*.stories.jsx,*.stories.mdx"
+      ],
       "examples": [
         "apps/my-app/src/not-stories/**",
         "**/**/src/**/not-stories/**",
@@ -87,6 +78,6 @@
     }
   },
   "additionalProperties": false,
-  "required": ["name"],
+  "required": ["project"],
   "examplesFile": "../../../docs/storybook-configuration-examples.md"
 }

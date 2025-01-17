@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { ExecutorContext, parseTargetString, runExecutor } from '@nx/devkit';
 import { join } from 'path';
 
@@ -16,7 +15,8 @@ export default async function* serveExecutor(
     : 'production';
 
   // Setting port that the custom server should use.
-  (process.env as any).PORT = options.port;
+  process.env.PORT = options.port ? `${options.port}` : process.env.PORT;
+  options.port = parseInt(process.env.PORT);
 
   const projectRoot = context.projectGraph.nodes[context.projectName].data.root;
 
@@ -28,13 +28,16 @@ async function* runCustomServer(
   options: NextServeBuilderOptions,
   context: ExecutorContext
 ) {
-  process.env.NX_NEXT_DIR = root;
+  process.env.NX_NEXT_DIR ??= root;
   process.env.NX_NEXT_PUBLIC_DIR = join(root, 'public');
+  const httpProtocol = options.customServerHttps ? 'https' : 'http';
 
-  const baseUrl = `http://${options.hostname || 'localhost'}:${options.port}`;
+  const baseUrl = `${httpProtocol}://${options.hostname || 'localhost'}:${
+    options.port
+  }`;
 
   const customServerBuild = await runExecutor(
-    parseTargetString(options.customServerTarget, context.projectGraph),
+    parseTargetString(options.customServerTarget, context),
     {
       watch: options.dev ? true : false,
     },

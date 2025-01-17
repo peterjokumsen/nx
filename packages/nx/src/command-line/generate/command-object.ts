@@ -1,5 +1,5 @@
-import { CommandModule, Argv } from 'yargs';
-import { linkToNxDevAndExamples } from '../yargs-utils/documentation';
+import { Argv, CommandModule } from 'yargs';
+import { withVerbose } from '../yargs-utils/shared-options';
 
 export const yargsGenerateCommand: CommandModule = {
   command: 'generate <generator> [_..]',
@@ -11,56 +11,32 @@ export const yargsGenerateCommand: CommandModule = {
     // Remove the command from the args
     args._ = args._.slice(1);
 
-    process.exit(
-      await (await import('./generate')).generate(process.cwd(), args)
-    );
-  },
-};
-
-/**
- * @deprecated(v17): Remove `workspace-generator in v17. Use local plugins.
- */
-export const yargsWorkspaceGeneratorCommand: CommandModule = {
-  command: 'workspace-generator [generator]',
-  describe: 'Runs a workspace generator from the tools/generators directory',
-  deprecated:
-    'Use a local plugin instead. See: https://nx.dev/deprecated/workspace-generators',
-  aliases: ['workspace-schematic [schematic]'],
-  builder: async (yargs) =>
-    linkToNxDevAndExamples(withGenerateOptions(yargs), 'workspace-generator'),
-  handler: async (args) => {
-    await (await import('./generate')).workspaceGenerators(args);
-    process.exit(0);
+    process.exit(await (await import('./generate')).generate(args));
   },
 };
 
 function withGenerateOptions(yargs: Argv) {
   const generatorWillShowHelp =
     process.argv[3] && !process.argv[3].startsWith('-');
-  const res = yargs
+  const res = withVerbose(yargs)
     .positional('generator', {
-      describe: 'Name of the generator (e.g., @nx/js:library, library)',
+      describe: 'Name of the generator (e.g., @nx/js:library, library).',
       type: 'string',
       required: true,
     })
     .option('dryRun', {
-      describe: 'Preview the changes without updating files',
+      describe: 'Preview the changes without updating files.',
       alias: 'd',
       type: 'boolean',
       default: false,
     })
     .option('interactive', {
-      describe: 'When false disables interactive input prompts for options',
+      describe: 'When false disables interactive input prompts for options.',
       type: 'boolean',
       default: true,
     })
-    .option('verbose', {
-      describe:
-        'Prints additional information about the commands (e.g., stack traces)',
-      type: 'boolean',
-    })
     .option('quiet', {
-      describe: 'Hides logs from tree operations (e.g. `CREATE package.json`)',
+      describe: 'Hides logs from tree operations (e.g. `CREATE package.json`).',
       type: 'boolean',
       conflicts: ['verbose'],
     })

@@ -1,9 +1,12 @@
-import type { GeneratorCallback, Tree } from '@nx/devkit';
-import { addDependenciesToPackageJson, readJson } from '@nx/devkit';
+import { readJson, type Tree } from '@nx/devkit';
 import { clean, coerce, major } from 'semver';
+import {
+  backwardCompatibleVersions,
+  type PackageCompatVersions,
+  type PackageLatestVersions,
+} from '../../utils/backward-compatible-versions';
 import * as latestVersions from '../../utils/versions';
 import { angularVersion } from '../../utils/versions';
-import { backwardCompatibleVersions } from '../../utils/backward-compatible-versions';
 
 export function getInstalledAngularVersion(tree: Tree): string {
   const pkgJson = readJson(tree, 'package.json');
@@ -52,43 +55,15 @@ export function getInstalledPackageVersionInfo(tree: Tree, pkgName: string) {
   return version ? { major: major(coerce(version)), version } : null;
 }
 
-export function addDependenciesToPackageJsonIfDontExist(
-  tree: Tree,
-  dependencies: Record<string, string>,
-  devDependencies: Record<string, string>,
-  packageJsonPath: string = 'package.json'
-): GeneratorCallback {
-  const packageJson = readJson(tree, packageJsonPath);
-
-  function filterExisting(
-    deps: Record<string, string>
-  ): Record<string, string> {
-    return Object.keys(deps)
-      .filter(
-        (d) =>
-          !packageJson.dependencies?.[d] && !packageJson.devDependencies?.[d]
-      )
-      .reduce((acc, d) => ({ ...acc, [d]: deps[d] }), {});
-  }
-
-  const depsToAdd = filterExisting(dependencies);
-  const devDepsToAdd = filterExisting(devDependencies);
-
-  return addDependenciesToPackageJson(
-    tree,
-    depsToAdd,
-    devDepsToAdd,
-    packageJsonPath
-  );
-}
-
-export function versions(tree: Tree) {
+export function versions(
+  tree: Tree
+): PackageLatestVersions | PackageCompatVersions {
   const majorAngularVersion = getInstalledAngularMajorVersion(tree);
   switch (majorAngularVersion) {
-    case 14:
-      return backwardCompatibleVersions.angularV14;
-    case 15:
-      return backwardCompatibleVersions.angularV15;
+    case 17:
+      return backwardCompatibleVersions.angularV17;
+    case 18:
+      return backwardCompatibleVersions.angularV18;
     default:
       return latestVersions;
   }

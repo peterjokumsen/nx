@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "cli": "nx",
   "$id": "NxPluginPreset",
   "title": "Generator ran by create-nx-plugin",
@@ -24,6 +24,10 @@
     "createPackageName": {
       "type": "string",
       "description": "Name of package which creates a workspace"
+    },
+    "useProjectJson": {
+      "type": "boolean",
+      "description": "Use a `project.json` configuration file instead of inlining the Nx configuration in the `package.json` file."
     }
   },
   "required": ["pluginName"]

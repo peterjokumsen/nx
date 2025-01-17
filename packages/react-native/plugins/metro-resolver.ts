@@ -13,15 +13,17 @@ import { workspaceRoot } from '@nx/devkit';
  * This resolve function requires projectRoot to be set to
  * workspace root in order modules and assets to be registered and watched.
  */
-export function getResolveRequest(extensions: string[]) {
+export function getResolveRequest(
+  extensions: string[],
+  exportsConditionNames: string[] = [],
+  mainFields: string[] = []
+) {
   return function (
     _context: any,
     realModuleName: string,
     platform: string | null
   ) {
     const debug = process.env.NX_REACT_NATIVE_DEBUG === 'true';
-
-    if (debug) console.log(chalk.cyan(`[Nx] Resolving: ${realModuleName}`));
 
     const { resolveRequest, ...context } = _context;
 
@@ -32,18 +34,30 @@ export function getResolveRequest(extensions: string[]) {
         realModuleName,
         platform,
         debug
-      ) ||
-      defaultMetroResolver(context, realModuleName, platform, debug) ||
+      ) ??
+      defaultMetroResolver(context, realModuleName, platform, debug) ??
       tsconfigPathsResolver(
         context,
         extensions,
         realModuleName,
         platform,
         debug
-      ) ||
-      pnpmResolver(extensions, context, realModuleName, debug);
+      ) ??
+      pnpmResolver(
+        extensions,
+        context,
+        realModuleName,
+        debug,
+        exportsConditionNames,
+        mainFields
+      );
     if (resolvedPath) {
       return resolvedPath;
+    }
+    if (debug) {
+      console.log(
+        chalk.red(`[Nx] Unable to resolve with any resolver: ${realModuleName}`)
+      );
     }
     throw new Error(`Cannot resolve ${chalk.bold(realModuleName)}`);
   };
@@ -53,7 +67,7 @@ function resolveRequestFromContext(
   resolveRequest: Function,
   context: any,
   realModuleName: string,
-  platform: string,
+  platform: string | null,
   debug: boolean
 ) {
   try {
@@ -75,7 +89,7 @@ function resolveRequestFromContext(
 function defaultMetroResolver(
   context: any,
   realModuleName: string,
-  platform: string,
+  platform: string | null,
   debug: boolean
 ) {
   try {
@@ -99,7 +113,9 @@ function pnpmResolver(
   extensions: string[],
   context: any,
   realModuleName: string,
-  debug: boolean
+  debug: boolean,
+  exportsConditionNames: string[] = [],
+  mainFields: string[] = []
 ) {
   try {
     const pnpmResolve = getPnpmResolver(extensions);
@@ -130,23 +146,22 @@ function tsconfigPathsResolver(
   context: any,
   extensions: string[],
   realModuleName: string,
-  platform: string,
+  platform: string | null,
   debug: boolean
 ) {
-  const tsConfigPathMatcher = getMatcher(debug);
-  const match = tsConfigPathMatcher(
-    realModuleName,
-    undefined,
-    undefined,
-    extensions.map((ext) => `.${ext}`)
-  );
-
-  if (match) {
+  try {
+    const tsConfigPathMatcher = getMatcher(debug);
+    const match = tsConfigPathMatcher(
+      realModuleName,
+      undefined,
+      undefined,
+      extensions.map((ext) => `.${ext}`)
+    );
     return metroResolver.resolve(context, match, platform);
-  } else {
+  } catch {
     if (debug) {
       console.log(
-        chalk.red(`[Nx] Failed to resolve ${chalk.bold(realModuleName)}`)
+        chalk.cyan(`[Nx] Failed to resolve ${chalk.bold(realModuleName)}`)
       );
       console.log(
         chalk.cyan(
@@ -195,7 +210,11 @@ function getMatcher(debug: boolean) {
  * It is inspired form https://github.com/vjpr/pnpm-expo-example/blob/main/packages/pnpm-expo-helper/util/make-resolver.js.
  */
 let resolver;
-function getPnpmResolver(extensions: string[]) {
+function getPnpmResolver(
+  extensions: string[],
+  exportsConditionNames: string[] = [],
+  mainFields: string[] = []
+) {
   if (!resolver) {
     const fileSystem = new CachedInputFileSystem(fs, 4000);
     resolver = ResolverFactory.createResolver({
@@ -203,8 +222,16 @@ function getPnpmResolver(extensions: string[]) {
       extensions: extensions.map((extension) => '.' + extension),
       useSyncFileSystemCalls: true,
       modules: [join(workspaceRoot, 'node_modules'), 'node_modules'],
-      conditionNames: ['native', 'browser', 'require', 'default'],
-      mainFields: ['react-native', 'browser', 'main'],
+      conditionNames: [
+        'native',
+        'browser',
+        'require',
+        'default',
+        'react-native',
+        'node',
+        ...exportsConditionNames,
+      ],
+      mainFields: ['react-native', 'browser', 'main', ...mainFields],
       aliasFields: ['browser'],
     });
   }

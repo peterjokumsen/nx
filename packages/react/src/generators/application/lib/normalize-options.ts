@@ -1,14 +1,12 @@
-import { NormalizedSchema, Schema } from '../schema';
-import { assertValidStyle } from '../../../utils/assertion';
+import { Tree, extractLayoutDirectory, names, readNxJson } from '@nx/devkit';
 import {
-  extractLayoutDirectory,
-  getWorkspaceLayout,
-  joinPathFragments,
-  names,
-  normalizePath,
-  Tree,
-} from '@nx/devkit';
+  determineProjectNameAndRootOptions,
+  ensureProjectName,
+} from '@nx/devkit/src/generators/project-name-and-root-utils';
+import { assertValidStyle } from '../../../utils/assertion';
+import { NormalizedSchema, Schema } from '../schema';
 import { findFreePort } from './find-free-port';
+import { isUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
 
 export function normalizeDirectory(options: Schema) {
   options.directory = options.directory?.replace(/\\{1,2}/g, '/');
@@ -22,40 +20,42 @@ export function normalizeProjectName(options: Schema) {
   return normalizeDirectory(options).replace(new RegExp('/', 'g'), '-');
 }
 
-export function normalizeOptions<T extends Schema = Schema>(
+export async function normalizeOptions<T extends Schema = Schema>(
   host: Tree,
   options: Schema
-): NormalizedSchema<T> {
-  const appDirectory = normalizeDirectory(options);
-  const appProjectName = normalizeProjectName(options);
-  const e2eProjectName = options.rootProject
-    ? 'e2e'
-    : `${names(options.name).fileName}-e2e`;
+): Promise<NormalizedSchema<T>> {
+  await ensureProjectName(host, options, 'application');
+  const { projectName: appProjectName, projectRoot: appProjectRoot } =
+    await determineProjectNameAndRootOptions(host, {
+      name: options.name,
+      projectType: 'application',
+      directory: options.directory,
+      rootProject: options.rootProject,
+    });
 
-  const { layoutDirectory } = extractLayoutDirectory(options.directory);
-  const appsDir = layoutDirectory ?? getWorkspaceLayout(host).appsDir;
-  const appProjectRoot = options.rootProject
-    ? '.'
-    : normalizePath(`${appsDir}/${appDirectory}`);
-  const e2eProjectRoot = options.rootProject
-    ? 'e2e'
-    : joinPathFragments(appsDir, `${appDirectory}-e2e`);
+  const nxJson = readNxJson(host);
+  const addPlugin =
+    process.env.NX_ADD_PLUGINS !== 'false' &&
+    nxJson.useInferencePlugins !== false;
+
+  options.addPlugin ??= addPlugin;
+
+  options.rootProject = appProjectRoot === '.';
+
+  const e2eProjectName = options.rootProject ? 'e2e' : `${appProjectName}-e2e`;
+  const e2eProjectRoot = options.rootProject ? 'e2e' : `${appProjectRoot}-e2e`;
 
   const parsedTags = options.tags
     ? options.tags.split(',').map((s) => s.trim())
     : [];
 
-  const fileName = options.pascalCaseFiles ? 'App' : 'app';
+  const fileName = 'app';
 
-  const styledModule = /^(css|scss|less|styl|none)$/.test(options.style)
+  const styledModule = /^(css|scss|less|tailwind|none)$/.test(options.style)
     ? null
     : options.style;
 
   assertValidStyle(options.style);
-
-  if (options.bundler === 'vite') {
-    options.unitTestRunner = 'vitest';
-  }
 
   const normalized = {
     ...options,
@@ -68,6 +68,7 @@ export function normalizeOptions<T extends Schema = Schema>(
     fileName,
     styledModule,
     hasStyles: options.style !== 'none',
+    isUsingTsSolutionConfig: isUsingTsSolutionSetup(host),
   } as NormalizedSchema;
 
   normalized.routing = normalized.routing ?? false;
@@ -75,10 +76,8 @@ export function normalizeOptions<T extends Schema = Schema>(
   normalized.classComponent = normalized.classComponent ?? false;
   normalized.compiler = normalized.compiler ?? 'babel';
   normalized.bundler = normalized.bundler ?? 'webpack';
-  normalized.unitTestRunner =
-    normalized.unitTestRunner ??
-    (normalized.bundler === 'vite' ? 'vitest' : 'jest');
-  normalized.e2eTestRunner = normalized.e2eTestRunner ?? 'cypress';
+  normalized.unitTestRunner = normalized.unitTestRunner ?? 'jest';
+  normalized.e2eTestRunner = normalized.e2eTestRunner ?? 'playwright';
   normalized.inSourceTests = normalized.minimal || normalized.inSourceTests;
   normalized.devServerPort ??= findFreePort(host);
   normalized.minimal = normalized.minimal ?? false;

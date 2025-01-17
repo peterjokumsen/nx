@@ -3,12 +3,17 @@ import { satisfies } from 'semver';
 import { workspaceRoot } from '../../../utils/workspace-root';
 import { reverse } from '../../../project-graph/operators';
 import { NormalizedPackageJson } from './utils/package-json';
-import { ProjectGraphBuilder } from '../../../project-graph/project-graph-builder';
 import {
+  RawProjectGraphDependency,
+  validateDependency,
+} from '../../../project-graph/project-graph-builder';
+import {
+  DependencyType,
   ProjectGraph,
   ProjectGraphExternalNode,
 } from '../../../config/project-graph';
-import { fileHasher, hashArray } from '../../../hasher/file-hasher';
+import { hashArray } from '../../../hasher/file-hasher';
+import { CreateDependenciesContext } from '../../../project-graph/plugins';
 
 /**
  * NPM
@@ -50,21 +55,51 @@ type NpmLockFile = {
   dependencies?: Record<string, NpmDependencyV1>;
 };
 
-export function parseNpmLockfile(
-  lockFileContent: string,
-  builder: ProjectGraphBuilder
-) {
-  const data = JSON.parse(lockFileContent) as NpmLockFile;
+// we use key => node map to avoid duplicate work when parsing keys
+let keyMap = new Map<string, ProjectGraphExternalNode>();
+let currentLockFileHash: string;
 
-  // we use key => node map to avoid duplicate work when parsing keys
-  const keyMap = new Map<string, ProjectGraphExternalNode>();
-  addNodes(data, builder, keyMap);
-  addDependencies(data, builder, keyMap);
+let parsedLockFile: NpmLockFile;
+function parsePackageLockFile(lockFileContent: string, lockFileHash: string) {
+  if (lockFileHash === currentLockFileHash) {
+    return parsedLockFile;
+  }
+
+  keyMap.clear();
+  const results = JSON.parse(lockFileContent) as NpmLockFile;
+  parsedLockFile = results;
+  currentLockFileHash = lockFileHash;
+  return results;
 }
 
-function addNodes(
+export function getNpmLockfileNodes(
+  lockFileContent: string,
+  lockFileHash: string
+) {
+  const data = parsePackageLockFile(
+    lockFileContent,
+    lockFileHash
+  ) as NpmLockFile;
+
+  // we use key => node map to avoid duplicate work when parsing keys
+  return getNodes(data, keyMap);
+}
+
+export function getNpmLockfileDependencies(
+  lockFileContent: string,
+  lockFileHash: string,
+  ctx: CreateDependenciesContext
+) {
+  const data = parsePackageLockFile(
+    lockFileContent,
+    lockFileHash
+  ) as NpmLockFile;
+
+  return getDependencies(data, keyMap, ctx);
+}
+
+function getNodes(
   data: NpmLockFile,
-  builder: ProjectGraphBuilder,
   keyMap: Map<string, ProjectGraphExternalNode>
 ) {
   const nodes: Map<string, Map<string, ProjectGraphExternalNode>> = new Map();
@@ -92,8 +127,7 @@ function addNodes(
                 depSnapshot,
                 `${snapshot.version.slice(5)}/node_modules/${depName}`,
                 nodes,
-                keyMap,
-                builder
+                keyMap
               );
             }
           );
@@ -104,12 +138,13 @@ function addNodes(
           snapshot,
           `node_modules/${packageName}`,
           nodes,
-          keyMap,
-          builder
+          keyMap
         );
       }
     });
   }
+
+  const results: Record<string, ProjectGraphExternalNode> = {};
 
   // some packages can be both hoisted and nested
   // so we need to run this check once we have all the nodes and paths
@@ -120,9 +155,10 @@ function addNodes(
     }
 
     versionMap.forEach((node) => {
-      builder.addExternalNode(node);
+      results[node.name] = node;
     });
   }
+  return results;
 }
 
 function addV1Node(
@@ -130,8 +166,7 @@ function addV1Node(
   snapshot: NpmDependencyV1,
   path: string,
   nodes: Map<string, Map<string, ProjectGraphExternalNode>>,
-  keyMap: Map<string, ProjectGraphExternalNode>,
-  builder: ProjectGraphBuilder
+  keyMap: Map<string, ProjectGraphExternalNode>
 ) {
   createNode(packageName, snapshot.version, path, nodes, keyMap, snapshot);
 
@@ -143,8 +178,7 @@ function addV1Node(
         depSnapshot,
         `${path}/node_modules/${depName}`,
         nodes,
-        keyMap,
-        builder
+        keyMap
       );
     });
   }
@@ -210,11 +244,12 @@ function findV3Version(snapshot: NpmDependencyV3, packageName: string): string {
   return version;
 }
 
-function addDependencies(
+function getDependencies(
   data: NpmLockFile,
-  builder: ProjectGraphBuilder,
-  keyMap: Map<string, ProjectGraphExternalNode>
-) {
+  keyMap: Map<string, ProjectGraphExternalNode>,
+  ctx: CreateDependenciesContext
+): RawProjectGraphDependency[] {
+  const dependencies: RawProjectGraphDependency[] = [];
   if (data.lockfileVersion > 1) {
     Object.entries(data.packages).forEach(([path, snapshot]) => {
       // we are skipping workspaces packages
@@ -231,7 +266,13 @@ function addDependencies(
           Object.entries(section).forEach(([name, versionRange]) => {
             const target = findTarget(path, keyMap, name, versionRange);
             if (target) {
-              builder.addStaticDependency(sourceName, target.name);
+              const dep: RawProjectGraphDependency = {
+                source: sourceName,
+                target: target.name,
+                type: DependencyType.static,
+              };
+              validateDependency(dep, ctx);
+              dependencies.push(dep);
             }
           });
         }
@@ -242,11 +283,13 @@ function addDependencies(
       addV1NodeDependencies(
         `node_modules/${packageName}`,
         snapshot,
-        builder,
-        keyMap
+        dependencies,
+        keyMap,
+        ctx
       );
     });
   }
+  return dependencies;
 }
 
 function findTarget(
@@ -262,7 +305,19 @@ function findTarget(
 
   if (keyMap.has(searchPath)) {
     const child = keyMap.get(searchPath);
+    // if the version is alias to another package we need to parse the versions to compare
     if (
+      child.data.version.startsWith('npm:') &&
+      versionRange.startsWith('npm:')
+    ) {
+      const nodeVersion = child.data.version.slice(
+        child.data.version.indexOf('@', 5) + 1
+      );
+      const depVersion = versionRange.slice(versionRange.indexOf('@', 5) + 1);
+      if (nodeVersion === depVersion || satisfies(nodeVersion, depVersion)) {
+        return child;
+      }
+    } else if (
       child.data.version === versionRange ||
       satisfies(child.data.version, versionRange)
     ) {
@@ -284,15 +339,22 @@ function findTarget(
 function addV1NodeDependencies(
   path: string,
   snapshot: NpmDependencyV1,
-  builder: ProjectGraphBuilder,
-  keyMap: Map<string, ProjectGraphExternalNode>
+  dependencies: RawProjectGraphDependency[],
+  keyMap: Map<string, ProjectGraphExternalNode>,
+  ctx: CreateDependenciesContext
 ) {
   if (keyMap.has(path) && snapshot.requires) {
     const source = keyMap.get(path).name;
     Object.entries(snapshot.requires).forEach(([name, versionRange]) => {
       const target = findTarget(path, keyMap, name, versionRange);
       if (target) {
-        builder.addStaticDependency(source, target.name);
+        const dep: RawProjectGraphDependency = {
+          source: source,
+          target: target.name,
+          type: DependencyType.static,
+        };
+        validateDependency(dep, ctx);
+        dependencies.push(dep);
       }
     });
   }
@@ -302,8 +364,9 @@ function addV1NodeDependencies(
       addV1NodeDependencies(
         `${path}/node_modules/${depName}`,
         depSnapshot,
-        builder,
-        keyMap
+        dependencies,
+        keyMap,
+        ctx
       );
     });
   }
@@ -311,15 +374,15 @@ function addV1NodeDependencies(
   if (peerDependencies) {
     const node = keyMap.get(path);
     Object.entries(peerDependencies).forEach(([depName, depSpec]) => {
-      if (
-        !builder.graph.dependencies[node.name]?.find(
-          (d) => d.target === depName
-        )
-      ) {
-        const target = findTarget(path, keyMap, depName, depSpec);
-        if (target) {
-          builder.addStaticDependency(node.name, target.name);
-        }
+      const target = findTarget(path, keyMap, depName, depSpec);
+      if (target) {
+        const dep: RawProjectGraphDependency = {
+          source: node.name,
+          target: target.name,
+          type: DependencyType.static,
+        };
+        validateDependency(dep, ctx);
+        dependencies.push(dep);
       }
     });
   }
@@ -414,9 +477,13 @@ function mapSnapshots(
   graph: ProjectGraph
 ): MappedPackage[] {
   const nestedNodes = new Set<ProjectGraphExternalNode>();
-  const visitedNodes = new Map<ProjectGraphExternalNode, Set<string>>();
-  const visitedPaths = new Set<string>();
-
+  const visitedNodes = new Map<
+    ProjectGraphExternalNode,
+    {
+      packagePaths: Set<string>;
+      unresolvedParents: Set<string>;
+    }
+  >();
   const remappedPackages: Map<string, MappedPackage> = new Map();
 
   // add first level children
@@ -428,8 +495,10 @@ function mapSnapshots(
         node.data.version
       );
       remappedPackages.set(mappedPackage.path, mappedPackage);
-      visitedNodes.set(node, new Set([mappedPackage.path]));
-      visitedPaths.add(mappedPackage.path);
+      visitedNodes.set(node, {
+        packagePaths: new Set([mappedPackage.path]),
+        unresolvedParents: new Set(),
+      });
     } else {
       nestedNodes.add(node);
     }
@@ -443,7 +512,6 @@ function mapSnapshots(
       remappedPackages,
       nestedNodes,
       visitedNodes,
-      visitedPaths,
       rootLockFile
     );
     // initially we naively map package paths to topParent/../parent/child
@@ -491,8 +559,13 @@ function nestMappedPackages(
   invertedGraph: ProjectGraph,
   result: Map<string, MappedPackage>,
   nestedNodes: Set<ProjectGraphExternalNode>,
-  visitedNodes: Map<ProjectGraphExternalNode, Set<string>>,
-  visitedPaths: Set<string>,
+  visitedNodes: Map<
+    ProjectGraphExternalNode,
+    {
+      packagePaths: Set<string>;
+      unresolvedParents: Set<string>;
+    }
+  >,
   rootLockFile: NpmLockFile
 ) {
   const initialSize = nestedNodes.size;
@@ -502,12 +575,26 @@ function nestMappedPackages(
   }
 
   nestedNodes.forEach((node) => {
-    let unresolvedParents = invertedGraph.dependencies[node.name].length;
-    invertedGraph.dependencies[node.name].forEach(({ target }) => {
-      const targetNode = invertedGraph.externalNodes[target];
+    if (!visitedNodes.has(node)) {
+      visitedNodes.set(node, {
+        packagePaths: new Set(),
+        unresolvedParents: new Set(
+          invertedGraph.dependencies[node.name].map(({ target }) => target)
+        ),
+      });
+    }
 
-      if (visitedNodes.has(targetNode)) {
-        visitedNodes.get(targetNode).forEach((path) => {
+    invertedGraph.dependencies[node.name].forEach(({ target }) => {
+      if (!visitedNodes.get(node).unresolvedParents.has(target)) {
+        return;
+      }
+
+      const targetNode = invertedGraph.externalNodes[target];
+      if (
+        visitedNodes.has(targetNode) &&
+        !visitedNodes.get(targetNode).unresolvedParents.size
+      ) {
+        visitedNodes.get(targetNode).packagePaths.forEach((path) => {
           const mappedPackage = mapPackage(
             rootLockFile,
             node.data.packageName,
@@ -515,17 +602,12 @@ function nestMappedPackages(
             path + '/'
           );
           result.set(mappedPackage.path, mappedPackage);
-          if (visitedNodes.has(node)) {
-            visitedNodes.get(node).add(mappedPackage.path);
-          } else {
-            visitedNodes.set(node, new Set([mappedPackage.path]));
-          }
-          visitedPaths.add(mappedPackage.path);
+          visitedNodes.get(node).packagePaths.add(mappedPackage.path);
+          visitedNodes.get(node).unresolvedParents.delete(target);
         });
-        unresolvedParents--;
       }
     });
-    if (!unresolvedParents) {
+    if (!visitedNodes.get(node).unresolvedParents.size) {
       nestedNodes.delete(node);
     }
   });
@@ -543,7 +625,6 @@ function nestMappedPackages(
       result,
       nestedNodes,
       visitedNodes,
-      visitedPaths,
       rootLockFile
     );
   }

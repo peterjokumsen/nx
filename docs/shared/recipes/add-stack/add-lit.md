@@ -1,6 +1,6 @@
 # Add a New Lit Project
 
-The code for this example is available on Github:
+The code for this example is available on GitHub:
 
 {% github-repository url="https://github.com/nrwl/nx-recipes/tree/main/lit" /%}
 
@@ -8,17 +8,16 @@ The code for this example is available on Github:
 
 Because we are not using an Nx plugin for Lit, there are few items we'll have to configure manually. We'll have to configure our own build system. There are no pre-created Lit-specific code generators. And we'll have to take care of updating any framework dependencies as needed.
 
-{% pill url="/core-features/run-tasks" %}✅ Run Tasks{% /pill %}
-{% pill url="/core-features/cache-task-results" %}✅ Cache Task Results{% /pill %}
-{% pill url="/core-features/remote-cache" %}✅ Share Your Cache{% /pill %}
-{% pill url="/core-features/explore-graph" %}✅ Explore the Graph{% /pill %}
-{% pill url="/core-features/distribute-task-execution" %}✅ Distribute Task Execution{% /pill %}
-{% pill url="/core-features/integrate-with-editors" %}✅ Integrate with Editors{% /pill %}
-{% pill url="/core-features/automate-updating-dependencies" %}✅ Automate Updating Nx{% /pill %}
-{% pill url="/core-features/enforce-module-boundaries" %}✅ Enforce Module Boundaries{% /pill %}
-{% pill url="/core-features/plugin-features/use-task-executors" %}🚫 Use Task Executors{% /pill %}
-{% pill url="/core-features/plugin-features/use-code-generators" %}🚫 Use Code Generators{% /pill %}
-{% pill url="/core-features/automate-updating-dependencies" %}🚫 Automate Updating Framework Dependencies{% /pill %}
+{% pill url="/features/run-tasks" %}✅ Run Tasks{% /pill %}
+{% pill url="/features/cache-task-results" %}✅ Cache Task Results{% /pill %}
+{% pill url="/ci/features/remote-cache" %}✅ Share Your Cache{% /pill %}
+{% pill url="/features/explore-graph" %}✅ Explore the Graph{% /pill %}
+{% pill url="/ci/features/distribute-task-execution" %}✅ Distribute Task Execution{% /pill %}
+{% pill url="/getting-started/editor-setup" %}✅ Integrate with Editors{% /pill %}
+{% pill url="/features/automate-updating-dependencies" %}✅ Automate Updating Nx{% /pill %}
+{% pill url="/features/enforce-module-boundaries" %}✅ Enforce Module Boundaries{% /pill %}
+{% pill url="/features/generate-code" %}🚫 Use Code Generators{% /pill %}
+{% pill url="/features/automate-updating-dependencies" %}🚫 Automate Updating Framework Dependencies{% /pill %}
 
 ## Install Lit and Other Dependencies
 
@@ -27,15 +26,34 @@ Install all the dependencies we need:
 {% tabs %}
 {%tab label="npm"%}
 
-```shell
-npm i --save-dev @nx/node lit http-server
+```shell {% skipRescope=true %}
+nx add @nx/node
+npm add -D lit http-server
 ```
 
 {% /tab %}
 {%tab label="yarn"%}
 
+```shell {% skipRescope=true %}
+nx add @nx/node
+yarn add -D lit http-server
+```
+
+{% /tab %}
+{%tab label="pnpm"%}
+
+```shell {% skipRescope=true %}
+nx add @nx/node
+pnpm add -D lit http-server
+```
+
+{% /tab %}
+
+{% tab label="bun" %}
+
 ```shell
-yarn add --dev @nx/node lit http-server
+nx add @nx/node
+bun add -D lit http-server
 ```
 
 {% /tab %}
@@ -46,7 +64,7 @@ yarn add --dev @nx/node lit http-server
 We'll start with a node application and then tweak the settings to match what we need. Add a new node application to your workspace with the following command:
 
 ```shell
-nx g @nx/node:app my-lit-app
+nx g @nx/node:app apps/my-lit-app
 ```
 
 Choose `none` for the node framework, since we won't be using this as a node app.
@@ -166,7 +184,7 @@ nx serve my-lit-app
 Let's create a library that our Lit application is going to consume. To create a new library, install the `@nx/js` package and run:
 
 ```shell
-nx g @nx/js:lib my-lib
+nx g @nx/js:lib libs/my-lib
 ```
 
 Once the library is created, update the following files.
@@ -201,6 +219,6 @@ Now when you serve your application, you'll see the content from the library bei
 
 ## More Documentation
 
-- [@nx/esbuild](/packages/esbuild)
-- [@nx/js](/packages/js)
+- [@nx/esbuild](/nx-api/esbuild)
+- [@nx/js](/nx-api/js)
 - [Lit](https://lit.dev/)

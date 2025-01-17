@@ -1,15 +1,17 @@
 /**
+ * @deprecated use `nx run @nx/react-native:upgrade` instead.
+ * TODO (@xiongemi): remove this generator for nx v19
  * This function is a destructive command that replace React Native iOS and Android code with latest.
  * It would replace the Android and iOS folder entirely.
  */
 
 import {
-  convertNxGenerator,
   GeneratorCallback,
   joinPathFragments,
   readProjectConfiguration,
   runTasksInSerial,
   Tree,
+  logger,
 } from '@nx/devkit';
 import { existsSync } from 'fs';
 
@@ -23,6 +25,9 @@ export async function reactNativeUpgradeNativeGenerator(
   host: Tree,
   schema: UpgradeNativeConfigureSchema
 ): Promise<GeneratorCallback> {
+  logger.warn(
+    `Please run 'nx run @nx/react-native:upgrade ${schema.name}' instead.`
+  );
   const { projectType, root: appProjectRoot } = readProjectConfiguration(
     host,
     schema.name
@@ -51,6 +56,3 @@ export async function reactNativeUpgradeNativeGenerator(
 }
 
 export default reactNativeUpgradeNativeGenerator;
-export const reactNativeUpgradeNativeSchematic = convertNxGenerator(
-  reactNativeUpgradeNativeGenerator
-);

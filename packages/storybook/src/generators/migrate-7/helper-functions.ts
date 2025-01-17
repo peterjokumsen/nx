@@ -620,9 +620,7 @@ export function checkStorybookInstalled(packageJson): boolean {
     (packageJson.dependencies['@storybook/core-server'] ||
       packageJson.devDependencies['@storybook/core-server']) &&
     (packageJson.dependencies['@nx/storybook'] ||
-      packageJson.devDependencies['@nx/storybook'] ||
-      packageJson.dependencies['@nrwl/storybook'] ||
-      packageJson.devDependencies['@nrwl/storybook'])
+      packageJson.devDependencies['@nx/storybook'])
   );
 }
 
@@ -686,7 +684,7 @@ export function logResult(
     color: 'green',
   });
 
-  generateFiles(tree, joinPathFragments(__dirname, 'files'), '.', {
+  generateFiles(tree, join(__dirname, 'files'), '.', {
     tmpl: '',
     successfulProjects: Object.entries(
       migrationSummary?.successfulProjects

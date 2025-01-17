@@ -1,27 +1,57 @@
 import {
   addProjectConfiguration,
-  offsetFromRoot,
+  joinPathFragments,
   ProjectConfiguration,
+  readNxJson,
   TargetConfiguration,
   Tree,
+  writeJson,
 } from '@nx/devkit';
+
+import { hasExpoPlugin } from '../../../utils/has-expo-plugin';
 import { NormalizedSchema } from './normalize-options';
+import { addBuildTargetDefaults } from '@nx/devkit/src/generators/target-defaults-utils';
+import { isUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
+import { getImportPath } from '@nx/js/src/utils/get-import-path';
 
 export function addProject(host: Tree, options: NormalizedSchema) {
+  const nxJson = readNxJson(host);
+  const hasPlugin = hasExpoPlugin(host);
+
+  if (!hasPlugin) {
+    addBuildTargetDefaults(host, '@nx/expo:build');
+  }
+
   const projectConfiguration: ProjectConfiguration = {
     root: options.appProjectRoot,
     sourceRoot: `${options.appProjectRoot}/src`,
     projectType: 'application',
-    targets: { ...getTargets(options) },
+    targets: hasPlugin ? {} : getTargets(options),
     tags: options.parsedTags,
   };
 
-  addProjectConfiguration(
-    host,
-    options.projectName,
-    projectConfiguration,
-    options.standaloneConfig
-  );
+  if (isUsingTsSolutionSetup(host)) {
+    const packageName = getImportPath(host, options.name);
+    writeJson(host, joinPathFragments(options.appProjectRoot, 'package.json'), {
+      name: packageName,
+      version: '0.0.1',
+      private: true,
+      nx: {
+        name: packageName === options.name ? undefined : options.name,
+        projectType: 'application',
+        sourceRoot: `${options.appProjectRoot}/src`,
+        targets: hasPlugin ? undefined : getTargets(options),
+        tags: options.parsedTags?.length ? options.parsedTags : undefined,
+      },
+    });
+  } else {
+    addProjectConfiguration(
+      host,
+      options.projectName,
+      projectConfiguration,
+      options.standaloneConfig
+    );
+  }
 }
 
 function getTargets(options: NormalizedSchema) {
@@ -29,22 +59,21 @@ function getTargets(options: NormalizedSchema) {
 
   architect.start = {
     executor: '@nx/expo:start',
-    dependsOn: ['ensure-symlink', 'sync-deps'],
-    options: {
-      port: 8081,
-    },
+    dependsOn: ['sync-deps'],
+    options: {},
   };
 
   architect.serve = {
-    executor: 'nx:run-commands',
+    executor: '@nx/expo:serve',
+    dependsOn: ['sync-deps'],
     options: {
-      command: `nx start ${options.name}`,
+      port: 4200,
     },
   };
 
   architect['run-ios'] = {
     executor: '@nx/expo:run',
-    dependsOn: ['ensure-symlink', 'sync-deps'],
+    dependsOn: ['sync-deps'],
     options: {
       platform: 'ios',
     },
@@ -52,7 +81,7 @@ function getTargets(options: NormalizedSchema) {
 
   architect['run-android'] = {
     executor: '@nx/expo:run',
-    dependsOn: ['ensure-symlink', 'sync-deps'],
+    dependsOn: ['sync-deps'],
     options: {
       platform: 'android',
     },
@@ -60,6 +89,7 @@ function getTargets(options: NormalizedSchema) {
 
   architect['build'] = {
     executor: '@nx/expo:build',
+    dependsOn: ['sync-deps'],
     options: {},
   };
 
@@ -73,29 +103,14 @@ function getTargets(options: NormalizedSchema) {
     options: {},
   };
 
-  /**
-   * @deprecated TODO(v17) this executor is no longer used, to be removed in v17
-   */
-  architect['download'] = {
-    executor: '@nx/expo:download',
-    options: {
-      output: `${options.appProjectRoot}/dist`,
-    },
-  };
-
   architect['sync-deps'] = {
     executor: '@nx/expo:sync-deps',
     options: {},
   };
 
-  architect['ensure-symlink'] = {
-    executor: '@nx/expo:ensure-symlink',
-    options: {},
-  };
-
   architect['prebuild'] = {
     executor: '@nx/expo:prebuild',
-    dependsOn: ['ensure-symlink', 'sync-deps'],
+    dependsOn: ['sync-deps'],
     options: {},
   };
 
@@ -111,19 +126,11 @@ function getTargets(options: NormalizedSchema) {
 
   architect['export'] = {
     executor: '@nx/expo:export',
-    dependsOn: ['ensure-symlink', 'sync-deps'],
+    dependsOn: ['sync-deps'],
+    outputs: ['{options.outputDir}'],
     options: {
       platform: 'all',
-      outputDir: `${offsetFromRoot(options.appProjectRoot)}dist/${
-        options.appProjectRoot
-      }`,
-    },
-  };
-
-  architect['export-web'] = {
-    executor: '@nx/expo:export',
-    options: {
-      bundler: 'metro',
+      outputDir: `dist/${options.appProjectRoot}`,
     },
   };
 

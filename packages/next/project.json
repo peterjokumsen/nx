@@ -4,7 +4,6 @@
   "sourceRoot": "packages/next",
   "projectType": "library",
   "targets": {
-    "test": {},
     "build-base": {
       "executor": "@nx/js:tsc",
       "options": {
@@ -53,12 +52,8 @@
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/build/packages/next"],
       "options": {
-        "commands": [
-          "node ./scripts/copy-readme.js next",
-          "node ./scripts/add-dependency-to-build.js next @nrwl/next"
-        ]
+        "command": "node ./scripts/copy-readme.js next"
       }
-    },
-    "lint": {}
+    }
   }
 }

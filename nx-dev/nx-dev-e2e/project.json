@@ -4,21 +4,14 @@
   "sourceRoot": "nx-dev/nx-dev-e2e/src",
   "projectType": "application",
   "targets": {
-    "e2e": {
-      "dependsOn": [
-        {
-          "target": "build-base",
-          "dependencies": true
-        }
-      ],
-      "executor": "@nx/cypress:cypress",
-      "options": {
-        "cypressConfig": "nx-dev/nx-dev-e2e/cypress.config.ts",
-        "devServerTarget": "nx-dev:serve:production",
-        "testingType": "e2e"
-      }
+    "pw-e2e": {
+      "command": "echo 'pw-e2e disabled'",
+      "cache": true
     },
-    "lint": {}
+    "e2e-ci": {
+      "command": "echo 'e2e-ci disabled'",
+      "cache": true
+    }
   },
   "tags": ["scope:nx-dev", "type:e2e"],
   "implicitDependencies": ["nx-dev"]

@@ -12,7 +12,9 @@
     "Monorepo",
     "EsBuild",
     "Web",
-    "CLI"
+    "CLI",
+    "Front-end",
+    "Backend"
   ],
   "main": "./index",
   "typings": "./index.d.ts",
@@ -22,24 +24,22 @@
     "url": "https://github.com/nrwl/nx/issues"
   },
   "homepage": "https://nx.dev",
-  "schematics": "./generators.json",
-  "builders": "./executors.json",
+  "generators": "./generators.json",
+  "executors": "./executors.json",
   "ng-update": {
     "requirements": {},
     "migrations": "./migrations.json"
   },
   "dependencies": {
-    "chalk": "^4.1.0",
-    "dotenv": "~10.0.0",
-    "fast-glob": "3.2.7",
-    "fs-extra": "^11.1.0",
-    "tslib": "^2.3.0",
-    "tsconfig-paths": "^4.1.2",
     "@nx/devkit": "file:../devkit",
-    "@nx/js": "file:../js"
+    "@nx/js": "file:../js",
+    "tinyglobby": "^0.2.10",
+    "picocolors": "^1.1.0",
+    "tsconfig-paths": "^4.1.2",
+    "tslib": "^2.3.0"
   },
   "peerDependencies": {
-    "esbuild": "~0.17.5"
+    "esbuild": "~0.19.2"
   },
   "peerDependenciesMeta": {
     "esbuild": {

@@ -1,93 +1,47 @@
-[Express](https://expressjs.com/) is mature, minimal, and an open source web framework for making web applications and
+[Express](https://expressjs.com/) is a mature, minimal, and an open source web framework for making web applications and
 apis.
 
-## Setting Up Express
+## Create a New Workspace
 
-To create a new workspace with Express, run the following command:
+To create a new workspace with a pre-created Express app, run the following command:
 
 ```shell
  npx create-nx-workspace --preset=express
 ```
 
-### Adding Express to an Existing Project
+## Setting Up @nx/express
 
-Install the express plugin
+### Installation
+
+{% callout type="note" title="Keep Nx Package Versions In Sync" %}
+Make sure to install the `@nx/express` version that matches the version of `nx` in your repository. If the version numbers get out of sync, you can encounter some difficult to debug errors. You can [fix Nx version mismatches with this recipe](/recipes/tips-n-tricks/keep-nx-versions-in-sync).
+{% /callout %}
+
+In any Nx workspace, you can install `@nx/express` by running the following command:
 
 {% tabs %}
-{%tab label="npm"%}
+{% tab label="Nx 18+" %}
 
-```shell
-npm i --save-dev @nx/express
+```shell {% skipRescope=true %}
+nx add @nx/express
 ```
 
+This will install the correct version of `@nx/express`.
+
 {% /tab %}
-{%tab label="yarn"%}
+{% tab label="Nx < 18" %}
+
+Install the `@nx/express` package with your package manager.
 
 ```shell
-yarn add --dev @nx/express
+npm add -D @nx/express
 ```
 
 {% /tab %}
 {% /tabs %}
 
-## Creating Applications
+## Recipes
 
-Add a new application to your workspace with the following command:
-
-```shell
-nx g @nx/express:app my-app
-```
-
-Serve the application by running
-
-```shell
-nx serve my-app
-```
-
-This starts the application on localhost:3333/api by default.
-
-> Express does not come with any library generators, but you can leverage the[`@nx/js`](/packages/js#create-libraries) plugin to generate a Node.js library for your express application.
-
-### Application Proxies
-
-The Express application generator has an option to configure other projects in the workspace to proxy API requests. This
-can be done by passing the `--frontendProject` with the project name you wish to enable proxy support for.
-
-```shell
-nx g @nx/express:app <express-app> --frontendProject my-react-app
-```
-
-## Using Express
-
-### Testing Projects
-
-You can run unit tests with:
-
-```shell
-nx test <project-name>
-```
-
-### Building Projects
-
-Express projects can be built with:
-
-```shell
-nx build <project-name>
-```
-
-Build artifacts will be found in the `dist` directory under `apps/<project-name>` by default. Customize the build
-configuration by editing `outputPath` in the [project configuration](/reference/project-configuration).
-
-### Waiting for Other Tasks
-
-You can wait for other tasks to run before serving the express app which can be handy for spinning up various services
-the application depends on— for example, other apis in a microservice.
-
-Setting the `waitUntilTargets` option with an array of targets (format: `"project:target"`) executes those tasks
-before serving the Express application.
-
-## More Documentation
-
-- [Using Jest](/packages/jest)
-- [@nx/js](/packages/js)
-- [Express](https://expressjs.com/)
+- [Add an Express Application to Your Workspace](/showcase/example-repos/add-express)
+- [Set Up Application Proxies](/recipes/node/application-proxies)
+- [Wait For Tasks To Finish](/recipes/node/wait-for-tasks)

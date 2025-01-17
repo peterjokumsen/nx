@@ -2,7 +2,7 @@
   "name": "@nx/angular",
   "version": "0.0.1",
   "private": false,
-  "description": "The Nx Plugin for Angular contains executors, generators, and utilities for managing Angular applications and libraries within an Nx workspace. It provides: \n\n- Integration with libraries such as Storybook, Jest, ESLint, Tailwind CSS, and Cypress. \n\n- Generators to help scaffold code quickly (like: Micro Frontends, Libraries, both internal to your codebase and publishable to npm) \n\n- Upgrading AngularJS applications \n\n- Single Component Application Modules (SCAMs) \n\n- NgRx helpers. \n\n- Utilities for automatic workspace refactoring.",
+  "description": "The Nx Plugin for Angular contains executors, generators, and utilities for managing Angular applications and libraries within an Nx workspace. It provides: \n\n- Integration with libraries such as Storybook, Jest, ESLint, Tailwind CSS, Playwright and Cypress. \n\n- Generators to help scaffold code quickly (like: Micro Frontends, Libraries, both internal to your codebase and publishable to npm) \n\n- Single Component Application Modules (SCAMs) \n\n- NgRx helpers. \n\n- Utilities for automatic workspace refactoring.",
   "repository": {
     "type": "git",
     "url": "https://github.com/nrwl/nx.git",
@@ -13,7 +13,8 @@
     "Angular",
     "Jest",
     "Cypress",
-    "CLI"
+    "CLI",
+    "Front-end"
   ],
   "exports": {
     "./migrations.json": "./migrations.json",
@@ -21,11 +22,13 @@
     "./executors.json": "./executors.json",
     "./generators": "./generators.js",
     "./executors": "./executors.js",
+    "./plugin": "./plugin.js",
     "./tailwind": "./tailwind.js",
     "./module-federation": "./module-federation/index.js",
-    "./src/utils": "./src/utils/public-api.js",
+    "./src/utils": "./src/utils/index.js",
     "./plugins/component-testing": "./plugins/component-testing.js",
     "./src/generators/utils": "./src/generators/utils/index.js",
+    "./src/generators/move/move-impl": "./src/generators/move/move-impl.js",
     "./src/builders/*/schema.json": "./src/builders/*/schema.json",
     "./src/builders/*.impl": "./src/builders/*.impl.js",
     "./src/executors/*/schema.json": "./src/executors/*/schema.json",
@@ -38,46 +41,36 @@
     "url": "https://github.com/nrwl/nx/issues"
   },
   "homepage": "https://nx.dev",
-  "builders": "./executors.json",
-  "schematics": "./generators.json",
+  "executors": "./executors.json",
+  "generators": "./generators.json",
   "ng-update": {
     "requirements": {},
     "migrations": "./migrations.json"
   },
   "dependencies": {
     "@phenomnomnominal/tsquery": "~5.0.1",
-    "@typescript-eslint/type-utils": "^5.36.1",
-    "chalk": "^4.1.0",
-    "find-cache-dir": "^3.3.2",
-    "ignore": "^5.0.4",
+    "@typescript-eslint/type-utils": "^8.0.0",
+    "picocolors": "^1.1.0",
     "magic-string": "~0.30.2",
-    "minimatch": "3.0.5",
-    "semver": "7.5.3",
+    "minimatch": "9.0.3",
+    "semver": "^7.5.3",
     "tslib": "^2.3.0",
-    "webpack": "^5.80.0",
     "webpack-merge": "^5.8.0",
-    "enquirer": "^2.3.6",
     "@nx/devkit": "file:../devkit",
-    "@nx/cypress": "file:../cypress",
-    "@nx/jest": "file:../jest",
     "@nx/js": "file:../js",
-    "@nx/linter": "file:../linter",
+    "@nx/eslint": "file:../eslint",
     "@nx/webpack": "file:../webpack",
-    "@nx/workspace": "file:../workspace"
+    "@nx/module-federation": "file:../module-federation",
+    "@nx/web": "file:../web",
+    "@nx/workspace": "file:../workspace",
+    "piscina": "^4.4.0"
   },
   "peerDependencies": {
-    "@angular-devkit/build-angular": ">= 14.0.0 < 17.0.0",
-    "@angular-devkit/schematics": ">= 14.0.0 < 17.0.0",
-    "@schematics/angular": ">= 14.0.0 < 17.0.0",
-    "@angular-devkit/core": ">= 14.0.0 < 17.0.0",
-    "@nguniversal/builders": ">= 14.0.0 < 17.0.0",
-    "rxjs": "^6.5.3 || ^7.5.0",
-    "esbuild": "^0.17.5"
-  },
-  "peerDependenciesMeta": {
-    "@nguniversal/builders": {
-      "optional": true
-    }
+    "@angular-devkit/build-angular": ">= 17.0.0 < 20.0.0",
+    "@angular-devkit/core": ">= 17.0.0 < 20.0.0",
+    "@angular-devkit/schematics": ">= 17.0.0 < 20.0.0",
+    "@schematics/angular": ">= 17.0.0 < 20.0.0",
+    "rxjs": "^6.5.3 || ^7.5.0"
   },
   "publishConfig": {
     "access": "public"

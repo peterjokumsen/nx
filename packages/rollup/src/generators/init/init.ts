@@ -1,41 +1,58 @@
 import {
   addDependenciesToPackageJson,
-  convertNxGenerator,
+  createProjectGraphAsync,
   formatFiles,
   GeneratorCallback,
+  readNxJson,
   Tree,
 } from '@nx/devkit';
+import { nxVersion, rollupVersion } from '../../utils/versions';
 import { Schema } from './schema';
-import { swcCoreVersion, swcHelpersVersion } from '@nx/js/src/utils/versions';
-import {
-  nxVersion,
-  swcLoaderVersion,
-  tsLibVersion,
-} from '../../utils/versions';
-import { addBabelInputs } from '@nx/js/src/utils/add-babel-inputs';
+import { addPluginV1 } from '@nx/devkit/src/utils/add-plugin';
+import { createNodes } from '../../plugins/plugin';
 
 export async function rollupInitGenerator(tree: Tree, schema: Schema) {
-  let task: GeneratorCallback;
+  let task: GeneratorCallback = () => {};
+  const nxJson = readNxJson(tree);
+  schema.addPlugin ??=
+    process.env.NX_ADD_PLUGINS !== 'false' &&
+    nxJson.useInferencePlugins !== false;
 
-  if (schema.compiler === 'swc') {
+  if (!schema.skipPackageJson) {
+    const devDependencies = { '@nx/rollup': nxVersion };
+    if (schema.addPlugin) {
+      // Ensure user can run Rollup CLI.
+      devDependencies['rollup'] = rollupVersion;
+    }
     task = addDependenciesToPackageJson(
       tree,
       {},
-      {
-        '@nx/rollup': nxVersion,
-        '@swc/helpers': swcHelpersVersion,
-        '@swc/core': swcCoreVersion,
-        'swc-loader': swcLoaderVersion,
-      }
+      devDependencies,
+      undefined,
+      schema.keepExistingVersions
     );
-  } else {
-    task = addDependenciesToPackageJson(
+  }
+
+  if (schema.addPlugin) {
+    await addPluginV1(
       tree,
-      {},
+      await createProjectGraphAsync(),
+      '@nx/rollup/plugin',
+      createNodes,
       {
-        '@nx/rollup': nxVersion,
-        tslib: tsLibVersion,
-      }
+        buildTargetName: ['build', 'rollup:build', 'rollup-build'],
+        buildDepsTargetName: [
+          'build-deps',
+          'rollup:build-deps',
+          'rollup-build-deps',
+        ],
+        watchDepsTargetName: [
+          'watch-deps',
+          'rollup:watch-deps',
+          'rollup-watch-deps',
+        ],
+      },
+      schema.updatePackageScripts
     );
   }
 
@@ -47,5 +64,3 @@ export async function rollupInitGenerator(tree: Tree, schema: Schema) {
 }
 
 export default rollupInitGenerator;
-
-export const rollupInitSchematic = convertNxGenerator(rollupInitGenerator);

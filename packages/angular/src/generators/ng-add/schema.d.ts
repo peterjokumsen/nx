@@ -1,12 +1,8 @@
-import { Linter } from '@nx/linter';
+import { Linter, LinterType } from '@nx/eslint';
 import { E2eTestRunner, UnitTestRunner } from '../../utils/test-runners';
 import type { Styles } from '../utils/types';
 
 export interface GeneratorOptions {
-  /**
-   * @deprecated This should be inferred with {@link getNpmScope}
-   */
-  npmScope?: string;
   defaultBase?: string;
 
   unitTestRunner?: UnitTestRunner;
@@ -15,6 +11,6 @@ export interface GeneratorOptions {
   skipInstall?: boolean;
   skipPostInstall?: boolean;
   style?: Styles;
-  linter?: Linter;
+  linter?: Linter | LinterType;
   skipPackageJson?: boolean;
 }

@@ -3,63 +3,41 @@ import {
   logger,
   offsetFromRoot,
   readJson,
+  readNxJson,
   readProjectConfiguration,
   TargetConfiguration,
   Tree,
   updateProjectConfiguration,
   writeJson,
 } from '@nx/devkit';
+import { addBuildTargetDefaults } from '@nx/devkit/src/generators/target-defaults-utils';
+import { isUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
 import { ViteBuildExecutorOptions } from '../executors/build/schema';
-import { ViteDevServerExecutorOptions } from '../executors/dev-server/schema';
 import { VitePreviewServerExecutorOptions } from '../executors/preview-server/schema';
 import { VitestExecutorOptions } from '../executors/test/schema';
 import { ViteConfigurationGeneratorSchema } from '../generators/configuration/schema';
 import { ensureViteConfigIsCorrect } from './vite-config-edit-utils';
+import { VitestGeneratorSchema } from '../generators/vitest/schema';
 
 export type Target = 'build' | 'serve' | 'test' | 'preview';
 export type TargetFlags = Partial<Record<Target, boolean>>;
 export type UserProvidedTargetName = Partial<Record<Target, string>>;
 export type ValidFoundTargetName = Partial<Record<Target, string>>;
 
-export function findExistingTargetsInProject(
-  targets: {
-    [targetName: string]: TargetConfiguration;
-  },
-  userProvidedTargets?: UserProvidedTargetName
-): {
-  validFoundTargetName: ValidFoundTargetName;
-  projectContainsUnsupportedExecutor: boolean;
-  userProvidedTargetIsUnsupported: TargetFlags;
-  alreadyHasNxViteTargets: TargetFlags;
+export function findExistingJsBuildTargetInProject(targets: {
+  [targetName: string]: TargetConfiguration;
+}): {
+  supported?: string;
+  unsupported?: string;
 } {
-  const output: ReturnType<typeof findExistingTargetsInProject> = {
-    validFoundTargetName: {},
-    projectContainsUnsupportedExecutor: false,
-    userProvidedTargetIsUnsupported: {},
-    alreadyHasNxViteTargets: {},
-  };
+  const output: {
+    supported?: string;
+    unsupported?: string;
+  } = {};
 
   const supportedExecutors = {
-    build: [
-      '@nxext/vite:build',
-      '@nx/js:babel',
-      '@nx/js:swc',
-      '@nx/webpack:webpack',
-      '@nx/rollup:rollup',
-      '@nrwl/js:babel',
-      '@nrwl/js:swc',
-      '@nrwl/webpack:webpack',
-      '@nrwl/rollup:rollup',
-      '@nrwl/web:rollup',
-    ],
-    serve: [
-      '@nxext/vite:dev',
-      '@nx/webpack:dev-server',
-      '@nrwl/webpack:dev-server',
-    ],
-    test: ['@nx/jest:jest', '@nrwl/jest:jest', '@nxext/vitest:vitest'],
+    build: ['@nx/js:babel', '@nx/js:swc', '@nx/rollup:rollup'],
   };
-
   const unsupportedExecutors = [
     '@nx/angular:ng-packagr-lite',
     '@nx/angular:package',
@@ -72,7 +50,6 @@ export function findExistingTargetsInProject(
     '@nx/react-native:build-android',
     '@nx/react-native:bundle',
     '@nx/next:build',
-    '@nx/next:server',
     '@nx/js:tsc',
     '@nrwl/angular:ng-packagr-lite',
     '@nrwl/angular:package',
@@ -85,113 +62,62 @@ export function findExistingTargetsInProject(
     '@nrwl/react-native:build-android',
     '@nrwl/react-native:bundle',
     '@nrwl/next:build',
-    '@nrwl/next:server',
     '@nrwl/js:tsc',
     '@angular-devkit/build-angular:browser',
-    '@angular-devkit/build-angular:dev-server',
+    '@angular-devkit/build-angular:browser-esbuild',
+    '@angular-devkit/build-angular:application',
   ];
 
-  // First, we check if the user has provided a target
-  // If they have, we check if the executor the target is using is supported
-  // If it's not supported, then we set the unsupported flag to true for that target
-
-  function checkUserProvidedTarget(target: Target) {
-    if (userProvidedTargets?.[target]) {
-      if (
-        supportedExecutors[target].includes(
-          targets[userProvidedTargets[target]]?.executor
-        )
-      ) {
-        output.validFoundTargetName[target] = userProvidedTargets[target];
-      } else {
-        output.userProvidedTargetIsUnsupported[target] = true;
-      }
-    }
-  }
-
-  checkUserProvidedTarget('build');
-  checkUserProvidedTarget('serve');
-  checkUserProvidedTarget('test');
-
-  // Returns early when we have a build, serve, and test targets.
-  if (
-    output.validFoundTargetName.build &&
-    output.validFoundTargetName.serve &&
-    output.validFoundTargetName.test
-  ) {
-    return output;
-  }
-
-  // We try to find the targets that are using the supported executors
-  // for build, serve and test, since these are the ones we will be converting
+  // We try to find the target that is using the supported executors
+  // for build since this is the one we will be converting
   for (const target in targets) {
     const executorName = targets[target].executor;
-
-    const hasViteTargets = output.alreadyHasNxViteTargets;
-    hasViteTargets.build ||=
-      executorName === '@nx/vite:build' || executorName === '@nrwl/vite:build';
-    hasViteTargets.serve ||=
-      executorName === '@nx/vite:dev-server' ||
-      executorName === '@nrwl/vite:dev-server';
-    hasViteTargets.test ||=
-      executorName === '@nx/vite:test' || executorName === '@nrwl/vite:test';
-    hasViteTargets.preview ||=
-      executorName === '@nx/vite:preview-server' ||
-      executorName === '@nrwl/vite:preview-server';
-
-    const foundTargets = output.validFoundTargetName;
-    if (
-      !foundTargets.build &&
-      supportedExecutors.build.includes(executorName)
-    ) {
-      foundTargets.build = target;
+    if (supportedExecutors.build.includes(executorName)) {
+      output.supported = target;
+    } else if (unsupportedExecutors.includes(executorName)) {
+      output.unsupported = target;
     }
-    if (
-      !foundTargets.serve &&
-      supportedExecutors.serve.includes(executorName)
-    ) {
-      foundTargets.serve = target;
-    }
-    if (!foundTargets.test && supportedExecutors.test.includes(executorName)) {
-      foundTargets.test = target;
-    }
-
-    output.projectContainsUnsupportedExecutor ||=
-      unsupportedExecutors.includes(executorName);
   }
-
   return output;
 }
 
 export function addOrChangeTestTarget(
   tree: Tree,
-  options: ViteConfigurationGeneratorSchema,
-  target: string
+  options: VitestGeneratorSchema,
+  hasPlugin: boolean
 ) {
-  const project = readProjectConfiguration(tree, options.project);
+  const nxJson = readNxJson(tree);
 
-  const coveragePath = joinPathFragments(
+  hasPlugin = nxJson.plugins?.some((p) =>
+    typeof p === 'string'
+      ? p === '@nx/vite/plugin'
+      : p.plugin === '@nx/vite/plugin' || hasPlugin
+  );
+
+  if (hasPlugin) {
+    return;
+  }
+
+  const project = readProjectConfiguration(tree, options.project);
+  const target = options.testTarget ?? 'test';
+
+  const reportsDirectory = joinPathFragments(
+    offsetFromRoot(project.root),
     'coverage',
     project.root === '.' ? options.project : project.root
   );
   const testOptions: VitestExecutorOptions = {
-    passWithNoTests: true,
-    // vitest runs in the project root so we have to offset to the workspaceRoot
-    reportsDirectory: joinPathFragments(
-      offsetFromRoot(project.root),
-      coveragePath
-    ),
+    reportsDirectory,
   };
 
   project.targets ??= {};
 
   if (project.targets[target]) {
-    project.targets[target].executor = '@nx/vite:test';
-    delete project.targets[target].options?.jestConfig;
+    throw new Error(`Target "${target}" already exists in the project.`);
   } else {
     project.targets[target] = {
       executor: '@nx/vite:test',
-      outputs: [coveragePath],
+      outputs: ['{options.reportsDirectory}'],
       options: testOptions,
     };
   }
@@ -199,52 +125,43 @@ export function addOrChangeTestTarget(
   updateProjectConfiguration(tree, options.project, project);
 }
 
-export function addOrChangeBuildTarget(
+export function addBuildTarget(
   tree: Tree,
   options: ViteConfigurationGeneratorSchema,
   target: string
 ) {
+  addBuildTargetDefaults(tree, '@nx/vite:build');
   const project = readProjectConfiguration(tree, options.project);
+
+  const isTsSolutionSetup = isUsingTsSolutionSetup(tree);
   const buildOptions: ViteBuildExecutorOptions = {
-    outputPath: joinPathFragments(
-      'dist',
-      project.root != '.' ? project.root : options.project
-    ),
+    outputPath: isTsSolutionSetup
+      ? joinPathFragments(project.root, 'dist')
+      : joinPathFragments(
+          'dist',
+          project.root != '.' ? project.root : options.project
+        ),
   };
-
   project.targets ??= {};
-
-  if (project.targets[target]) {
-    buildOptions.fileReplacements =
-      project.targets[target].options?.fileReplacements;
-
-    if (project.targets[target].executor === '@nxext/vite:build') {
-      buildOptions.base = project.targets[target].options?.baseHref;
-      buildOptions.sourcemap = project.targets[target].options?.sourcemaps;
-    }
-    project.targets[target].options = { ...buildOptions };
-    project.targets[target].executor = '@nx/vite:build';
-  } else {
-    project.targets[target] = {
-      executor: '@nx/vite:build',
-      outputs: ['{options.outputPath}'],
-      defaultConfiguration: 'production',
-      options: buildOptions,
-      configurations: {
-        development: {
-          mode: 'development',
-        },
-        production: {
-          mode: 'production',
-        },
+  project.targets[target] = {
+    executor: '@nx/vite:build',
+    outputs: ['{options.outputPath}'],
+    defaultConfiguration: 'production',
+    options: buildOptions,
+    configurations: {
+      development: {
+        mode: 'development',
       },
-    };
-  }
+      production: {
+        mode: 'production',
+      },
+    },
+  };
 
   updateProjectConfiguration(tree, options.project, project);
 }
 
-export function addOrChangeServeTarget(
+export function addServeTarget(
   tree: Tree,
   options: ViteConfigurationGeneratorSchema,
   target: string
@@ -253,38 +170,23 @@ export function addOrChangeServeTarget(
 
   project.targets ??= {};
 
-  if (project.targets[target]) {
-    const serveTarget = project.targets[target];
-    const serveOptions: ViteDevServerExecutorOptions = {
+  project.targets[target] = {
+    executor: '@nx/vite:dev-server',
+    defaultConfiguration: 'development',
+    options: {
       buildTarget: `${options.project}:build`,
-      https: project.targets[target].options?.https,
-      hmr: project.targets[target].options?.hmr,
-      open: project.targets[target].options?.open,
-    };
-    if (serveTarget.executor === '@nxext/vite:dev') {
-      serveOptions.proxyConfig = project.targets[target].options.proxyConfig;
-    }
-    serveTarget.executor = '@nx/vite:dev-server';
-    serveTarget.options = serveOptions;
-  } else {
-    project.targets[target] = {
-      executor: '@nx/vite:dev-server',
-      defaultConfiguration: 'development',
-      options: {
-        buildTarget: `${options.project}:build`,
+    },
+    configurations: {
+      development: {
+        buildTarget: `${options.project}:build:development`,
+        hmr: true,
       },
-      configurations: {
-        development: {
-          buildTarget: `${options.project}:build:development`,
-          hmr: true,
-        },
-        production: {
-          buildTarget: `${options.project}:build:production`,
-          hmr: false,
-        },
+      production: {
+        buildTarget: `${options.project}:build:production`,
+        hmr: false,
       },
-    };
-  }
+    },
+  };
 
   updateProjectConfiguration(tree, options.project, project);
 }
@@ -295,7 +197,6 @@ export function addOrChangeServeTarget(
  * @param tree
  * @param options
  * @param serveTarget An existing serve target.
- * @param previewTarget  The preview target to create.
  */
 export function addPreviewTarget(
   tree: Tree,
@@ -316,12 +217,13 @@ export function addPreviewTarget(
     if (target.executor === '@nxext/vite:dev') {
       previewOptions.proxyConfig = target.options.proxyConfig;
     }
-    previewOptions.https = target.options?.https;
-    previewOptions.open = target.options?.open;
+    previewOptions['https'] = target.options?.https;
+    previewOptions['open'] = target.options?.open;
   }
 
   // Adds a preview target.
   project.targets.preview = {
+    dependsOn: ['build'],
     executor: '@nx/vite:preview-server',
     defaultConfiguration: 'development',
     options: previewOptions,
@@ -344,52 +246,44 @@ export function editTsConfig(
 ) {
   const projectConfig = readProjectConfiguration(tree, options.project);
 
-  const config = readJson(tree, `${projectConfig.root}/tsconfig.json`);
-
-  const commonCompilerOptions = {
-    target: 'ESNext',
-    useDefineForClassFields: true,
-    module: 'ESNext',
-    strict: true,
-    moduleResolution: 'Node',
-    resolveJsonModule: true,
-    isolatedModules: true,
-    types: ['vite/client'],
-    noEmit: true,
-  };
+  let tsconfigPath = joinPathFragments(projectConfig.root, 'tsconfig.json');
+  const isTsSolutionSetup = isUsingTsSolutionSetup(tree);
+  if (isTsSolutionSetup) {
+    tsconfigPath = [
+      joinPathFragments(projectConfig.root, 'tsconfig.app.json'),
+      joinPathFragments(projectConfig.root, 'tsconfig.lib.json'),
+    ].find((p) => tree.exists(p));
+  }
+  const config = readJson(tree, tsconfigPath);
 
   switch (options.uiFramework) {
     case 'react':
       config.compilerOptions = {
-        ...commonCompilerOptions,
-        lib: ['DOM', 'DOM.Iterable', 'ESNext'],
+        jsx: 'react-jsx',
         allowJs: false,
         esModuleInterop: false,
-        skipLibCheck: true,
         allowSyntheticDefaultImports: true,
-        forceConsistentCasingInFileNames: true,
-        jsx: 'react-jsx',
+        strict: true,
       };
-      config.include = [...config.include, 'src'];
       break;
     case 'none':
-      config.compilerOptions = {
-        ...commonCompilerOptions,
-        lib: ['ESNext', 'DOM'],
-        skipLibCheck: true,
-        esModuleInterop: true,
-        strict: true,
-        noUnusedLocals: true,
-        noUnusedParameters: true,
-        noImplicitReturns: true,
-      };
-      config.include = [...config.include, 'src'];
+      if (!isTsSolutionSetup) {
+        config.compilerOptions = {
+          module: 'commonjs',
+          forceConsistentCasingInFileNames: true,
+          strict: true,
+          noImplicitOverride: true,
+          noPropertyAccessFromIndexSignature: true,
+          noImplicitReturns: true,
+          noFallthroughCasesInSwitch: true,
+        };
+      }
       break;
     default:
       break;
   }
 
-  writeJson(tree, `${projectConfig.root}/tsconfig.json`, config);
+  writeJson(tree, tsconfigPath, config);
 }
 
 export function deleteWebpackConfig(
@@ -412,19 +306,14 @@ export function deleteWebpackConfig(
 
 export function moveAndEditIndexHtml(
   tree: Tree,
-  options: ViteConfigurationGeneratorSchema,
-  buildTarget: string
+  options: ViteConfigurationGeneratorSchema
 ) {
   const projectConfig = readProjectConfiguration(tree, options.project);
 
-  let indexHtmlPath =
-    projectConfig.targets?.[buildTarget]?.options?.index ??
-    `${projectConfig.root}/src/index.html`;
-  let mainPath =
-    projectConfig.targets?.[buildTarget]?.options?.main ??
-    `${projectConfig.root}/src/main.ts${
-      options.uiFramework === 'react' ? 'x' : ''
-    }`;
+  let indexHtmlPath = `${projectConfig.root}/src/index.html`;
+  let mainPath = `${projectConfig.root}/src/main.ts${
+    options.uiFramework === 'react' ? 'x' : ''
+  }`;
 
   if (projectConfig.root !== '.') {
     mainPath = mainPath.replace(projectConfig.root, '');
@@ -441,14 +330,14 @@ export function moveAndEditIndexHtml(
     const indexHtmlContent = tree.read(indexHtmlPath, 'utf8');
     if (
       !indexHtmlContent.includes(
-        `<script type="module" src="${mainPath}"></script>`
+        `<script type='module' src='${mainPath}'></script>`
       )
     ) {
       tree.write(
         `${projectConfig.root}/index.html`,
         indexHtmlContent.replace(
           '</body>',
-          `<script type="module" src="${mainPath}"></script>
+          `<script type='module' src='${mainPath}'></script>
           </body>`
         )
       );
@@ -461,145 +350,179 @@ export function moveAndEditIndexHtml(
     tree.write(
       `${projectConfig.root}/index.html`,
       `<!DOCTYPE html>
-      <html lang="en">
+      <html lang='en'>
         <head>
-          <meta charset="UTF-8" />
-          <link rel="icon" href="/favicon.ico" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <meta charset='UTF-8' />
+          <link rel='icon' href='/favicon.ico' />
+          <meta name='viewport' content='width=device-width, initial-scale=1.0' />
           <title>Vite</title>
         </head>
         <body>
-          <div id="root"></div>
-          <script type="module" src="${mainPath}"></script>
+          <div id='root'></div>
+          <script type='module' src='${mainPath}'></script>
         </body>
       </html>`
     );
   }
 }
 
+export interface ViteConfigFileOptions {
+  project: string;
+  includeLib?: boolean;
+  includeVitest?: boolean;
+  inSourceTests?: boolean;
+  testEnvironment?: 'node' | 'jsdom' | 'happy-dom' | 'edge-runtime' | string;
+  rollupOptionsExternal?: string[];
+  imports?: string[];
+  plugins?: string[];
+  coverageProvider?: 'v8' | 'istanbul' | 'custom';
+  setupFile?: string;
+  useEsmExtension?: boolean;
+}
+
 export function createOrEditViteConfig(
   tree: Tree,
-  options: ViteConfigurationGeneratorSchema,
+  options: ViteConfigFileOptions,
   onlyVitest: boolean,
-  projectAlreadyHasViteTargets?: TargetFlags
+  projectAlreadyHasViteTargets?: TargetFlags,
+  vitestFileName?: boolean
 ) {
-  const projectConfig = readProjectConfiguration(tree, options.project);
+  const { root: projectRoot } = readProjectConfiguration(tree, options.project);
 
-  const viteConfigPath = `${projectConfig.root}/vite.config.ts`;
+  const extension = options.useEsmExtension ? 'mts' : 'ts';
+  const viteConfigPath = vitestFileName
+    ? `${projectRoot}/vitest.config.${extension}`
+    : `${projectRoot}/vite.config.${extension}`;
+
+  const isUsingTsPlugin = isUsingTsSolutionSetup(tree);
+  const buildOutDir = isUsingTsPlugin
+    ? './dist'
+    : projectRoot === '.'
+    ? `./dist/${options.project}`
+    : `${offsetFromRoot(projectRoot)}dist/${projectRoot}`;
 
   const buildOption = onlyVitest
     ? ''
     : options.includeLib
-    ? `
-      // Configuration for building your library.
-      // See: https://vitejs.dev/guide/build.html#library-mode
-      build: {
-        lib: {
-          // Could also be a dictionary or array of multiple entry points.
-          entry: 'src/index.ts',
-          name: '${options.project}',
-          fileName: 'index',
-          // Change this to the formats you want to support.
-          // Don't forget to update your package.json as well.
-          formats: ['es', 'cjs']
-        },
-        rollupOptions: {
-          // External packages that should not be bundled into your library.
-          external: [${
-            options.uiFramework === 'react'
-              ? "'react', 'react-dom', 'react/jsx-runtime'"
-              : ''
-          }]
-        }
-      },`
-    : ``;
+    ? `  // Configuration for building your library.
+  // See: https://vitejs.dev/guide/build.html#library-mode
+  build: {
+    outDir: '${buildOutDir}',
+    emptyOutDir: true,
+    reportCompressedSize: true,
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
+    lib: {
+      // Could also be a dictionary or array of multiple entry points.
+      entry: 'src/index.ts',
+      name: '${options.project}',
+      fileName: 'index',
+      // Change this to the formats you want to support.
+      // Don't forget to update your package.json as well.
+      formats: ['es']
+    },
+    rollupOptions: {
+      // External packages that should not be bundled into your library.
+      external: [${options.rollupOptionsExternal ?? ''}]
+    },
+  },`
+    : `  build: {
+    outDir: '${buildOutDir}',
+    emptyOutDir: true,
+    reportCompressedSize: true,
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
+  },`;
 
-  const dtsPlugin = onlyVitest
-    ? ''
-    : options.includeLib
-    ? `dts({
-      entryRoot: 'src',
-      tsConfigFilePath: path.join(__dirname, 'tsconfig.lib.json'),
-      skipDiagnostics: true,
-    }),`
-    : '';
+  const imports: string[] = options.imports ? [...options.imports] : [];
+  const plugins: string[] = options.plugins ? [...options.plugins] : [];
 
-  const dtsImportLine = onlyVitest
-    ? ''
-    : options.includeLib
-    ? `import dts from 'vite-plugin-dts';\nimport * as path from 'path';`
-    : '';
+  if (!onlyVitest && options.includeLib) {
+    imports.push(
+      `import dts from 'vite-plugin-dts'`,
+      `import * as path from 'path'`
+    );
+  }
 
-  let viteConfigContent = '';
+  if (!isUsingTsPlugin) {
+    imports.push(
+      `import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin'`,
+      `import { nxCopyAssetsPlugin } from '@nx/vite/plugins/nx-copy-assets.plugin'`
+    );
+    plugins.push(`nxViteTsPaths()`, `nxCopyAssetsPlugin(['*.md'])`);
+  }
+
+  if (!onlyVitest && options.includeLib) {
+    plugins.push(
+      `dts({ entryRoot: 'src', tsconfigPath: path.join(__dirname, 'tsconfig.lib.json') })`
+    );
+  }
+
+  const reportsDirectory = isUsingTsPlugin
+    ? './test-output/vitest/coverage'
+    : projectRoot === '.'
+    ? `./coverage/${options.project}`
+    : `${offsetFromRoot(projectRoot)}coverage/${projectRoot}`;
 
   const testOption = options.includeVitest
-    ? `test: {
+    ? `  test: {
+    watch: false,
     globals: true,
-    cache: {
-      dir: '${offsetFromRoot(projectConfig.root)}node_modules/.vitest'
-    },
     environment: '${options.testEnvironment ?? 'jsdom'}',
     include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
-    ${
-      options.inSourceTests
-        ? `includeSource: ['src/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}']`
-        : ''
+${options.setupFile ? `    setupFiles: ['${options.setupFile}'],\n` : ''}\
+${
+  options.inSourceTests
+    ? `    includeSource: ['src/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],\n`
+    : ''
+}\
+    reporters: ['default'],
+    coverage: {
+      reportsDirectory: '${reportsDirectory}',
+      provider: ${
+        options.coverageProvider ? `'${options.coverageProvider}'` : `'v8'`
+      },
     }
   },`
     : '';
 
   const defineOption = options.inSourceTests
-    ? `define: {
+    ? `  define: {
     'import.meta.vitest': undefined
   },`
     : '';
-
-  const reactPluginImportLine =
-    options.uiFramework === 'react'
-      ? options.compiler === 'swc'
-        ? `import react from '@vitejs/plugin-react-swc';`
-        : `import react from '@vitejs/plugin-react';`
-      : '';
-
-  const reactPlugin = options.uiFramework === 'react' ? `react(),` : '';
 
   const devServerOption = onlyVitest
     ? ''
     : options.includeLib
     ? ''
-    : `
-    server:{
-      port: 4200,
-      host: 'localhost',
-    },`;
+    : `  server:{
+    port: 4200,
+    host: 'localhost',
+  },`;
 
   const previewServerOption = onlyVitest
     ? ''
     : options.includeLib
     ? ''
-    : `
-    preview:{
-      port: 4300,
-      host: 'localhost',
-    },`;
+    : `  preview:{
+    port: 4300,
+    host: 'localhost',
+  },`;
 
-  const pluginOption = `
-    plugins: [
-      ${dtsPlugin}
-      ${reactPlugin}
-      nxViteTsPaths(),
-    ],
-    `;
+  const workerOption = `  // Uncomment this if you are using workers.
+  // worker: {
+  //  plugins: [ nxViteTsPaths() ],
+  // },`;
 
-  const workerOption = `
-    // Uncomment this if you are using workers. 
-    // worker: {
-    //  plugins: [ nxViteTsPaths() ],
-    // },`;
-
-  const cacheDir = `cacheDir: '${offsetFromRoot(
-    projectConfig.root
-  )}node_modules/.vite/${options.project}',`;
+  const cacheDir = `cacheDir: '${normalizedJoinPaths(
+    offsetFromRoot(projectRoot),
+    'node_modules',
+    '.vite',
+    projectRoot === '.' ? options.project : projectRoot
+  )}',`;
 
   if (tree.exists(viteConfigPath)) {
     handleViteConfigFileExists(
@@ -607,36 +530,43 @@ export function createOrEditViteConfig(
       viteConfigPath,
       options,
       buildOption,
-      dtsPlugin,
-      dtsImportLine,
-      pluginOption,
+      buildOutDir,
+      imports,
+      plugins,
       testOption,
+      reportsDirectory,
       cacheDir,
-      offsetFromRoot(projectConfig.root),
+      projectRoot,
+      offsetFromRoot(projectRoot),
       projectAlreadyHasViteTargets
     );
     return;
   }
 
-  viteConfigContent = `
-      /// <reference types="vitest" />
-      import { defineConfig } from 'vite';
-      ${reactPluginImportLine}
-      import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
-      ${dtsImportLine}
-      
-      export default defineConfig({
-        ${cacheDir}
-        ${devServerOption}
-        ${previewServerOption}
-        ${pluginOption}
-        ${workerOption}
-        ${buildOption}
-        ${defineOption}
-        ${testOption}
-      });`;
+  const viteConfigContent = `/// <reference types='vitest' />
+import { defineConfig } from 'vite';
+${imports.join(';\n')}${imports.length ? ';' : ''}
+
+export default defineConfig({
+  root: __dirname,
+  ${printOptions(
+    cacheDir,
+    devServerOption,
+    previewServerOption,
+    `  plugins: [${plugins.join(', ')}],`,
+    workerOption,
+    buildOption,
+    defineOption,
+    testOption
+  )}
+});
+`.replace(/\s+(?=(\n|$))/gm, '\n');
 
   tree.write(viteConfigPath, viteConfigContent);
+}
+
+function printOptions(...options: string[]): string {
+  return options.filter(Boolean).join('\n');
 }
 
 export function normalizeViteConfigFilePathWithTree(
@@ -741,17 +671,17 @@ async function handleUnsupportedUserProvidedTargetsErrors(
   }
 }
 
-export async function handleUnknownExecutors(projectName: string) {
+export async function handleUnknownConfiguration(projectName: string) {
+  if (process.env.NX_INTERACTIVE === 'false') {
+    return;
+  }
+
   logger.warn(
     `
-      We could not find any targets in project ${projectName} that use executors which 
-      can be converted to the @nx/vite executors.
-
-      This either means that your project may not have a target 
-      for building, serving, or testing at all, or that your targets are 
-      using executors that are not known to Nx.
+      We could not find any configuration in project ${projectName} that 
+      indicates whether we can definitely convert to Vite.
       
-      If you still want to convert your project to use the @nx/vite executors,
+      If you still want to convert your project to use Vite,
       please make sure to commit your changes before running this generator.
       `
   );
@@ -759,13 +689,13 @@ export async function handleUnknownExecutors(projectName: string) {
   const { Confirm } = require('enquirer');
   const prompt = new Confirm({
     name: 'question',
-    message: `Should Nx convert your project to use the @nx/vite executors?`,
+    message: `Should Nx convert your project to use Vite?`,
     initial: true,
   });
   const shouldConvert = await prompt.run();
   if (!shouldConvert) {
     throw new Error(`
-      Nx could not verify that the executors you are using can be converted to the @nx/vite executors.
+      Nx could not verify that your project can be converted to use Vite.
       Please try again with a different project.
     `);
   }
@@ -774,43 +704,65 @@ export async function handleUnknownExecutors(projectName: string) {
 function handleViteConfigFileExists(
   tree: Tree,
   viteConfigPath: string,
-  options: ViteConfigurationGeneratorSchema,
+  options: ViteConfigFileOptions,
   buildOption: string,
-  dtsPlugin: string,
-  dtsImportLine: string,
-  pluginOption: string,
+  buildOutDir: string,
+  imports: string[],
+  plugins: string[],
   testOption: string,
+  reportsDirectory: string,
   cacheDir: string,
+  projectRoot: string,
   offsetFromRoot: string,
   projectAlreadyHasViteTargets?: TargetFlags
 ) {
-  if (projectAlreadyHasViteTargets.build && projectAlreadyHasViteTargets.test) {
+  if (
+    projectAlreadyHasViteTargets?.build &&
+    projectAlreadyHasViteTargets?.test
+  ) {
     return;
   }
 
-  logger.info(`vite.config.ts already exists for project ${options.project}.`);
-  const buildOptionObject = {
-    lib: {
-      entry: 'src/index.ts',
-      name: options.project,
-      fileName: 'index',
-      formats: ['es', 'cjs'],
-    },
-    rollupOptions: {
-      external:
-        options.uiFramework === 'react'
-          ? ['react', 'react-dom', 'react/jsx-runtime']
-          : [],
-    },
-  };
+  if (process.env.NX_VERBOSE_LOGGING === 'true') {
+    logger.info(
+      `vite.config.ts already exists for project ${options.project}.`
+    );
+  }
+
+  const buildOptionObject = options.includeLib
+    ? {
+        lib: {
+          entry: 'src/index.ts',
+          name: options.project,
+          fileName: 'index',
+          formats: ['es'],
+        },
+        rollupOptions: {
+          external: options.rollupOptionsExternal ?? [],
+        },
+        outDir: buildOutDir,
+        reportCompressedSize: true,
+        commonjsOptions: {
+          transformMixedEsModules: true,
+        },
+      }
+    : {
+        outDir: buildOutDir,
+        reportCompressedSize: true,
+        commonjsOptions: {
+          transformMixedEsModules: true,
+        },
+      };
 
   const testOptionObject = {
     globals: true,
-    cache: {
-      dir: `${offsetFromRoot}node_modules/.vitest`,
-    },
-    environment: 'jsdom',
+    environment: options.testEnvironment ?? 'jsdom',
     include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    reporters: ['default'],
+    coverage: {
+      reportsDirectory: reportsDirectory,
+      provider: `${options.coverageProvider ?? 'v8'}`,
+    },
   };
 
   const changed = ensureViteConfigIsCorrect(
@@ -818,13 +770,12 @@ function handleViteConfigFileExists(
     viteConfigPath,
     buildOption,
     buildOptionObject,
-    dtsPlugin,
-    dtsImportLine,
-    pluginOption,
+    imports,
+    plugins,
     testOption,
     testOptionObject,
     cacheDir,
-    projectAlreadyHasViteTargets
+    projectAlreadyHasViteTargets ?? {}
   );
 
   if (!changed) {
@@ -835,9 +786,11 @@ function handleViteConfigFileExists(
         
         `
     );
-  } else {
-    logger.info(`
-      Vite configuration file (${viteConfigPath}) has been updated with the required settings for the new target(s).
-      `);
   }
+}
+
+function normalizedJoinPaths(...paths: string[]): string {
+  const path = joinPathFragments(...paths);
+
+  return path.startsWith('.') ? path : `./${path}`;
 }

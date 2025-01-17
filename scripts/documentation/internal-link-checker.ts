@@ -1,8 +1,7 @@
 import { workspaceRoot } from '@nx/devkit';
 import { XMLParser } from 'fast-xml-parser';
-import { existsSync, readJSONSync } from 'fs-extra';
 import * as glob from 'glob';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import * as parseLinks from 'parse-markdown-links';
 
@@ -15,7 +14,7 @@ function readFileContents(path: string): string {
   return readFileSync(path, 'utf-8');
 }
 function isLinkInternal(linkPath: string): boolean {
-  return linkPath.startsWith('/');
+  return linkPath.startsWith('/') || linkPath.startsWith('https://nx.dev');
 }
 function isNotAsset(linkPath: string): boolean {
   return !linkPath.startsWith('/assets');
@@ -35,19 +34,31 @@ function removeAnchors(linkPath: string): string {
   return linkPath.split('#')[0];
 }
 function extractAllLinks(basePath: string): Record<string, string[]> {
-  return glob.sync(`${basePath}/**/*.md`).reduce((acc, path) => {
+  return glob.sync(`${basePath}/*/**/*.md`).reduce((acc, path) => {
     const fileContents = readFileContents(path);
-    const cardLinks = (fileContents.match(/url="(.*)"/g) || []).map((v) =>
+    const cardLinks = (fileContents.match(/url="(.*?)"/g) || []).map((v) =>
       v.slice(5, -1)
     );
     const links = parseLinks(fileContents)
       .concat(cardLinks)
       .filter(isLinkInternal)
       .filter(isNotAsset)
-      .filter(isNotImage)
-      .map(removeAnchors);
+      .filter(isNotImage);
+    // .map(removeAnchors);
     if (links.length) {
       acc[path.replace(basePath, '')] = links;
+    }
+    return acc;
+  }, {});
+}
+function extractImageLinks(basePath: string): Record<string, string[]> {
+  return glob.sync(`${basePath}/**/*.md`).reduce((acc, path) => {
+    const fileContents = readFileContents(path);
+    const imageLinks = Array.from(
+      fileContents.matchAll(/!\[.*?\]\((.*?)\)/g)
+    ).map((matches) => decodeURI(matches[1]));
+    if (imageLinks.length) {
+      acc[path.replace(basePath, '')] = imageLinks;
     }
     return acc;
   }, {});
@@ -83,57 +94,120 @@ function readSiteMapLinks(filePath: string): string[] {
   return sitemap.urlset.url.map((obj) => obj.loc);
 }
 
-/**
- * This function checks if a link is for a private package.
- * When link is for a private package, it is not included in the sitemap.
- * However, some shared docs might be written for this private package during development.
- * @param link e.g. /packages/vite/generators/configuration
- * @returns true if the link is for a private package or NODE_ENV is not development, false otherwise.
- */
-function checkLinkIsForPrivatePackage(link: string) {
-  // skip this check in dev mode
-  if (process.env.NODE_ENV === 'development') {
-    return false;
-  }
-  const pathSegments = link.split('/').filter(Boolean);
-  if (pathSegments[0] === 'packages') {
-    const packageJsonPath = join(
-      workspaceRoot,
-      pathSegments[0],
-      pathSegments[1],
-      'package.json'
-    );
-    if (existsSync(packageJsonPath)) {
-      return readJSONSync(packageJsonPath).private ?? false;
-    }
-  }
-  return false;
-}
-
 // Main
 const documentLinks = extractAllLinks(join(workspaceRoot, 'docs'));
-const sitemapLinks = readSiteMapIndex(
+const sitemapUrls = readSiteMapIndex(
   join(workspaceRoot, 'dist/nx-dev/nx-dev/public/'),
   'sitemap.xml'
 ).flatMap((path) => readSiteMapLinks(path));
+function headerToAnchor(line: string): string {
+  return line
+    .replace(/[#]+ /, '')
+    .replace(/`.*`/, '')
+    .replace(/[^\w ]/g, '')
+    .trim()
+    .replace(/ +/g, '-')
+    .toLocaleLowerCase();
+}
+
+function readApiJson(manifestFileName: string): string[] {
+  const manifest = JSON.parse(
+    readFileContents(
+      join(
+        workspaceRoot,
+        'dist/nx-dev/nx-dev/public/documentation/generated/manifests',
+        manifestFileName
+      )
+    )
+  );
+  let entries = Object.entries(manifest);
+  return entries
+    .filter(
+      ([url, details]: [string, any]) =>
+        !!details.file &&
+        existsSync(join(workspaceRoot, 'docs', details.file + '.md'))
+    )
+    .flatMap(([url, details]: [string, any]) => {
+      const headers = readFileContents(
+        join(workspaceRoot, 'docs', details.file + '.md')
+      )
+        .split('\n')
+        .filter((line) => line.startsWith('#'))
+        .map(headerToAnchor)
+        .map((line) => url + '#' + line);
+      return headers;
+    });
+}
+
+const anchorUrls = ['nx.json', 'ci.json', 'extending-nx.json'].flatMap(
+  (manifestFileName) => readApiJson(manifestFileName)
+);
+const ignoreAnchorUrls = [
+  '/nx-api',
+  '/nx-cloud',
+  '/blog',
+  '/pricing',
+  '/ci/reference',
+  '/changelog',
+  '/conf',
+];
+
 const errors: Array<{ file: string; link: string }> = [];
+const localLinkErrors: Array<{ file: string; link: string }> = [];
 for (let file in documentLinks) {
   for (let link of documentLinks[file]) {
-    if (
-      !sitemapLinks.includes(['https://nx.dev', link].join('')) &&
-      !checkLinkIsForPrivatePackage(link)
+    if (link.startsWith('https://nx.dev')) {
+      localLinkErrors.push({ file, link });
+    } else if (
+      link.includes('#') &&
+      !ignoreAnchorUrls.some((ignoreAnchorUrl) =>
+        link.startsWith(ignoreAnchorUrl)
+      ) &&
+      !anchorUrls.includes(link)
+    ) {
+      errors.push({ file, link });
+    } else if (
+      !link.includes('#') &&
+      !sitemapUrls.includes(['https://nx.dev', link].join(''))
+    ) {
+      errors.push({ file, link });
+    } else if (
+      link.includes('#') &&
+      ignoreAnchorUrls.some((ignoreAnchorUrl) =>
+        link.startsWith(ignoreAnchorUrl)
+      ) &&
+      !sitemapUrls.includes(['https://nx.dev', removeAnchors(link)].join(''))
     ) {
       errors.push({ file, link });
     }
   }
 }
 
+const imageUrls = extractImageLinks(join(workspaceRoot, 'docs'));
+for (let file in imageUrls) {
+  for (let link of imageUrls[file]) {
+    if (!existsSync(join(workspaceRoot, 'docs', link))) {
+      errors.push({ file, link });
+    }
+  }
+}
+
 console.log(`i/ Internal Link Check`);
-if (errors.length) {
-  console.log(`ERROR\n${errors.length} links are pointing to nowhere:`);
-  errors.forEach((error) =>
-    console.error(`⚠ File:${error.file}\n -> ${error.link}\n`)
-  );
+if (errors.length || localLinkErrors.length) {
+  if (errors.length) {
+    console.log(`ERROR\n${errors.length} links are pointing to nowhere:`);
+    errors.forEach((error) => {
+      console.error(`⚠ File:${error.file}\n -> ${error.link}\n`);
+    });
+  }
+  if (localLinkErrors.length) {
+    console.log(
+      `ERROR\n${localLinkErrors.length} local links should not include the domain:`
+    );
+    localLinkErrors.forEach((error) => {
+      console.error(`⚠ File:${error.file}\n -> ${error.link}\n`);
+    });
+  }
   process.exit(1);
 }
 console.log(`i/ No internal 404 link detected.`);

@@ -1,9 +1,4 @@
-import {
-  updateJson,
-  ProjectConfiguration,
-  Tree,
-  joinPathFragments,
-} from '@nx/devkit';
+import { updateJson, ProjectConfiguration, Tree } from '@nx/devkit';
 import { workspaceRoot } from '@nx/devkit';
 import * as path from 'path';
 import { extname, join } from 'path';
@@ -56,7 +51,11 @@ export function updateFilesForRootProjects(
     if (!allowedExt.includes(ext)) {
       continue;
     }
-    if (file === '.eslintrc.json') {
+    if (
+      file === '.eslintrc.json' ||
+      file === 'eslint.config.js' ||
+      file === 'eslint.config.cjs'
+    ) {
       continue;
     }
 
@@ -81,13 +80,14 @@ export function updateFilesForNonRootProjects(
   schema: NormalizedSchema,
   project: ProjectConfiguration
 ): void {
-  const newRelativeRoot = path
-    .relative(
-      path.join(workspaceRoot, schema.relativeToRootDestination),
-      workspaceRoot
-    )
-    .split(path.sep)
-    .join('/');
+  const newRelativeRoot =
+    path
+      .relative(
+        path.join(workspaceRoot, schema.relativeToRootDestination),
+        workspaceRoot
+      )
+      .split(path.sep)
+      .join('/') + '/';
   const oldRelativeRoot = path
     .relative(path.join(workspaceRoot, project.root), workspaceRoot)
     .split(path.sep)
@@ -100,7 +100,7 @@ export function updateFilesForNonRootProjects(
 
   const dots = /\./g;
   const regex = new RegExp(
-    `(?<!\\.\\.\\/)${oldRelativeRoot.replace(dots, '\\.')}(?!\\/\\.\\.)`,
+    `(?<!\\.\\.\\/)${oldRelativeRoot.replace(dots, '\\.')}\/(?!\\.\\.\\/)`,
     'g'
   );
   for (const file of tree.children(schema.relativeToRootDestination)) {
@@ -108,7 +108,11 @@ export function updateFilesForNonRootProjects(
     if (!allowedExt.includes(ext)) {
       continue;
     }
-    if (file === '.eslintrc.json') {
+    if (
+      file === '.eslintrc.json' ||
+      file === 'eslint.config.cjs' ||
+      file === 'eslint.config.js'
+    ) {
       continue;
     }
 

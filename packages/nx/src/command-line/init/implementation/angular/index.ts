@@ -7,15 +7,15 @@ import { output } from '../../../../utils/output';
 import type { PackageJson } from '../../../../utils/package-json';
 import {
   addDepsToPackageJson,
-  askAboutNxCloud,
   initCloud,
-  printFinalMessage,
   runInstall,
+  updateGitIgnore,
 } from '../utils';
 import { setupIntegratedWorkspace } from './integrated-workspace';
 import { getLegacyMigrationFunctionIfApplicable } from './legacy-angular-versions';
 import { setupStandaloneWorkspace } from './standalone-workspace';
 import type { AngularJsonConfig, Options } from './types';
+import { connectExistingRepoToNxCloudPrompt } from '../../../connect/connect-to-nx-cloud';
 
 const defaultCacheableOperations: string[] = [
   'build',
@@ -51,25 +51,19 @@ export async function addNxToAngularCliRepo(options: Options) {
     ? await collectCacheableOperations(options)
     : [];
   const useNxCloud =
-    options.nxCloud ?? (options.interactive ? await askAboutNxCloud() : false);
+    options.nxCloud ??
+    (options.interactive ? await connectExistingRepoToNxCloudPrompt() : false);
 
   output.log({ title: '📦 Installing dependencies' });
-  installDependencies(useNxCloud);
+  installDependencies();
 
   output.log({ title: '📝 Setting up workspace' });
   await setupWorkspace(cacheableOperations, options.integrated);
 
   if (useNxCloud) {
     output.log({ title: '🛠️ Setting up Nx Cloud' });
-    initCloud(repoRoot, 'nx-init-angular');
+    await initCloud('nx-init-angular');
   }
-
-  printFinalMessage({
-    learnMoreLink: 'https://nx.dev/recipes/angular/migration/angular',
-    bodyLines: [
-      '- Execute "npx nx build" twice to see the computation caching in action.',
-    ],
-  });
 }
 
 async function collectCacheableOperations(options: Options): Promise<string[]> {
@@ -96,7 +90,11 @@ async function collectCacheableOperations(options: Options): Promise<string[]> {
             'Which of the following targets are cacheable? (Produce the same output given the same input, e.g. build, test and lint usually are, serve and start are not)',
           // enquirer mutates the array below, create a new one to avoid it
           choices: [...workspaceTargets],
-        },
+          /**
+           * limit is missing from the interface but it limits the amount of options shown
+           */
+          limit: process.stdout.rows - 4, // 4 leaves room for the header above, the prompt and some whitespace
+        } as any,
       ])) as any
     ).cacheableOperations;
   } else {
@@ -107,8 +105,8 @@ async function collectCacheableOperations(options: Options): Promise<string[]> {
   return cacheableOperations;
 }
 
-function installDependencies(useNxCloud: boolean): void {
-  addDepsToPackageJson(repoRoot, useNxCloud);
+function installDependencies(): void {
+  addDepsToPackageJson(repoRoot);
   addPluginDependencies();
   runInstall(repoRoot);
 }
@@ -147,6 +145,8 @@ async function setupWorkspace(
   cacheableOperations: string[],
   isIntegratedMigration: boolean
 ): Promise<void> {
+  updateGitIgnore(repoRoot);
+
   if (isIntegratedMigration) {
     setupIntegratedWorkspace();
   } else {

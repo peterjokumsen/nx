@@ -4,33 +4,6 @@ export interface Example {
 }
 
 export const examples: Record<string, Example[]> = {
-  'print-affected': [
-    {
-      command: 'print-affected',
-      description:
-        'Print information about affected projects and the project graph',
-    },
-    {
-      command: 'print-affected --base=main --head=HEAD',
-      description:
-        'Print information about the projects affected by the changes between main and HEAD (e.g,. PR)',
-    },
-    {
-      command: 'print-affected -t test',
-      description:
-        'Prints information about the affected projects and a list of tasks to test them',
-    },
-    {
-      command: 'print-affected -t build --select=projects',
-      description:
-        'Prints the projects property from the print-affected output',
-    },
-    {
-      command: 'print-affected -t build --select=tasks.target.project',
-      description:
-        'Prints the tasks.target.project property from the print-affected output',
-    },
-  ],
   affected: [
     {
       command: 'affected -t custom-target',
@@ -39,10 +12,6 @@ export const examples: Record<string, Example[]> = {
     {
       command: 'affected -t test --parallel=5',
       description: 'Run tests in parallel',
-    },
-    {
-      command: 'affected -t test --all',
-      description: 'Run the test target for all projects',
     },
     {
       command: 'affected -t lint test build',
@@ -65,22 +34,33 @@ export const examples: Record<string, Example[]> = {
         'Run tests for all the projects affected by the last commit on main',
     },
     {
-      command: "affected -t build --exclude '*,!tag:dotnet'",
+      command: "affected -t=build --exclude='*,!tag:dotnet'",
       description: 'Run build for only projects with the tag `dotnet`',
     },
     {
       command: 'affected -t build --tag=$NX_TASK_TARGET_PROJECT:latest',
-      description: 'Use the currently executing project name in your command.',
+      description: 'Use the currently executing project name in your command',
+    },
+
+    {
+      command: 'affected -t=build --graph',
+      description: 'Preview the task graph that Nx would run inside a webview',
+    },
+
+    {
+      command: 'affected -t=build --graph=output.json',
+      description: 'Save the task graph to a file',
+    },
+
+    {
+      command: 'affected -t=build --graph=stdout',
+      description: 'Print the task graph to the console',
     },
   ],
   'affected:test': [
     {
       command: 'affected:test --parallel=5',
       description: 'Run tests in parallel',
-    },
-    {
-      command: 'affected:test --all',
-      description: 'Run the test target for all projects',
     },
     {
       command: 'affected:test --files=libs/mylib/src/index.ts',
@@ -104,10 +84,6 @@ export const examples: Record<string, Example[]> = {
       description: 'Run build in parallel',
     },
     {
-      command: 'affected:build --all',
-      description: 'Run the build target for all projects',
-    },
-    {
       command: 'affected:build --files=libs/mylib/src/index.ts',
       description:
         'Run build for all the projects affected by changing the index.ts file',
@@ -129,10 +105,6 @@ export const examples: Record<string, Example[]> = {
       description: 'Run tests in parallel',
     },
     {
-      command: 'affected:e2e --all',
-      description: 'Run the test target for all projects',
-    },
-    {
       command: 'affected:e2e --files=libs/mylib/src/index.ts',
       description:
         'Run tests for all the projects affected by changing the index.ts file',
@@ -152,10 +124,6 @@ export const examples: Record<string, Example[]> = {
     {
       command: 'affected:lint --parallel=5',
       description: 'Run lint in parallel',
-    },
-    {
-      command: 'affected:lint --all',
-      description: 'Run the lint target for all projects',
     },
     {
       command: 'affected:lint --files=libs/mylib/src/index.ts',
@@ -189,6 +157,12 @@ export const examples: Record<string, Example[]> = {
       description:
         'Generate a static website with project graph into an html file, accompanied by an asset folder called static',
     },
+
+    {
+      command: 'graph --print',
+      description: 'Print the project graph as JSON to the console',
+    },
+
     {
       command: 'graph --focus=todos-feature-main',
       description:
@@ -213,39 +187,6 @@ export const examples: Record<string, Example[]> = {
       description: 'Watch for changes to project graph and update in-browser',
     },
   ],
-  'affected:graph': [
-    {
-      command: 'affected:graph --files=libs/mylib/src/index.ts',
-      description:
-        'Open the project graph of the workspace in the browser, and highlight the projects affected by changing the index.ts file',
-    },
-    {
-      command: 'affected:graph --base=main --head=HEAD',
-      description:
-        'Open the project graph of the workspace in the browser, and highlight the projects affected by the changes between main and HEAD (e.g., PR)',
-    },
-    {
-      command: 'affected:graph --base=main --head=HEAD --file=output.json',
-      description:
-        'Save the project graph of the workspace in a json file, and highlight the projects affected by the changes between main and HEAD (e.g., PR)',
-    },
-    {
-      command: 'affected:graph --base=main --head=HEAD --file=output.html',
-      description:
-        'Generate a static website with project graph data in an html file, highlighting the projects affected by the changes between main and HEAD (e.g., PR)',
-    },
-    {
-      command: 'affected:graph --base=main~1 --head=main',
-      description:
-        'Open the project graph of the workspace in the browser, and highlight the projects affected by the last commit on main',
-    },
-    {
-      command: 'affected:graph --exclude=project-one,project-two',
-      description:
-        'Open the project graph of the workspace in the browser, highlight the projects affected, but exclude project-one and project-two',
-    },
-  ],
-  'workspace-generator': [],
   list: [
     {
       command: 'list',
@@ -293,9 +234,57 @@ export const examples: Record<string, Example[]> = {
       description: 'Test all projects with a `type:feature` or `type:ui` tag',
     },
     {
-      command: 'run-many --targets=lint,test,build --all',
+      command: 'run-many --targets=lint,test,build',
       description:
         'Run lint, test, and build targets for all projects. Requires Nx v15.4+',
+    },
+
+    {
+      command: 'run-many -t=build --graph',
+      description: 'Preview the task graph that Nx would run inside a webview',
+    },
+
+    {
+      command: 'run-many -t=build --graph=output.json',
+      description: 'Save the task graph to a file',
+    },
+
+    {
+      command: 'run-many -t=build --graph=stdout',
+      description: 'Print the task graph to the console',
+    },
+  ],
+  run: [
+    {
+      command: 'run myapp:build',
+      description: 'Run the target build for the myapp project',
+    },
+
+    {
+      command: 'run myapp:build:production',
+      description:
+        'Run the target build for the myapp project, with production configuration',
+    },
+
+    {
+      command: 'run myapp:build --graph',
+      description: 'Preview the task graph that Nx would run inside a webview',
+    },
+
+    {
+      command: 'run myapp:build --graph=output.json',
+      description: 'Save the task graph to a file',
+    },
+
+    {
+      command: 'run myapp:build --graph=stdout',
+      description: 'Print the task graph to the console',
+    },
+
+    {
+      command: 'run myapp:"build:test"',
+      description:
+        'Run\'s a target named build:test for the myapp project. Note the quotes around the target name to prevent "test" from being considered a configuration',
     },
   ],
   migrate: [
@@ -347,6 +336,28 @@ export const examples: Record<string, Example[]> = {
         'Create a dedicated commit for each successfully completed migration. You can customize the prefix used for each commit by additionally setting --commit-prefix="PREFIX_HERE "',
     },
   ],
+  reset: [
+    {
+      command: 'reset',
+      description:
+        'Clears the internal state of the daemon and metadata that Nx is tracking. Helpful if you are getting strange errors and want to start fresh',
+    },
+    {
+      command: 'reset --only-cache',
+      description:
+        'Clears the Nx Cache directory. This will remove all local cache entries for tasks, but will not affect the remote cache',
+    },
+    {
+      command: 'reset --only-daemon',
+      description:
+        'Stops the Nx Daemon, it will be restarted fresh when the next Nx command is run.',
+    },
+    {
+      command: 'reset --only-workspace-data',
+      description:
+        'Clears the workspace data directory. Used by Nx to store cached data about the current workspace (e.g. partial results, incremental data, etc)',
+    },
+  ],
   show: [
     {
       command: 'show projects',
@@ -356,7 +367,13 @@ export const examples: Record<string, Example[]> = {
     {
       command: 'show projects --projects api-*',
       description:
-        'Show all projects with names starting with "api-". The "projects" option is useful to see which projects would be selected by run-many.',
+        'Show all projects with names starting with "api-". The "projects" option is useful to see which projects would be selected by run-many',
+    },
+
+    {
+      command: 'show projects --projects tag:ui-*',
+      description:
+        'Show all projects with a tag starting with "ui-". The "projects" option is useful to see which projects would be selected by run-many',
     },
 
     {
@@ -370,20 +387,36 @@ export const examples: Record<string, Example[]> = {
     },
 
     {
-      command: 'show projects --affected --exclude *-e2e',
+      command: 'show projects --affected --type app',
+      description: 'Show affected apps in the workspace',
+    },
+
+    {
+      command: 'show projects --affected --exclude=*-e2e',
       description:
         'Show affected projects in the workspace, excluding end-to-end projects',
     },
 
     {
       command: 'show project my-app',
-      description: 'Show detailed information about "my-app" in a json format.',
+      description:
+        'If in an interactive terminal, opens the project detail view. If not in an interactive terminal, defaults to JSON',
+    },
+
+    {
+      command: 'show project my-app --json',
+      description: 'Show detailed information about "my-app" in a json format',
     },
 
     {
       command: 'show project my-app --json false',
+      description: 'Show information about "my-app" in a human readable format',
+    },
+
+    {
+      command: 'show project my-app --web',
       description:
-        'Show information about "my-app" in a human readable format.',
+        'Opens a web browser to explore the configuration of "my-app"',
     },
   ],
   watch: [
@@ -403,6 +436,23 @@ export const examples: Record<string, Example[]> = {
       command: 'watch --all -- echo \\$NX_PROJECT_NAME',
       description:
         'Watch all projects (including newly created projects) in the workspace',
+    },
+  ],
+  add: [
+    {
+      command: 'add @nx/react',
+      description:
+        'Install the `@nx/react` package matching the installed version of the `nx` package and run its `@nx/react:init` generator',
+    },
+    {
+      command: 'add non-core-nx-plugin',
+      description:
+        'Install the latest version of the `non-core-nx-plugin` package and run its `non-core-nx-plugin:init` generator if available',
+    },
+    {
+      command: 'add @nx/react@17.0.0',
+      description:
+        'Install version `17.0.0` of the `@nx/react` package and run its `@nx/react:init` generator',
     },
   ],
 };

@@ -1,4 +1,4 @@
-import * as chalk from 'chalk';
+import * as pc from 'picocolors';
 import { ExecutorContext, logger, names } from '@nx/devkit';
 import { ChildProcess, fork } from 'child_process';
 import { resolve as pathResolve } from 'path';
@@ -21,7 +21,7 @@ export default async function* startExecutor(
 
   try {
     const baseUrl = `http://localhost:${options.port}`;
-    logger.info(chalk.cyan(`Packager is ready at ${baseUrl}`));
+    logger.info(pc.cyan(`Packager is ready at ${baseUrl}`));
 
     await startAsync(context.root, projectRoot, options);
 
@@ -45,7 +45,13 @@ function startAsync(
     childProcess = fork(
       require.resolve('@expo/cli/build/bin/cli'),
       ['start', ...createStartOptions(options)],
-      { cwd: pathResolve(workspaceRoot, projectRoot), env: process.env }
+      {
+        cwd: pathResolve(workspaceRoot, projectRoot),
+        env: {
+          RCT_METRO_PORT: options.port.toString(),
+          ...process.env,
+        },
+      }
     );
 
     // Ensure the child process is killed when the parent exits

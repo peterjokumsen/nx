@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "$id": "NxPlaywrightConfiguration",
   "description": "Add a Playwright configuration.",
   "title": "Add a Playwright configuration",
@@ -7,7 +7,7 @@
   "properties": {
     "project": {
       "type": "string",
-      "description": "The project to add a Playwright configuration to",
+      "description": "The project to add a Playwright configuration to.",
       "$default": {
         "$source": "projectName"
       },
@@ -16,9 +16,15 @@
     },
     "directory": {
       "type": "string",
-      "description": "A directory where the project is placed relative from the project root",
+      "description": "A directory where the project is placed relative from the project root.",
       "x-priority": "important",
-      "default": "playwright"
+      "default": "e2e"
+    },
+    "linter": {
+      "description": "The tool to use for running lint checks.",
+      "type": "string",
+      "enum": ["none", "eslint"],
+      "x-priority": "important"
     },
     "js": {
       "type": "boolean",
@@ -32,12 +38,6 @@
     "webServerAddress": {
       "type": "string",
       "description": "The address of the web server."
-    },
-    "linter": {
-      "description": "The tool to use for running lint checks.",
-      "type": "string",
-      "enum": ["eslint", "none"],
-      "default": "eslint"
     },
     "setParserOptionsProject": {
       "type": "boolean",
@@ -55,6 +55,18 @@
       "default": false,
       "description": "Do not add dependencies to `package.json`.",
       "x-priority": "internal"
+    },
+    "rootProject": {
+      "description": "Create a application at the root of the workspace",
+      "type": "boolean",
+      "default": false,
+      "hidden": true,
+      "x-priority": "internal"
+    },
+    "skipInstall": {
+      "type": "boolean",
+      "description": "Skip running `playwright install`. This is to ensure that playwright browsers are installed.",
+      "default": false
     }
   },
   "required": ["project"]

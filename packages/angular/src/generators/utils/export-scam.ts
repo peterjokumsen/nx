@@ -13,7 +13,7 @@ export type GenerationOptions = {
   directory: string;
   filePath: string;
   name: string;
-  project: string;
+  projectName: string;
   export?: boolean;
   inlineScam?: boolean;
 };
@@ -25,7 +25,7 @@ export function exportScam(tree: Tree, options: GenerationOptions): void {
 
   const { projectType, root, sourceRoot } = readProjectConfiguration(
     tree,
-    options.project
+    options.projectName
   );
   const projectSourceRoot = sourceRoot ?? joinPathFragments(root, 'src');
 
@@ -60,7 +60,7 @@ export function exportScam(tree: Tree, options: GenerationOptions): void {
   );
   const entryPointContent = tree.read(entryPointPath, 'utf-8');
   let updatedEntryPointContent = stripIndents`${entryPointContent}
-    export * from "${relativePathFromEntryPoint}";`;
+    export * from '${relativePathFromEntryPoint}';`;
 
   if (!options.inlineScam) {
     const moduleFilePath = joinPathFragments(
@@ -72,7 +72,7 @@ export function exportScam(tree: Tree, options: GenerationOptions): void {
       moduleFilePath
     );
     updatedEntryPointContent = stripIndents`${updatedEntryPointContent}
-        export * from "${relativePathFromModule}";`;
+        export * from '${relativePathFromModule}';`;
   }
 
   tree.write(entryPointPath, updatedEntryPointContent);

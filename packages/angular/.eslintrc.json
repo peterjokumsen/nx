@@ -5,7 +5,15 @@
   "overrides": [
     {
       "files": ["*.ts", "*.tsx", "*.js", "*.jsx"],
-      "rules": {}
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "name": "chalk",
+            "message": "Please use `picocolors` in place of `chalk` for rendering terminal colors"
+          }
+        ]
+      }
     },
     {
       "files": ["*.ts", "*.tsx"],
@@ -45,9 +53,9 @@
             "ignoredDependencies": [
               "nx",
               "eslint",
+              "vite",
               "rxjs",
               "semver",
-              // These are installed by ensurePackage so missing in package.json
               "@nx/cypress",
               "@nx/playwright",
               "@nx/jest",
@@ -57,7 +65,7 @@
               "@nx/webpack",
               "prettier",
               "typescript",
-              // These are installed by generators
+              "@schematics/angular",
               "@angular-devkit/core",
               "@angular-devkit/architect",
               "@angular-devkit/build-angular",
@@ -71,9 +79,8 @@
               "@ngrx/store",
               "@storybook/angular",
               "@module-federation/node",
-              // installed dynamically by the library generator
+              "@nguniversal/builders",
               "ng-packagr",
-              // ng-packagr deps, some are handled if not installed
               "injection-js",
               "browserslist",
               "cacache",
@@ -83,17 +90,22 @@
               "ora",
               "convert-source-map",
               "postcss",
-              "postcss-import",
-              "postcss-preset-env",
+              "autoprefixer",
               "postcss-url",
               "sass",
               "stylus",
               "tailwindcss",
-              // used in the CT angular plugin where Cy is already installed to use it.
-              "cypress"
+              "cypress",
+              "esbuild"
             ]
           }
         ]
+      }
+    },
+    {
+      "files": ["*.ts"],
+      "rules": {
+        "@angular-eslint/prefer-standalone": "off"
       }
     }
   ]

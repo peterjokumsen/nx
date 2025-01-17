@@ -1,6 +1,6 @@
 import {
   nxBaseCypressPreset,
-  NxComponentTestingOptions,
+  NxComponentTestingPresetOptions,
 } from '@nx/cypress/plugins/cypress-preset';
 import {
   createExecutorContext,
@@ -45,8 +45,16 @@ import { gte } from 'semver';
  */
 export function nxComponentTestingPreset(
   pathToConfig: string,
-  options?: NxComponentTestingOptions
+  options?: NxComponentTestingPresetOptions
 ) {
+  if (global.NX_GRAPH_CREATION) {
+    // this is only used by plugins, so we don't need the component testing
+    // options, cast to any to avoid type errors
+    return nxBaseCypressPreset(pathToConfig, {
+      testingType: 'component',
+    }) as any;
+  }
+
   let graph: ProjectGraph;
   try {
     graph = readCachedProjectGraph();
@@ -70,10 +78,13 @@ ${e.stack ? e.stack : e}`
     ctConfigurationName
   );
 
-  const buildTarget = getBuildableTarget(ctContext);
+  const buildTarget = options?.buildTarget
+    ? parseTargetString(options.buildTarget, graph)
+    : // for backwards compat, if no buildTargetin the preset options, get it from the target options
+      getBuildableTarget(ctContext);
 
   if (!buildTarget.project && !graph.nodes?.[buildTarget.project]?.data) {
-    throw new Error(stripIndents`Unable to find project configuration for build target. 
+    throw new Error(stripIndents`Unable to find project configuration for build target.
     Project Name? ${buildTarget.project}
     Has project config? ${!!graph.nodes?.[buildTarget.project]?.data}`);
   }
@@ -104,15 +115,17 @@ ${e.stack ? e.stack : e}`
     ...nxBaseCypressPreset(pathToConfig, { testingType: 'component' }),
     // NOTE: cannot use a glob pattern since it will break cypress generated tsconfig.
     specPattern: ['src/**/*.cy.ts', 'src/**/*.cy.js'],
-    // cypress defaults to a relative path from the workspaceRoot instead of projectRoot
-    // set as absolute path in case this changes internally to cypress, this path isn't OS dependent
-    indexHtmlFile: joinPathFragments(
-      ctContext.root,
-      ctProjectConfig.root,
-      'cypress',
-      'support',
-      'component-index.html'
-    ),
+    // Cy v12.17.0+ does not work with aboslute paths for index file
+    // but does with relative pathing, since relative path is the default location, we can omit it
+    indexHtmlFile: requiresAbsolutePath()
+      ? joinPathFragments(
+          ctContext.root,
+          ctProjectConfig.root,
+          'cypress',
+          'support',
+          'component-index.html'
+        )
+      : undefined,
     devServer: {
       // cypress uses string union type,
       // need to use const to prevent typing to string
@@ -293,8 +306,8 @@ Note: this may fail, setting the correct 'sourceRoot' for ${buildContext.project
 }
 
 function withSchemaDefaults(options: any): BrowserBuilderSchema {
-  if (!options.main) {
-    throw new Error('Missing executor options "main"');
+  if (!options.main && !options.browser) {
+    throw new Error('Missing executor options "main" and "browser"');
   }
   if (!options.index) {
     throw new Error('Missing executor options "index"');
@@ -320,6 +333,7 @@ function withSchemaDefaults(options: any): BrowserBuilderSchema {
   options.outputHashing ??= 'none';
   options.progress ??= true;
   options.scripts ??= [];
+  options.main ??= options.browser;
 
   return options;
 }
@@ -376,9 +390,7 @@ function isOffsetNeeded(
   ctProjectConfig: ProjectConfiguration
 ) {
   try {
-    const { version = null } = require('cypress/package.json');
-
-    const supportsWorkspaceRoot = !!version && gte(version, '12.9.0');
+    const supportsWorkspaceRoot = isCyVersionGreaterThanOrEqual('12.9.0');
 
     // if using cypress <v12.9.0 then we require the offset
     if (!supportsWorkspaceRoot) {
@@ -412,4 +424,35 @@ function isOffsetNeeded(
     // safest to assume we do
     return true;
   }
+}
+
+/**
+ * check if the cypress version is able to understand absolute paths to the indexHtmlFile option
+ * this is required for nx to work with cypress <v12.17.0 since the relative pathing is causes issues
+ * with invalid pathing.
+ * v12.17.0+ works with relative pathing
+ *
+ * if there is an error thrown then we assume it is an older version of cypress and use the absolute path
+ * as that was supported for longer.
+ *
+ * */
+function requiresAbsolutePath() {
+  try {
+    return !isCyVersionGreaterThanOrEqual('12.17.0');
+  } catch (e) {
+    if (process.env.NX_VERBOSE_LOGGING === 'true') {
+      logger.error(e);
+    }
+    return true;
+  }
+}
+
+/**
+ * Checks if the install cypress version is greater than or equal to the provided version.
+ * Does not catch errors as any custom logic for error handling is required on consumer side.
+ * */
+function isCyVersionGreaterThanOrEqual(version: string) {
+  const { version: cyVersion = null } = require('cypress/package.json');
+
+  return !!cyVersion && gte(cyVersion, version);
 }

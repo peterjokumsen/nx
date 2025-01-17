@@ -4,8 +4,6 @@
   "sourceRoot": "packages/expo/src",
   "projectType": "library",
   "targets": {
-    "lint": {},
-    "test": {},
     "build-base": {
       "executor": "@nx/js:tsc",
       "options": {
@@ -50,10 +48,7 @@
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/build/packages/expo"],
       "options": {
-        "commands": [
-          "node ./scripts/copy-readme.js expo",
-          "node ./scripts/add-dependency-to-build.js expo @nrwl/expo"
-        ]
+        "command": "node ./scripts/copy-readme.js expo"
       }
     }
   },

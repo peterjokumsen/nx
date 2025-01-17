@@ -1,12 +1,23 @@
 import { joinPathFragments } from '../../../utils/path';
-import { parseYarnLockfile, stringifyYarnLockfile } from './yarn-parser';
+import {
+  getYarnLockfileNodes,
+  getYarnLockfileDependencies,
+  stringifyYarnLockfile,
+} from './yarn-parser';
 import { pruneProjectGraph } from './project-graph-pruning';
 import { vol } from 'memfs';
 import { ProjectGraph } from '../../../config/project-graph';
 import { PackageJson } from '../../../utils/package-json';
 import { ProjectGraphBuilder } from '../../../project-graph/project-graph-builder';
+import { CreateDependenciesContext } from '../../../project-graph/plugins';
 
-jest.mock('fs', () => require('memfs').fs);
+jest.mock('fs', () => {
+  const memFs = require('memfs').fs;
+  return {
+    ...memFs,
+    existsSync: (p) => (p.endsWith('.node') ? true : memFs.existsSync(p)),
+  };
+});
 
 jest.mock('@nx/devkit', () => ({
   ...jest.requireActual<any>('@nx/devkit'),
@@ -162,7 +173,6 @@ describe('yarn LockFile utility', () => {
     let graph: ProjectGraph;
 
     beforeEach(() => {
-      const builder = new ProjectGraphBuilder();
       lockFile = require(joinPathFragments(
         __dirname,
         '__fixtures__/nextjs/yarn.lock'
@@ -171,7 +181,39 @@ describe('yarn LockFile utility', () => {
         __dirname,
         '__fixtures__/nextjs/package.json'
       ));
-      parseYarnLockfile(lockFile, packageJson, builder);
+
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       graph = builder.getUpdatedProjectGraph();
     });
 
@@ -359,6 +401,11 @@ describe('yarn LockFile utility', () => {
         'node_modules/yargs/package.json': '{"version": "17.6.2"}',
         'node_modules/yargs-parser/package.json': '{"version": "21.1.1"}',
         'node_modules/yocto-queue/package.json': '{"version": "0.1.0"}',
+        'node_modules/@types/prop-types/package.json': '{"version": "15.7.5"}',
+        'node_modules/@docusaurus/core/package.json': '{"version": "2.4.1"}',
+        'node_modules/@docusaurus/react-loadable/package.json':
+          '{"version": "5.5.2"}',
+        'node_modules/react-loadable/package.json': '{"version": "5.5.2"}',
       };
       vol.fromJSON(fileSys, '/root');
     });
@@ -372,12 +419,17 @@ describe('yarn LockFile utility', () => {
         __dirname,
         '__fixtures__/auxiliary-packages/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(classicLockFile, packageJson, builder);
-      const graph = builder.getUpdatedProjectGraph();
-      expect(Object.keys(graph.externalNodes).length).toEqual(127);
 
-      expect(graph.externalNodes['npm:minimatch']).toMatchInlineSnapshot(`
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(
+        classicLockFile,
+        hash,
+        packageJson
+      );
+
+      expect(Object.keys(externalNodes).length).toEqual(127);
+
+      expect(externalNodes['npm:minimatch']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "sha512-J7p63hRiAjw1NDEww1W7i37+ByIrOWO5XQQAzZ3VOcL0PNybwpfmV/N05zFAzwQ9USyEcX6t3UO+K5aqBQOIHw==",
@@ -388,7 +440,7 @@ describe('yarn LockFile utility', () => {
           "type": "npm",
         }
       `);
-      expect(graph.externalNodes['npm:minimatch@5.1.1']).toMatchInlineSnapshot(`
+      expect(externalNodes['npm:minimatch@5.1.1']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "sha512-362NP+zlprccbEt/SkxKfRMHnNY85V74mVnpUpNyr3F35covl09Kec7/sEFLt3RA4oXmewtoaanoIf67SE5Y5g==",
@@ -399,7 +451,7 @@ describe('yarn LockFile utility', () => {
           "type": "npm",
         }
       `);
-      expect(graph.externalNodes['npm:postgres']).toMatchInlineSnapshot(`
+      expect(externalNodes['npm:postgres']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "postgres|https://codeload.github.com/charsleysa/postgres/tar.gz/3b1a01b2da3e2fafb1a79006f838eff11a8de3cb",
@@ -410,7 +462,7 @@ describe('yarn LockFile utility', () => {
           "type": "npm",
         }
       `);
-      expect(graph.externalNodes['npm:eslint-plugin-disable-autofix'])
+      expect(externalNodes['npm:eslint-plugin-disable-autofix'])
         .toMatchInlineSnapshot(`
         {
           "data": {
@@ -454,9 +506,40 @@ describe('yarn LockFile utility', () => {
         '__fixtures__/auxiliary-packages/yarn.lock.pruned'
       )).default;
 
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       const prunedGraph = pruneProjectGraph(graph, normalizedPackageJson);
       const result = stringifyYarnLockfile(
         prunedGraph,
@@ -492,9 +575,44 @@ describe('yarn LockFile utility', () => {
         '__fixtures__/auxiliary-packages/yarn.lock.pruned'
       )).default;
 
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, normalizedPackageJson, builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(
+        lockFile,
+        hash,
+        normalizedPackageJson
+      );
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       const prunedGraph = pruneProjectGraph(graph, normalizedPackageJson);
       const result = stringifyYarnLockfile(
         prunedGraph,
@@ -518,12 +636,17 @@ describe('yarn LockFile utility', () => {
         __dirname,
         '__fixtures__/auxiliary-packages/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(berryLockFile, packageJson, builder);
-      const graph = builder.getUpdatedProjectGraph();
-      expect(Object.keys(graph.externalNodes).length).toEqual(129);
 
-      expect(graph.externalNodes['npm:minimatch']).toMatchInlineSnapshot(`
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(
+        berryLockFile,
+        hash,
+        packageJson
+      );
+
+      expect(Object.keys(externalNodes).length).toEqual(129);
+
+      expect(externalNodes['npm:minimatch']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "c154e566406683e7bcb746e000b84d74465b3a832c45d59912b9b55cd50dee66e5c4b1e5566dba26154040e51672f9aa450a9aef0c97cfc7336b78b7afb9540a",
@@ -534,7 +657,7 @@ describe('yarn LockFile utility', () => {
           "type": "npm",
         }
       `);
-      expect(graph.externalNodes['npm:minimatch@5.1.1']).toMatchInlineSnapshot(`
+      expect(externalNodes['npm:minimatch@5.1.1']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "215edd0978320a3354188f84a537d45841f2449af4df4379f79b9b777e71aa4f5722cc9d1717eabd2a70d38ef76ab7b708d24d83ea6a6c909dfd8833de98b437",
@@ -545,7 +668,7 @@ describe('yarn LockFile utility', () => {
           "type": "npm",
         }
       `);
-      expect(graph.externalNodes['npm:postgres']).toMatchInlineSnapshot(`
+      expect(externalNodes['npm:postgres']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "521660853e0c9f1c604cf43d32c75e2b4675e2d912eaec7bb6749716539dd53f1dfaf575a422087f6a53362f5162f9a4b8a88cc1dadf9d7580423fc05137767a",
@@ -556,7 +679,7 @@ describe('yarn LockFile utility', () => {
           "type": "npm",
         }
       `);
-      expect(graph.externalNodes['npm:eslint-plugin-disable-autofix'])
+      expect(externalNodes['npm:eslint-plugin-disable-autofix'])
         .toMatchInlineSnapshot(`
         {
           "data": {
@@ -601,9 +724,40 @@ describe('yarn LockFile utility', () => {
         '__fixtures__/auxiliary-packages/package.json'
       ));
 
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       const prunedGraph = pruneProjectGraph(graph, normalizedPackageJson);
       const result = stringifyYarnLockfile(
         prunedGraph,
@@ -613,6 +767,176 @@ describe('yarn LockFile utility', () => {
       expect(result.split('\n').slice(2)).toEqual(
         prunedLockFile.split('\n').slice(2)
       );
+    });
+
+    describe('alias duplicate', () => {
+      it('should parse yarn berry', async () => {
+        const lockFile = `# This file is generated by running "yarn install" inside your project.
+# Manual changes might be lost - proceed with caution!
+
+__metadata:
+  version: 6
+  cacheKey: 8
+
+"@docusaurus/core@npm:2.4.1":
+  version: 2.4.1
+  resolution: "@docusaurus/core@npm:2.4.1"
+  dependencies:
+    "@docusaurus/react-loadable": 5.5.2
+    react-loadable: "npm:@docusaurus/react-loadable@5.5.2"
+  bin:
+    docusaurus: bin/docusaurus.mjs
+  checksum: 40c887ef662f7679d803695d4193268c2c177c6d4e13b43b56cc519322522a1608b4bfc4999f6355be778ca7a0256f0d27ab18a19b352a9da1aed66e2644dc82
+  languageName: node
+  linkType: hard
+
+"@docusaurus/react-loadable@npm:5.5.2, react-loadable@npm:@docusaurus/react-loadable@5.5.2":
+  version: 5.5.2
+  resolution: "@docusaurus/react-loadable@npm:5.5.2"
+  checksum: 930fb9e2936412a12461f210acdc154a433283921ca43ac3fc3b84cb6c12eb738b3a3719373022bf68004efeb1a928dbe36c467d7a1f86454ed6241576d936e7
+  languageName: node
+  linkType: hard
+`;
+
+        const packageJson: PackageJson = {
+          name: '@my-ns/example',
+          version: '0.0.1',
+          type: 'commonjs',
+          dependencies: {
+            '@docusaurus/core': '2.4.1',
+          },
+        };
+
+        const hash = uniq('mock-hash');
+        const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+        const pg = {
+          nodes: {},
+          dependencies: {},
+          externalNodes,
+        };
+        const ctx: CreateDependenciesContext = {
+          projects: {},
+          externalNodes,
+          fileMap: {
+            nonProjectFiles: [],
+            projectFileMap: {},
+          },
+          filesToProcess: {
+            nonProjectFiles: [],
+            projectFileMap: {},
+          },
+          nxJsonConfiguration: null,
+          workspaceRoot: '/virtual',
+        };
+        const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+        const builder = new ProjectGraphBuilder(pg);
+        for (const dep of dependencies) {
+          builder.addDependency(
+            dep.source,
+            dep.target,
+            dep.type,
+            'sourceFile' in dep ? dep.sourceFile : null
+          );
+        }
+        const graph = builder.getUpdatedProjectGraph();
+
+        expect(graph.externalNodes).toMatchInlineSnapshot(`
+          {
+            "npm:@docusaurus/core": {
+              "data": {
+                "hash": "40c887ef662f7679d803695d4193268c2c177c6d4e13b43b56cc519322522a1608b4bfc4999f6355be778ca7a0256f0d27ab18a19b352a9da1aed66e2644dc82",
+                "packageName": "@docusaurus/core",
+                "version": "2.4.1",
+              },
+              "name": "npm:@docusaurus/core",
+              "type": "npm",
+            },
+            "npm:@docusaurus/react-loadable": {
+              "data": {
+                "hash": "930fb9e2936412a12461f210acdc154a433283921ca43ac3fc3b84cb6c12eb738b3a3719373022bf68004efeb1a928dbe36c467d7a1f86454ed6241576d936e7",
+                "packageName": "@docusaurus/react-loadable",
+                "version": "5.5.2",
+              },
+              "name": "npm:@docusaurus/react-loadable",
+              "type": "npm",
+            },
+            "npm:react-loadable": {
+              "data": {
+                "hash": "930fb9e2936412a12461f210acdc154a433283921ca43ac3fc3b84cb6c12eb738b3a3719373022bf68004efeb1a928dbe36c467d7a1f86454ed6241576d936e7",
+                "packageName": "react-loadable",
+                "version": "npm:@docusaurus/react-loadable@5.5.2",
+              },
+              "name": "npm:react-loadable",
+              "type": "npm",
+            },
+          }
+        `);
+      });
+
+      it('should parse yarn classic', async () => {
+        const lockFile = `# THIS IS AN AUTOGENERATED FILE. DO NOT EDIT THIS FILE DIRECTLY.
+# yarn lockfile v1
+
+
+"@docusaurus/core@2.4.1":
+  version "2.4.1"
+  resolved "https://registry.yarnpkg.com/@docusaurus/core/-/core-2.4.1.tgz#4b8ff5766131ce3fbccaad0b1daf2ad4dc76f62d"
+  integrity sha512-SNsY7PshK3Ri7vtsLXVeAJGS50nJN3RgF836zkyUfAD01Fq+sAk5EwWgLw+nnm5KVNGDu7PRR2kRGDsWvqpo0g==
+  dependencies:
+    "@docusaurus/react-loadable" "5.5.2"
+    react-loadable "npm:@docusaurus/react-loadable@5.5.2"
+
+"@docusaurus/react-loadable@5.5.2", "react-loadable@npm:@docusaurus/react-loadable@5.5.2":
+  version "5.5.2"
+  resolved "https://registry.yarnpkg.com/@docusaurus/react-loadable/-/react-loadable-5.5.2.tgz#81aae0db81ecafbdaee3651f12804580868fa6ce"
+  integrity sha512-A3dYjdBGuy0IGT+wyLIGIKLRE+sAk1iNk0f1HjNDysO7u8lhL4N3VEm+FAubmJbAztn94F7MxBTPmnixbiyFdQ==
+`;
+
+        const packageJson: PackageJson = {
+          name: '@my-ns/example',
+          version: '0.0.1',
+          type: 'commonjs',
+          dependencies: {
+            '@docusaurus/core': '2.4.1',
+          },
+        };
+
+        const hash = uniq('mock-hash');
+        const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+
+        expect(externalNodes).toMatchInlineSnapshot(`
+                  {
+                    "npm:@docusaurus/core": {
+                      "data": {
+                        "hash": "sha512-SNsY7PshK3Ri7vtsLXVeAJGS50nJN3RgF836zkyUfAD01Fq+sAk5EwWgLw+nnm5KVNGDu7PRR2kRGDsWvqpo0g==",
+                        "packageName": "@docusaurus/core",
+                        "version": "2.4.1",
+                      },
+                      "name": "npm:@docusaurus/core",
+                      "type": "npm",
+                    },
+                    "npm:@docusaurus/react-loadable": {
+                      "data": {
+                        "hash": "sha512-A3dYjdBGuy0IGT+wyLIGIKLRE+sAk1iNk0f1HjNDysO7u8lhL4N3VEm+FAubmJbAztn94F7MxBTPmnixbiyFdQ==",
+                        "packageName": "@docusaurus/react-loadable",
+                        "version": "5.5.2",
+                      },
+                      "name": "npm:@docusaurus/react-loadable",
+                      "type": "npm",
+                    },
+                    "npm:react-loadable": {
+                      "data": {
+                        "hash": "sha512-A3dYjdBGuy0IGT+wyLIGIKLRE+sAk1iNk0f1HjNDysO7u8lhL4N3VEm+FAubmJbAztn94F7MxBTPmnixbiyFdQ==",
+                        "packageName": "react-loadable",
+                        "version": "npm:@docusaurus/react-loadable@5.5.2",
+                      },
+                      "name": "npm:react-loadable",
+                      "type": "npm",
+                    },
+                  }
+              `);
+      });
     });
   });
 
@@ -658,10 +982,10 @@ postgres@charsleysa/postgres#fix-errors-compiled:
         },
       };
 
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
-      const graph = builder.getUpdatedProjectGraph();
-      expect(graph.externalNodes['npm:@nrwl/nx-cloud']).toMatchInlineSnapshot(`
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+
+      expect(externalNodes['npm:@nrwl/nx-cloud']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "sha512-iJIPP46+saFZK748FKU4u4YZH+Sv3ZvZPbMwGVMhwqhOYcrlO5aSa0lpilyoN8WuhooKNqcCfiqshx6V577fTg==",
@@ -672,7 +996,7 @@ postgres@charsleysa/postgres#fix-errors-compiled:
           "type": "npm",
         }
       `);
-      expect(graph.externalNodes['npm:nx-cloud']).toMatchInlineSnapshot(`
+      expect(externalNodes['npm:nx-cloud']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "sha512-Rq7ynvkYzAJ67N3pDqU6cMqwvWP7WXJGP4EFjLxgUrRHNCccqDPggeAqePodfk3nZEUrZB8F5QBKZuuw1DR3oA==",
@@ -683,7 +1007,7 @@ postgres@charsleysa/postgres#fix-errors-compiled:
           "type": "npm",
         }
       `);
-      expect(graph.externalNodes['npm:postgres']).toMatchInlineSnapshot(`
+      expect(externalNodes['npm:postgres']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "postgres|https://codeload.github.com/charsleysa/postgres/tar.gz/3b1a01b2da3e2fafb1a79006f838eff11a8de3cb",
@@ -728,10 +1052,10 @@ postgres@charsleysa/postgres#fix-errors-compiled:
         },
       };
 
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
-      const graph = builder.getUpdatedProjectGraph();
-      expect(graph.externalNodes['npm:@nrwl/nx-cloud']).toMatchInlineSnapshot(`
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+
+      expect(externalNodes['npm:@nrwl/nx-cloud']).toMatchInlineSnapshot(`
           {
             "data": {
               "hash": "sha512-iJIPP46+saFZK748FKU4u4YZH+Sv3ZvZPbMwGVMhwqhOYcrlO5aSa0lpilyoN8WuhooKNqcCfiqshx6V577fTg==",
@@ -742,7 +1066,7 @@ postgres@charsleysa/postgres#fix-errors-compiled:
             "type": "npm",
           }
         `);
-      expect(graph.externalNodes['npm:nx-cloud']).toMatchInlineSnapshot(`
+      expect(externalNodes['npm:nx-cloud']).toMatchInlineSnapshot(`
           {
             "data": {
               "hash": "sha512-Rq7ynvkYzAJ67N3pDqU6cMqwvWP7WXJGP4EFjLxgUrRHNCccqDPggeAqePodfk3nZEUrZB8F5QBKZuuw1DR3oA==",
@@ -753,7 +1077,7 @@ postgres@charsleysa/postgres#fix-errors-compiled:
             "type": "npm",
           }
         `);
-      expect(graph.externalNodes['npm:postgres']).toMatchInlineSnapshot(`
+      expect(externalNodes['npm:postgres']).toMatchInlineSnapshot(`
           {
             "data": {
               "hash": "postgres|https://codeload.github.com/charsleysa/postgres/tar.gz/3b1a01b2da3e2fafb1a79006f838eff11a8de3cb",
@@ -784,10 +1108,10 @@ nx-cloud@latest:
         },
       };
 
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
-      const graph = builder.getUpdatedProjectGraph();
-      expect(graph.externalNodes['npm:nx-cloud']).toMatchInlineSnapshot(`
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+
+      expect(externalNodes['npm:nx-cloud']).toMatchInlineSnapshot(`
           {
             "data": {
               "hash": "sha512-Rq7ynvkYzAJ67N3pDqU6cMqwvWP7WXJGP4EFjLxgUrRHNCccqDPggeAqePodfk3nZEUrZB8F5QBKZuuw1DR3oA==",
@@ -811,12 +1135,17 @@ nx-cloud@latest:
         __dirname,
         '__fixtures__/auxiliary-packages/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(berryLockFile, packageJson, builder);
-      const graph = builder.getUpdatedProjectGraph();
-      expect(Object.keys(graph.externalNodes).length).toEqual(129);
 
-      expect(graph.externalNodes['npm:react']).toMatchInlineSnapshot(`
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(
+        berryLockFile,
+        hash,
+        packageJson
+      );
+
+      expect(Object.keys(externalNodes).length).toEqual(129);
+
+      expect(externalNodes['npm:react']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "88e38092da8839b830cda6feef2e8505dec8ace60579e46aa5490fc3dc9bba0bd50336507dc166f43e3afc1c42939c09fe33b25fae889d6f402721dcd78fca1b",
@@ -828,7 +1157,7 @@ nx-cloud@latest:
         }
       `);
 
-      expect(graph.externalNodes['npm:typescript']).toMatchInlineSnapshot(`
+      expect(externalNodes['npm:typescript']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "ee000bc26848147ad423b581bd250075662a354d84f0e06eb76d3b892328d8d4440b7487b5a83e851b12b255f55d71835b008a66cbf8f255a11e4400159237db",
@@ -839,7 +1168,7 @@ nx-cloud@latest:
           "type": "npm",
         }
       `);
-      expect(graph.externalNodes['npm:@nrwl/devkit']).toMatchInlineSnapshot(`
+      expect(externalNodes['npm:@nrwl/devkit']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "7dcc3600998448c496228e062d7edd8ecf959fa1ddb9721e91bb1f60f1a2284fd0e12e09edc022170988e2fb54acf101c79dc09fe9c54a21c9941e682eb73b92",
@@ -850,7 +1179,7 @@ nx-cloud@latest:
           "type": "npm",
         }
       `);
-      expect(graph.externalNodes['npm:postgres']).toMatchInlineSnapshot(`
+      expect(externalNodes['npm:postgres']).toMatchInlineSnapshot(`
         {
           "data": {
             "hash": "521660853e0c9f1c604cf43d32c75e2b4675e2d912eaec7bb6749716539dd53f1dfaf575a422087f6a53362f5162f9a4b8a88cc1dadf9d7580423fc05137767a",
@@ -861,7 +1190,7 @@ nx-cloud@latest:
           "type": "npm",
         }
       `);
-      expect(graph.externalNodes['npm:eslint-plugin-disable-autofix'])
+      expect(externalNodes['npm:eslint-plugin-disable-autofix'])
         .toMatchInlineSnapshot(`
         {
           "data": {
@@ -923,10 +1252,14 @@ nx-cloud@latest:
         __dirname,
         '__fixtures__/duplicate-package/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(classicLockFile, packageJson, builder);
-      const graph = builder.getUpdatedProjectGraph();
-      expect(Object.keys(graph.externalNodes).length).toEqual(371);
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(
+        classicLockFile,
+        hash,
+        packageJson
+      );
+
+      expect(Object.keys(externalNodes).length).toEqual(371);
     });
   });
 
@@ -953,9 +1286,41 @@ nx-cloud@latest:
         __dirname,
         '__fixtures__/optional/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
+
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       expect(Object.keys(graph.externalNodes).length).toEqual(103);
 
       const prunedGraph = pruneProjectGraph(graph, packageJson);
@@ -1136,9 +1501,41 @@ nx-cloud@latest:
         __dirname,
         '__fixtures__/pruning/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
+
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       const prunedGraph = pruneProjectGraph(graph, typescriptPackageJson);
       const result = stringifyYarnLockfile(
         prunedGraph,
@@ -1167,9 +1564,41 @@ nx-cloud@latest:
         __dirname,
         '__fixtures__/pruning/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
+
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       const prunedGraph = pruneProjectGraph(graph, multiPackageJson);
       const result = stringifyYarnLockfile(
         prunedGraph,
@@ -1204,10 +1633,10 @@ nx-cloud@latest:
         __dirname,
         '__fixtures__/workspaces/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
-      const graph = builder.getUpdatedProjectGraph();
-      expect(Object.keys(graph.externalNodes).length).toEqual(5);
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+
+      expect(Object.keys(externalNodes).length).toEqual(5);
     });
 
     it('should parse berry lock file', async () => {
@@ -1219,10 +1648,10 @@ nx-cloud@latest:
         __dirname,
         '__fixtures__/workspaces/package.json'
       ));
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
-      const graph = builder.getUpdatedProjectGraph();
-      expect(Object.keys(graph.externalNodes).length).toEqual(5);
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+
+      expect(Object.keys(externalNodes).length).toEqual(5);
     });
   });
 
@@ -1285,9 +1714,38 @@ type-fest@^0.20.2:
           tslib: '^2.4.0',
         },
       };
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
 
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
       expect(graph.externalNodes['npm:tslib']).toMatchInlineSnapshot(`
         {
@@ -1375,9 +1833,40 @@ __metadata:
         },
       };
 
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       expect(graph.externalNodes['npm:tslib']).toMatchInlineSnapshot(`
         {
           "data": {
@@ -1473,9 +1962,40 @@ __metadata:
         '__fixtures__/mixed-keys/package.json'
       ));
 
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       expect(graph.externalNodes).toMatchInlineSnapshot(`
         {
           "npm:@isaacs/cliui": {
@@ -1685,9 +2205,40 @@ __metadata:
         '__fixtures__/mixed-keys/package.json'
       ));
 
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
       const graph = builder.getUpdatedProjectGraph();
+
       expect(graph.externalNodes).toMatchInlineSnapshot(`
         {
           "npm:@isaacs/cliui": {
@@ -1949,10 +2500,10 @@ __metadata:
         },
       };
 
-      const builder = new ProjectGraphBuilder();
-      parseYarnLockfile(lockFile, packageJson, builder);
-      const graph = builder.getUpdatedProjectGraph();
-      expect(graph.externalNodes).toMatchInlineSnapshot(`
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+
+      expect(externalNodes).toMatchInlineSnapshot(`
         {
           "npm:@octokit/request-error": {
             "data": {
@@ -1994,4 +2545,267 @@ __metadata:
       `);
     });
   });
+
+  describe('patches', () => {
+    beforeEach(() => {
+      const fileSys = {
+        'node_modules/resolve/package.json': '{"version": "1.22.3"}',
+      };
+      vol.fromJSON(fileSys, '/root');
+    });
+
+    it('should keep the builtin patch', () => {
+      const lockFile = `# This file is generated by running "yarn install" inside your project.
+# Manual changes might be lost - proceed with caution!
+
+__metadata:
+  version: 6
+  cacheKey: 8
+
+"resolve@npm:^1.12.0, resolve@npm:^1.14.2, resolve@npm:^1.20.0, resolve@npm:^1.22.1":
+  version: 1.22.3
+  resolution: "resolve@npm:1.22.3"
+  dependencies:
+    is-core-module: ^2.12.0
+    path-parse: ^1.0.7
+    supports-preserve-symlinks-flag: ^1.0.0
+  bin:
+    resolve: bin/resolve
+  checksum: fb834b81348428cb545ff1b828a72ea28feb5a97c026a1cf40aa1008352c72811ff4d4e71f2035273dc536dcfcae20c13604ba6283c612d70fa0b6e44519c374
+  languageName: node
+  linkType: hard
+
+"resolve@patch:resolve@^1.12.0#~builtin<compat/resolve>, resolve@patch:resolve@^1.14.2#~builtin<compat/resolve>, resolve@patch:resolve@^1.20.0#~builtin<compat/resolve>, resolve@patch:resolve@^1.22.1#~builtin<compat/resolve>":
+  version: 1.22.3
+  resolution: "resolve@patch:resolve@npm%3A1.22.3#~builtin<compat/resolve>::version=1.22.3&hash=c3c19d"
+  dependencies:
+    is-core-module: ^2.12.0
+    path-parse: ^1.0.7
+    supports-preserve-symlinks-flag: ^1.0.0
+  bin:
+    resolve: bin/resolve
+  checksum: ad59734723b596d0891321c951592ed9015a77ce84907f89c9d9307dd0c06e11a67906a3e628c4cae143d3e44898603478af0ddeb2bba3f229a9373efe342665
+  languageName: node
+  linkType: hard
+        `;
+
+      const packageJson: PackageJson = {
+        name: '@my-ns/example',
+        version: '0.0.1',
+        type: 'commonjs',
+        dependencies: {
+          resolve: '^1.12.0',
+        },
+      };
+
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
+      const graph = builder.getUpdatedProjectGraph();
+
+      const prunedGraph = pruneProjectGraph(graph, packageJson);
+      const result = stringifyYarnLockfile(prunedGraph, lockFile, packageJson);
+      expect(result).toMatchInlineSnapshot(`
+        "# This file is generated by running "yarn install" inside your project.
+        # Manual changes might be lost - proceed with caution!
+
+        __metadata:
+          version: 6
+          cacheKey: 8
+
+        "@my-ns/example@workspace:.":
+          version: 0.0.0-use.local
+          resolution: "@my-ns/example@workspace:."
+          dependencies:
+            resolve: ^1.12.0
+          languageName: unknown
+          linkType: soft
+
+        "resolve@npm:^1.12.0":
+          version: 1.22.3
+          resolution: "resolve@npm:1.22.3"
+          dependencies:
+            is-core-module: ^2.12.0
+            path-parse: ^1.0.7
+            supports-preserve-symlinks-flag: ^1.0.0
+          bin:
+            resolve: bin/resolve
+          checksum: fb834b81348428cb545ff1b828a72ea28feb5a97c026a1cf40aa1008352c72811ff4d4e71f2035273dc536dcfcae20c13604ba6283c612d70fa0b6e44519c374
+          languageName: node
+          linkType: hard
+
+        "resolve@patch:resolve@^1.12.0#~builtin<compat/resolve>":
+          version: 1.22.3
+          resolution: "resolve@patch:resolve@npm%3A1.22.3#~builtin<compat/resolve>::version=1.22.3&hash=c3c19d"
+          dependencies:
+            is-core-module: ^2.12.0
+            path-parse: ^1.0.7
+            supports-preserve-symlinks-flag: ^1.0.0
+          bin:
+            resolve: bin/resolve
+          checksum: ad59734723b596d0891321c951592ed9015a77ce84907f89c9d9307dd0c06e11a67906a3e628c4cae143d3e44898603478af0ddeb2bba3f229a9373efe342665
+          languageName: node
+          linkType: hard
+        "
+      `);
+    });
+
+    it('should keep the builtin patch for yarn 4 patch syntax', () => {
+      const lockFile = `# This file is generated by running "yarn install" inside your project.
+# Manual changes might be lost - proceed with caution!
+
+__metadata:
+  version: 6
+  cacheKey: 8
+
+"resolve@npm:1.22.8, resolve@npm:^1.1.7, resolve@npm:^1.10.0, resolve@npm:^1.12.0, resolve@npm:^1.14.2, resolve@npm:^1.19.0, resolve@npm:^1.20.0, resolve@npm:^1.22.1, resolve@npm:^1.22.4, resolve@npm:^1.22.8, resolve@npm:^1.9.0":
+  version: 1.22.8
+  resolution: "resolve@npm:1.22.8"
+  dependencies:
+    is-core-module: "npm:^2.13.0"
+    path-parse: "npm:^1.0.7"
+    supports-preserve-symlinks-flag: "npm:^1.0.0"
+  bin:
+    resolve: bin/resolve
+  checksum: 10/c473506ee01eb45cbcfefb68652ae5759e092e6b0fb64547feadf9736a6394f258fbc6f88e00c5ca36d5477fbb65388b272432a3600fa223062e54333c156753
+  languageName: node
+  linkType: hard
+
+"resolve@patch:resolve@npm%3A1.22.8#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.1.7#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.10.0#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.12.0#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.14.2#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.19.0#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.20.0#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.22.1#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.22.4#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.22.8#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.9.0#optional!builtin<compat/resolve>":
+  version: 1.22.8
+  resolution: "resolve@patch:resolve@npm%3A1.22.8#optional!builtin<compat/resolve>::version=1.22.8&hash=c3c19d"
+  dependencies:
+    is-core-module: "npm:^2.13.0"
+    path-parse: "npm:^1.0.7"
+    supports-preserve-symlinks-flag: "npm:^1.0.0"
+  bin:
+    resolve: bin/resolve
+  checksum: 10/f345cd37f56a2c0275e3fe062517c650bb673815d885e7507566df589375d165bbbf4bdb6aa95600a9bc55f4744b81f452b5a63f95b9f10a72787dba3c90890a
+  languageName: node
+  linkType: hard
+        `;
+
+      const packageJson: PackageJson = {
+        name: '@my-ns/example',
+        version: '0.0.1',
+        type: 'commonjs',
+        dependencies: {
+          resolve: '^1.12.0',
+        },
+      };
+
+      const hash = uniq('mock-hash');
+      const externalNodes = getYarnLockfileNodes(lockFile, hash, packageJson);
+      const pg = {
+        nodes: {},
+        dependencies: {},
+        externalNodes,
+      };
+      const ctx: CreateDependenciesContext = {
+        projects: {},
+        externalNodes,
+        fileMap: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        filesToProcess: {
+          nonProjectFiles: [],
+          projectFileMap: {},
+        },
+        nxJsonConfiguration: null,
+        workspaceRoot: '/virtual',
+      };
+      const dependencies = getYarnLockfileDependencies(lockFile, hash, ctx);
+
+      const builder = new ProjectGraphBuilder(pg);
+      for (const dep of dependencies) {
+        builder.addDependency(
+          dep.source,
+          dep.target,
+          dep.type,
+          'sourceFile' in dep ? dep.sourceFile : null
+        );
+      }
+      const graph = builder.getUpdatedProjectGraph();
+
+      const prunedGraph = pruneProjectGraph(graph, packageJson);
+      const result = stringifyYarnLockfile(prunedGraph, lockFile, packageJson);
+      expect(result).toMatchInlineSnapshot(`
+        "# This file is generated by running "yarn install" inside your project.
+        # Manual changes might be lost - proceed with caution!
+
+        __metadata:
+          version: 6
+          cacheKey: 8
+
+        "@my-ns/example@workspace:.":
+          version: 0.0.0-use.local
+          resolution: "@my-ns/example@workspace:."
+          dependencies:
+            resolve: ^1.12.0
+          languageName: unknown
+          linkType: soft
+
+        "resolve@npm:^1.12.0":
+          version: 1.22.8
+          resolution: "resolve@npm:1.22.8"
+          dependencies:
+            is-core-module: "npm:^2.13.0"
+            path-parse: "npm:^1.0.7"
+            supports-preserve-symlinks-flag: "npm:^1.0.0"
+          bin:
+            resolve: bin/resolve
+          checksum: 10/c473506ee01eb45cbcfefb68652ae5759e092e6b0fb64547feadf9736a6394f258fbc6f88e00c5ca36d5477fbb65388b272432a3600fa223062e54333c156753
+          languageName: node
+          linkType: hard
+
+        "resolve@patch:resolve@npm%3A^1.12.0#optional!builtin<compat/resolve>":
+          version: 1.22.8
+          resolution: "resolve@patch:resolve@npm%3A1.22.8#optional!builtin<compat/resolve>::version=1.22.8&hash=c3c19d"
+          dependencies:
+            is-core-module: "npm:^2.13.0"
+            path-parse: "npm:^1.0.7"
+            supports-preserve-symlinks-flag: "npm:^1.0.0"
+          bin:
+            resolve: bin/resolve
+          checksum: 10/f345cd37f56a2c0275e3fe062517c650bb673815d885e7507566df589375d165bbbf4bdb6aa95600a9bc55f4744b81f452b5a63f95b9f10a72787dba3c90890a
+          languageName: node
+          linkType: hard
+        "
+      `);
+    });
+  });
 });
+
+function uniq(str: string) {
+  return `str-${(Math.random() * 10000).toFixed(0)}`;
+}

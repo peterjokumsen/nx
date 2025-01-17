@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "version": 2,
   "title": "Playwright executor",
   "description": "Run Playwright tests.",
@@ -20,6 +20,10 @@
     "debug": {
       "type": "boolean",
       "description": "Run tests with Playwright Inspector. Shortcut for 'PWDEBUG=1' environment variable and '--timeout=0',--max-failures=1 --headed --workers=1' options"
+    },
+    "lastFailed": {
+      "type": "boolean",
+      "description": "Run only the tests that failed in the last run"
     },
     "forbidOnly": {
       "type": "boolean",
@@ -43,6 +47,14 @@
       "type": "string",
       "description": "Only run tests that do not match this regular expression"
     },
+    "testFiles": {
+      "alias": "t",
+      "type": "array",
+      "description": "Test files to run",
+      "items": {
+        "type": "string"
+      }
+    },
     "headed": {
       "type": "boolean",
       "description": "Run tests in headed browsers",
@@ -54,7 +66,7 @@
     },
     "workers": {
       "alias": "j",
-      "type": "string",
+      "oneOf": [{ "type": "number" }, { "type": "string" }],
       "description": "Number of concurrent workers or percentage of logical CPU cores, use 1 to run in a single worker"
     },
     "list": {
@@ -97,18 +109,7 @@
     },
     "reporter": {
       "type": "string",
-      "enum": [
-        "list",
-        "line",
-        "dot",
-        "json",
-        "junit",
-        "null",
-        "github",
-        "html",
-        "blob"
-      ],
-      "description": "Reporter to use, comma-separated, can be 'list', 'line', 'dot', 'json', 'junit', 'null', 'github', 'html', 'blob'. To configure reporter options, use the playwright configuration."
+      "description": "Common Reporter values to use, comma-separated, 'list', 'line', 'dot', 'json', 'junit', 'null', 'github', 'html', 'blob'. To configure reporter options, use the playwright configuration."
     },
     "retries": {
       "type": "number",
@@ -147,7 +148,7 @@
       "description": "Host to serve UI on; specifying this option opens UI in a browser tab"
     },
     "uiPort": {
-      "type": "string",
+      "type": "number",
       "description": "Port to serve UI on, 0 for any free port; specifying this option opens UI in a browser tab"
     },
     "skipInstall": {

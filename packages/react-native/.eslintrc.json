@@ -32,8 +32,26 @@
               "react-native",
               // These are in ensurePackage
               "@nx/rollup",
-              "@nx/storybook"
+              "@nx/storybook",
+              "@nx/vite",
+              "@nx/webpack",
+              "@nx/detox",
+              "@nx/cypress",
+              "@nx/playwright",
+              "ajv"
             ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["*.ts", "*.tsx", "*.js", "*.jsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "name": "fs-extra",
+            "message": "Please use equivalent utilities from `node:fs` instead."
           }
         ]
       }

@@ -1,12 +1,9 @@
 import { logger } from './logger';
-import { NxJsonConfiguration } from '../config/nx-json';
-import {
-  TargetConfiguration,
+import type { NxJsonConfiguration } from '../config/nx-json';
+import type {
   ProjectsConfigurations,
+  TargetConfiguration,
 } from '../config/workspace-json-project-json';
-import { output } from './output';
-
-const LIST_CHOICE_DISPLAY_LIMIT = 10;
 
 type PropertyDescription = {
   type?: string | string[];
@@ -33,8 +30,9 @@ type PropertyDescription = {
   $default?:
     | { $source: 'argv'; index: number }
     | { $source: 'projectName' }
-    | { $source: 'unparsed' };
-  additionalProperties?: boolean;
+    | { $source: 'unparsed' }
+    | { $source: 'workingDirectory' };
+  additionalProperties?: boolean | PropertyDescription;
   const?: any;
   'x-prompt'?:
     | string
@@ -54,6 +52,11 @@ type PropertyDescription = {
   pattern?: string;
   minLength?: number;
   maxLength?: number;
+
+  // Objects Only
+  patternProperties?: {
+    [pattern: string]: PropertyDescription;
+  };
 };
 
 type Properties = {
@@ -66,8 +69,11 @@ export type Schema = {
   oneOf?: Partial<Schema>[];
   description?: string;
   definitions?: Properties;
-  additionalProperties?: boolean;
+  additionalProperties?: boolean | PropertyDescription;
   examples?: { command: string; description?: string }[];
+  patternProperties?: {
+    [pattern: string]: PropertyDescription;
+  };
 };
 
 export type Unmatched = {
@@ -79,31 +85,6 @@ export type Options = {
   '--'?: Unmatched[];
   [k: string]: string | number | boolean | string[] | Unmatched[] | undefined;
 };
-
-export async function handleErrors(isVerbose: boolean, fn: Function) {
-  try {
-    return await fn();
-  } catch (err) {
-    err ||= new Error('Unknown error caught');
-    if (err.constructor.name === 'UnsuccessfulWorkflowExecution') {
-      logger.error('The generator workflow failed. See above.');
-    } else {
-      const lines = (err.message ? err.message : err.toString()).split('\n');
-      const bodyLines = lines.slice(1);
-      if (err.stack && !isVerbose) {
-        bodyLines.push('Pass --verbose to see the stacktrace.');
-      }
-      output.error({
-        title: lines[0],
-        bodyLines,
-      });
-      if (err.stack && isVerbose) {
-        logger.info(err.stack);
-      }
-    }
-    return 1;
-  }
-}
 
 function camelCase(input: string): string {
   if (input.indexOf('-') > 1) {
@@ -246,26 +227,39 @@ export function validateObject(
     }
   }
   if (schema.oneOf) {
-    for (const s of schema.oneOf) {
-      const errors: Error[] = [];
-      for (const s of schema.oneOf) {
-        try {
-          validateObject(opts, s, definitions);
-        } catch (e) {
-          errors.push(e);
-        }
+    const matches: Array<PropertyDescription> = [];
+    const errors: Array<Error> = [];
+    for (const propertyDescription of schema.oneOf) {
+      try {
+        validateObject(opts, propertyDescription, definitions);
+        matches.push(propertyDescription);
+      } catch (error) {
+        errors.push(error);
       }
-      if (errors.length === schema.oneOf.length) {
-        throw new Error(
-          `Options did not match schema. Please fix 1 of the following errors:\n${errors
-            .map((e) => ' - ' + e.message)
-            .join('\n')}`
-        );
-      }
-      if (errors.length < schema.oneOf.length - 1) {
-        // TODO: This error could be better.
-        throw new Error(`Options did not match schema.`);
-      }
+    }
+    // If the options matched none of the oneOf property descriptions
+    if (matches.length === 0) {
+      throw new Error(
+        `Options did not match schema: ${JSON.stringify(
+          opts,
+          null,
+          2
+        )}.\nPlease fix 1 of the following errors:\n${errors
+          .map((e) => ' - ' + e.message)
+          .join('\n')}`
+      );
+    }
+    // If the options matched none of the oneOf property descriptions
+    if (matches.length > 1) {
+      throw new Error(
+        `Options did not match schema: ${JSON.stringify(
+          opts,
+          null,
+          2
+        )}.\nShould only match one of \n${matches
+          .map((m) => ' - ' + JSON.stringify(m))
+          .join('\n')}`
+      );
     }
   }
 
@@ -275,15 +269,31 @@ export function validateObject(
     }
   });
 
-  if (schema.additionalProperties === false) {
+  if (
+    schema.additionalProperties !== undefined &&
+    schema.additionalProperties !== true
+  ) {
     Object.keys(opts).find((p) => {
-      if (Object.keys(schema.properties).indexOf(p) === -1) {
+      if (
+        Object.keys(schema.properties ?? {}).indexOf(p) === -1 &&
+        (!schema.patternProperties ||
+          !Object.keys(schema.patternProperties).some((pattern) =>
+            new RegExp(pattern).test(p)
+          ))
+      ) {
         if (p === '_') {
           throw new SchemaError(
             `Schema does not support positional arguments. Argument '${opts[p]}' found`
           );
-        } else {
+        } else if (schema.additionalProperties === false) {
           throw new SchemaError(`'${p}' is not found in schema`);
+        } else if (typeof schema.additionalProperties === 'object') {
+          validateProperty(
+            p,
+            opts[p],
+            schema.additionalProperties,
+            definitions
+          );
         }
       }
     });
@@ -291,6 +301,19 @@ export function validateObject(
 
   Object.keys(opts).forEach((p) => {
     validateProperty(p, opts[p], (schema.properties ?? {})[p], definitions);
+
+    if (schema.patternProperties) {
+      Object.keys(schema.patternProperties).forEach((pattern) => {
+        if (new RegExp(pattern).test(p)) {
+          validateProperty(
+            p,
+            opts[p],
+            schema.patternProperties[pattern],
+            definitions
+          );
+        }
+      });
+    }
   });
 }
 
@@ -567,7 +590,7 @@ export function applyVerbosity(
   isVerbose: boolean
 ) {
   if (
-    (schema.additionalProperties || 'verbose' in schema.properties) &&
+    (schema.additionalProperties === true || 'verbose' in schema.properties) &&
     isVerbose
   ) {
     options['verbose'] = true;
@@ -633,6 +656,8 @@ export async function combineOptionsForGenerator(
     schema,
     false
   );
+
+  warnDeprecations(combined, schema);
   convertSmartDefaultsIntoNamedParams(
     combined,
     schema,
@@ -644,9 +669,7 @@ export async function combineOptionsForGenerator(
     combined = await promptForValues(combined, schema, projectsConfigurations);
   }
 
-  warnDeprecations(combined, schema);
   setDefaults(combined, schema);
-
   validateOptsAgainstSchema(combined, schema);
   applyVerbosity(combined, schema, isVerbose);
   return combined;
@@ -698,6 +721,13 @@ export function convertSmartDefaultsIntoNamedParams(
       opts[k] === undefined &&
       v.format === 'path' &&
       v.visible === false &&
+      relativeCwd
+    ) {
+      opts[k] = relativeCwd.replace(/\\/g, '/');
+    } else if (
+      opts[k] === undefined &&
+      v.$default !== undefined &&
+      v.$default.$source === 'workingDirectory' &&
       relativeCwd
     ) {
       opts[k] = relativeCwd.replace(/\\/g, '/');
@@ -785,10 +815,23 @@ export function getPromptsForSchema(
       // Normalize x-prompt
       if (typeof v['x-prompt'] === 'string') {
         const message = v['x-prompt'];
-        v['x-prompt'] = {
-          type: v.type === 'boolean' ? 'confirm' : 'input',
-          message,
-        };
+        if (v.type === 'boolean') {
+          v['x-prompt'] = {
+            type: 'confirm',
+            message,
+          };
+        } else if (v.type === 'array' && v.items?.enum) {
+          v['x-prompt'] = {
+            type: 'multiselect',
+            items: v.items.enum,
+            message,
+          };
+        } else {
+          v['x-prompt'] = {
+            type: 'input',
+            message,
+          };
+        }
       }
 
       question.message = v['x-prompt'].message;
@@ -801,10 +844,14 @@ export function getPromptsForSchema(
         }
       };
 
+      // Limit the number of choices displayed so that the prompt fits on the screen
+      const limitForChoicesDisplayed =
+        process.stdout.rows - question.message.split('\n').length;
+
       if (v.type === 'string' && v.enum && Array.isArray(v.enum)) {
         question.type = 'autocomplete';
         question.choices = [...v.enum];
-        question.limit = LIST_CHOICE_DISPLAY_LIMIT;
+        question.limit = limitForChoicesDisplayed;
       } else if (
         v.type === 'string' &&
         (v.$default?.$source === 'projectName' ||
@@ -815,7 +862,7 @@ export function getPromptsForSchema(
       ) {
         question.type = 'autocomplete';
         question.choices = Object.keys(projectsConfigurations.projects);
-        question.limit = LIST_CHOICE_DISPLAY_LIMIT;
+        question.limit = limitForChoicesDisplayed;
       } else if (v.type === 'number' || v['x-prompt'].type == 'number') {
         question.type = 'numeral';
       } else if (
@@ -840,7 +887,7 @@ export function getPromptsForSchema(
               };
             }
           });
-        question.limit = LIST_CHOICE_DISPLAY_LIMIT;
+        question.limit = limitForChoicesDisplayed;
       } else if (v.type === 'boolean') {
         question.type = 'confirm';
       } else {

@@ -9,13 +9,14 @@ import {
 import { PackageJson } from '../../../utils/package-json';
 import { existsSync } from 'fs';
 import { workspaceRoot } from '../../../utils/workspace-root';
+import { readNxJson } from '../../../config/configuration';
+import { readFileMapCache } from '../../../project-graph/nx-deps-cache';
+import { join } from 'path';
 import {
   filterUsingGlobPatterns,
   getTargetInputs,
 } from '../../../hasher/task-hasher';
-import { readNxJson } from '../../../config/configuration';
-import { readProjectFileMapCache } from '../../../project-graph/nx-deps-cache';
-import { join } from 'path';
+import { output } from '../../../utils/output';
 
 interface NpmDeps {
   readonly dependencies: Record<string, string>;
@@ -37,14 +38,16 @@ export function createPackageJson(
     root?: string;
     isProduction?: boolean;
     helperDependencies?: string[];
+    skipPackageManager?: boolean;
+    skipOverrides?: boolean;
   } = {},
   fileMap: ProjectFileMap = null
 ): PackageJson {
   const projectNode = graph.nodes[projectName];
   const isLibrary = projectNode.type === 'lib';
 
-  const rootPackageJson = readJsonFile(
-    `${options.root || workspaceRoot}/package.json`
+  const rootPackageJson: PackageJson = readJsonFile(
+    join(options.root ?? workspaceRoot, 'package.json')
   );
 
   const npmDeps = findProjectsNpmDependencies(
@@ -65,7 +68,7 @@ export function createPackageJson(
     version: '0.0.1',
   };
   const projectPackageJsonPath = join(
-    options.root || workspaceRoot,
+    options.root ?? workspaceRoot,
     projectNode.data.root,
     'package.json'
   );
@@ -83,6 +86,9 @@ export function createPackageJson(
         // If Nx doesn't pick up a dep, say some css lib that is only imported in a .scss file,
         // we need to be able to tell it to keep that dep in the generated package.json.
         delete packageJson.dependencies;
+        delete packageJson.devDependencies;
+      }
+      if (options.isProduction) {
         delete packageJson.devDependencies;
       }
     } catch (e) {}
@@ -177,6 +183,50 @@ export function createPackageJson(
     packageJson.peerDependenciesMeta
   );
 
+  if (rootPackageJson.packageManager && !options.skipPackageManager) {
+    if (
+      packageJson.packageManager &&
+      packageJson.packageManager !== rootPackageJson.packageManager
+    ) {
+      output.warn({
+        title: 'Package Manager Mismatch',
+        bodyLines: [
+          `The project ${projectName} has explicitly specified "packageManager" config of "${packageJson.packageManager}" but the workspace is using "${rootPackageJson.packageManager}".`,
+          `Please remove the project level "packageManager" config or align it with the workspace root package.json.`,
+        ],
+      });
+    }
+    packageJson.packageManager = rootPackageJson.packageManager;
+  }
+
+  // region Overrides/Resolutions
+
+  // npm
+  if (rootPackageJson.overrides && !options.skipOverrides) {
+    packageJson.overrides = {
+      ...rootPackageJson.overrides,
+      ...packageJson.overrides,
+    };
+  }
+
+  // pnpm
+  if (rootPackageJson.pnpm?.overrides && !options.skipOverrides) {
+    packageJson.pnpm ??= {};
+    packageJson.pnpm.overrides = {
+      ...rootPackageJson.pnpm.overrides,
+      ...packageJson.pnpm.overrides,
+    };
+  }
+
+  // yarn
+  if (rootPackageJson.resolutions && !options.skipOverrides) {
+    packageJson.resolutions = {
+      ...rootPackageJson.resolutions,
+      ...packageJson.resolutions,
+    };
+  }
+  // endregion Overrides/Resolutions
+
   return packageJson;
 }
 
@@ -193,7 +243,7 @@ export function findProjectsNpmDependencies(
   fileMap?: ProjectFileMap
 ): NpmDeps {
   if (fileMap == null) {
-    fileMap = readProjectFileMapCache()?.projectFileMap || {};
+    fileMap = readFileMapCache()?.fileMap?.projectFileMap || {};
   }
 
   const { selfInputs, dependencyInputs } = target

@@ -2,7 +2,7 @@
   "name": "migration",
   "factory": "./src/generators/migration/migration",
   "schema": {
-    "$schema": "http://json-schema.org/schema",
+    "$schema": "https://json-schema.org/schema",
     "cli": "nx",
     "$id": "NxPluginMigration",
     "title": "Create a Migration for an Nx Plugin",
@@ -10,24 +10,29 @@
     "type": "object",
     "examples": [
       {
-        "command": "nx g migration my-migration --project=my-plugin --version=1.0.0",
-        "description": "Adds a new migration to the project `my-plugin`, which will be triggered when migrating to version 1.0.0 or above from a previous version."
+        "description": "Generate a migration exported with the name matching the file name, which will be triggered when migrating to version 1.0.0 or above from a previous version. It results in the migration `foo` at `mylib/src/migrations/foo.ts`",
+        "command": "nx g @nx/plugin:migration mylib/src/migrations/foo.ts -v=1.0.0"
+      },
+      {
+        "description": "Generate a migration without providing the file extension, which will be triggered when migrating to version 1.0.0 or above from a previous version. It results in the migration `foo` at `mylib/src/migrations/foo.ts`",
+        "command": "nx g @nx/plugin:migration mylib/src/migrations/foo -v=1.0.0"
+      },
+      {
+        "description": "Generate a migration exported with a different name from the file name, which will be triggered when migrating to version 1.0.0 or above from a previous version. It results in the migration `custom` at `mylib/src/migrations/foo.ts`",
+        "command": "nx g @nx/plugin:migration mylib/src/migrations/foo --name=custom -v=1.0.0"
       }
     ],
     "properties": {
-      "project": {
+      "path": {
         "type": "string",
-        "description": "The name of the project.",
-        "alias": "p",
-        "$default": { "$source": "projectName" },
-        "x-prompt": "What is the name of the project for the migration?",
+        "description": "The file path to the migration without the file extension. Relative to the current working directory.",
+        "$default": { "$source": "argv", "index": 0 },
+        "x-prompt": "What is the migration file path?",
         "x-priority": "important"
       },
       "name": {
         "type": "string",
-        "description": "Migration name.",
-        "$default": { "$source": "argv", "index": 0 },
-        "x-priority": "important"
+        "description": "The migration name to export in the plugin migrations collection."
       },
       "description": {
         "type": "string",
@@ -52,7 +57,7 @@
         "description": "Do not eslint configuration for plugin json files."
       }
     },
-    "required": ["project", "packageVersion"],
+    "required": ["packageVersion", "path"],
     "additionalProperties": false,
     "presets": []
   },

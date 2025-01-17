@@ -1,27 +1,32 @@
 {
   "name": "remote",
-  "factory": "./src/generators/remote/remote#remoteGenerator",
+  "factory": "./src/generators/remote/remote",
   "schema": {
-    "$schema": "http://json-schema.org/schema",
+    "$schema": "https://json-schema.org/schema",
     "$id": "GeneratorReactRemote",
     "cli": "nx",
-    "title": "Generate Module Federation Setup for React Remote App",
-    "description": "Create Module Federation configuration files for given React Remote Application.",
+    "title": "Generate Module Federation Setup for React Producer (Remote) App",
+    "description": "Create Module Federation configuration files for given React Producer (Remote) Application.",
     "type": "object",
     "properties": {
-      "name": {
-        "type": "string",
-        "description": "The name of the remote application to generate the Module Federation configuration",
-        "$default": { "$source": "argv", "index": 0 },
-        "x-prompt": "What name would you like to use as the remote application?",
-        "pattern": "^[a-zA-Z].*$",
-        "x-priority": "important"
-      },
       "directory": {
         "description": "The directory of the new application.",
         "type": "string",
         "alias": "dir",
+        "$default": { "$source": "argv", "index": 0 },
+        "x-prompt": "Which directory do you want to create the application in?"
+      },
+      "name": {
+        "type": "string",
+        "description": "The name of the Producer (remote) application to generate the Module Federation configuration",
+        "pattern": "^[a-zA-Z_$][a-zA-Z_$0-9]*$",
         "x-priority": "important"
+      },
+      "dynamic": {
+        "type": "boolean",
+        "description": "Should the Consumer (host) application use dynamic federation?",
+        "default": false,
+        "x-priority": "internal"
       },
       "style": {
         "description": "The file extension to be used for style files.",
@@ -35,11 +40,15 @@
             { "value": "css", "label": "CSS" },
             {
               "value": "scss",
-              "label": "SASS(.scss)       [ http://sass-lang.com                     ]"
+              "label": "SASS(.scss)       [ https://sass-lang.com                     ]"
             },
             {
               "value": "less",
-              "label": "LESS              [ http://lesscss.org                       ]"
+              "label": "LESS              [ https://lesscss.org                       ]"
+            },
+            {
+              "value": "tailwind",
+              "label": "tailwind [ https://tailwindcss.com/            ]"
             },
             {
               "value": "styled-components",
@@ -52,10 +61,6 @@
             {
               "value": "styled-jsx",
               "label": "styled-jsx        [ https://www.npmjs.com/package/styled-jsx ]"
-            },
-            {
-              "value": "styl",
-              "label": "DEPRECATD: Stylus(.styl) [ http://stylus-lang.com            ]"
             },
             { "value": "none", "label": "None" }
           ]
@@ -79,7 +84,7 @@
         "x-priority": "internal"
       },
       "skipNxJson": {
-        "description": "Skip updating workspace.json with default options based on values provided to this app (e.g. babel, style).",
+        "description": "Skip updating nx.json with default options based on values provided to this app (e.g. babel, style).",
         "type": "boolean",
         "default": false,
         "x-priority": "internal"
@@ -92,20 +97,15 @@
       },
       "e2eTestRunner": {
         "type": "string",
-        "enum": ["cypress", "none"],
-        "description": "Test runner to use for end to end (e2e) tests.",
-        "default": "cypress"
+        "enum": ["playwright", "cypress", "none"],
+        "description": "Test runner to use for end to end (E2E) tests.",
+        "x-prompt": "Which E2E test runner would you like to use?",
+        "default": "playwright"
       },
       "tags": {
         "type": "string",
         "description": "Add tags to the application (used for linting).",
         "alias": "t"
-      },
-      "pascalCaseFiles": {
-        "type": "boolean",
-        "description": "Use pascal case component file name (e.g. App.tsx).",
-        "alias": "P",
-        "default": false
       },
       "classComponent": {
         "type": "boolean",
@@ -141,29 +141,48 @@
       },
       "host": {
         "type": "string",
-        "description": "The host / shell application for this remote.",
-        "x-priority": "important"
+        "description": "The Consumer (host) application for this Producer (remote).",
+        "x-priority": "important",
+        "alias": "consumer"
       },
       "devServerPort": {
         "type": "number",
-        "description": "The port for the dev server of the remote app.",
-        "default": 4200,
+        "description": "The port for the dev server of the Producer (remote) app.",
         "x-priority": "important"
       },
       "ssr": {
-        "description": "Whether to configure SSR for the host application",
+        "description": "Whether to configure SSR for the Consumer (host) application",
         "type": "boolean",
         "default": false
+      },
+      "typescriptConfiguration": {
+        "type": "boolean",
+        "description": "Whether the module federation configuration and webpack configuration files should use TS. When --js is used, this flag is ignored.",
+        "default": true
+      },
+      "skipPackageJson": {
+        "description": "Do not add dependencies to `package.json`.",
+        "type": "boolean",
+        "default": false,
+        "x-priority": "internal"
+      },
+      "bundler": {
+        "description": "The bundler to use.",
+        "type": "string",
+        "enum": ["rspack", "webpack"],
+        "x-prompt": "Which bundler do you want to use to build the application?",
+        "default": "rspack",
+        "x-priority": "important"
       }
     },
-    "required": ["name"],
+    "required": ["directory"],
     "additionalProperties": false,
     "presets": []
   },
   "x-type": "application",
   "description": "Generate a remote react application",
-  "implementation": "/packages/react/src/generators/remote/remote#remoteGenerator.ts",
-  "aliases": [],
+  "aliases": ["producer"],
+  "implementation": "/packages/react/src/generators/remote/remote.ts",
   "hidden": false,
   "path": "/packages/react/src/generators/remote/schema.json",
   "type": "generator"

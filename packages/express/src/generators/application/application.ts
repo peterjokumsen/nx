@@ -1,20 +1,25 @@
+import type { GeneratorCallback, Tree } from '@nx/devkit';
 import {
-  convertNxGenerator,
-  extractLayoutDirectory,
+  addDependenciesToPackageJson,
   formatFiles,
-  getWorkspaceLayout,
-  joinPathFragments,
-  names,
+  readNxJson,
+  runTasksInSerial,
   toJS,
   updateJson,
 } from '@nx/devkit';
-import type { Tree } from '@nx/devkit';
+import {
+  determineProjectNameAndRootOptions,
+  ensureProjectName,
+} from '@nx/devkit/src/generators/project-name-and-root-utils';
 import { applicationGenerator as nodeApplicationGenerator } from '@nx/node';
+import { tslibVersion } from '@nx/node/src/utils/versions';
 import { join } from 'path';
+import { nxVersion } from '../../utils/versions';
 import { initGenerator } from '../init/init';
 import type { Schema } from './schema';
 
 interface NormalizedSchema extends Schema {
+  appProjectName: string;
   appProjectRoot: string;
 }
 
@@ -45,7 +50,7 @@ const app = express();
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 app.get('/api', (req, res) => {
-  res.send({ message: 'Welcome to ${options.name}!' });
+  res.send({ message: 'Welcome to ${options.appProjectName}!' });
 });
 
 const port = process.env.PORT || 3333;
@@ -62,42 +67,69 @@ server.on('error', console.error);
 }
 
 export async function applicationGenerator(tree: Tree, schema: Schema) {
-  const options = normalizeOptions(tree, schema);
-  const initTask = await initGenerator(tree, { ...options, skipFormat: true });
-  const applicationTask = await nodeApplicationGenerator(tree, {
+  return await applicationGeneratorInternal(tree, {
+    addPlugin: false,
     ...schema,
+  });
+}
+
+export async function applicationGeneratorInternal(tree: Tree, schema: Schema) {
+  const options = await normalizeOptions(tree, schema);
+
+  const tasks: GeneratorCallback[] = [];
+  const initTask = await initGenerator(tree, { ...options, skipFormat: true });
+  tasks.push(initTask);
+  const applicationTask = await nodeApplicationGenerator(tree, {
+    ...options,
     bundler: 'webpack',
+    framework: 'express',
     skipFormat: true,
   });
+  tasks.push(applicationTask);
   addMainFile(tree, options);
   addTypes(tree, options);
+
+  if (!options.skipPackageJson) {
+    tasks.push(ensureDependencies(tree));
+  }
 
   if (!options.skipFormat) {
     await formatFiles(tree);
   }
 
-  return async () => {
-    await initTask();
-    await applicationTask();
-  };
+  return runTasksInSerial(...tasks);
 }
 
 export default applicationGenerator;
-export const applicationSchematic = convertNxGenerator(applicationGenerator);
 
-function normalizeOptions(host: Tree, options: Schema): NormalizedSchema {
-  const { layoutDirectory, projectDirectory } = extractLayoutDirectory(
-    options.directory
-  );
-  const appDirectory = projectDirectory
-    ? `${names(projectDirectory).fileName}/${names(options.name).fileName}`
-    : names(options.name).fileName;
-
-  const appsDir = layoutDirectory ?? getWorkspaceLayout(host).appsDir;
-  const appProjectRoot = joinPathFragments(appsDir, appDirectory);
+async function normalizeOptions(
+  host: Tree,
+  options: Schema
+): Promise<NormalizedSchema> {
+  await ensureProjectName(host, options, 'application');
+  const { projectName: appProjectName, projectRoot: appProjectRoot } =
+    await determineProjectNameAndRootOptions(host, {
+      name: options.name,
+      projectType: 'application',
+      directory: options.directory,
+    });
+  const nxJson = readNxJson(host);
+  const addPlugin =
+    process.env.NX_ADD_PLUGINS !== 'false' &&
+    nxJson.useInferencePlugins !== false;
+  options.addPlugin ??= addPlugin;
 
   return {
     ...options,
+    appProjectName,
     appProjectRoot,
   };
+}
+
+function ensureDependencies(tree: Tree): GeneratorCallback {
+  return addDependenciesToPackageJson(
+    tree,
+    { tslib: tslibVersion },
+    { '@nx/express': nxVersion }
+  );
 }

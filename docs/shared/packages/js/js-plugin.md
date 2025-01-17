@@ -1,23 +1,36 @@
+---
+title: Overview of the Nx JS Plugin
+description: The Nx JS plugin contains executors and generators that are useful for JavaScript/TypeScript projects in an Nx workspace.
+---
+
 The JS plugin contains executors and generators that are useful for JavaScript/TypeScript projects in an Nx workspace.
 
-## Setting Up JS
+## Setting Up @nx/js
 
 ### Installation
 
-In any Nx workspace, you can install `@nx/js` by running the following commands if `@nx/js` package is not installed:
+{% callout type="note" title="Keep Nx Package Versions In Sync" %}
+Make sure to install the `@nx/js` version that matches the version of `nx` in your repository. If the version numbers get out of sync, you can encounter some difficult to debug errors. You can [fix Nx version mismatches with this recipe](/recipes/tips-n-tricks/keep-nx-versions-in-sync).
+{% /callout %}
+
+In any Nx workspace, you can install `@nx/js` by running the following command:
 
 {% tabs %}
-{%tab label="npm"%}
+{% tab label="Nx 18+" %}
 
-```shell
-npm i --save-dev @nx/js
+```shell {% skipRescope=true %}
+nx add @nx/js
 ```
 
+This will install the correct version of `@nx/js`.
+
 {% /tab %}
-{%tab label="yarn"%}
+{% tab label="Nx < 18" %}
+
+Install the `@nx/js` package with your package manager.
 
 ```shell
-yarn add --dev @nx/js
+npm add -D @nx/js
 ```
 
 {% /tab %}
@@ -44,12 +57,18 @@ yarn create nx-workspace my-org --preset=ts
 {% /tab %}
 {% /tabs %}
 
+{% callout type="note" title="Modernized monorepo setup" %}
+Nx 20 updates the TS monorepo setup when using `--preset=ts`. The workspace is set up with [TypeScript Project References](https://www.typescriptlang.org/docs/handbook/project-references.html) along with the Workspaces feature from [npm](https://docs.npmjs.com/cli/using-npm/workspaces), [yarn](https://yarnpkg.com/features/workspaces), [pnpm](https://pnpm.io/workspaces), and [bun](https://bun.sh/docs/install/workspaces).
+
+To create with the older setup for TS monorepo with `compilerOptions.paths`, use `create-nx-workspace --preset=apps`.
+{% /callout %}
+
 ## Create Libraries
 
 You can add a new JS/TS library with the following command:
 
 ```shell
-nx g @nx/js:lib my-lib
+nx g @nx/js:lib libs/my-lib
 ```
 
 ## Build
@@ -57,7 +76,7 @@ nx g @nx/js:lib my-lib
 You can `build` libraries that are generated with a bundler specified.
 
 ```shell
-nx g @nx/js:lib my-buildable-lib --bundler=rollup
+nx g @nx/js:lib libs/my-buildable-lib --bundler=rollup
 ```
 
 Generating a library with `--bundler` specified will add a `build` target to the library's `project.json` file allows the library to be built.
@@ -95,7 +114,7 @@ Currently, `@nx/js` supports the following compilers:
 - Create a buildable library with `swc`
 
 ```shell
-nx g @nx/js:lib my-swc-lib --bundler=swc
+nx g @nx/js:lib libs/my-swc-lib --bundler=swc
 ```
 
 - Convert a `tsc` library to use `swc`

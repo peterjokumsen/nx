@@ -1,13 +1,11 @@
 export interface Schema {
-  name: string;
-  project: string;
-  path?: string;
+  path: string;
+  name?: string;
   prefix?: string;
   skipTests?: boolean;
   skipImport?: boolean;
   selector?: string;
   standalone?: boolean;
-  flat?: boolean;
   module?: string;
   export?: boolean;
   skipFormat?: boolean;
@@ -15,5 +13,8 @@ export interface Schema {
 
 export interface NormalizedSchema extends Schema {
   directory: string;
-  path: string;
+  filePath: string;
+  fileName: string;
+  symbolName: string;
+  projectName: string;
 }

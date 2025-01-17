@@ -1,6 +1,3 @@
-import { cypressProjectGenerator } from '@nx/cypress';
-import { nxE2EPreset } from '@nx/cypress/plugins/cypress-preset';
-import { installedCypressVersion } from '@nx/cypress/src/utils/cypress-version';
 import type {
   ProjectConfiguration,
   TargetConfiguration,
@@ -8,33 +5,28 @@ import type {
 } from '@nx/devkit';
 import {
   addProjectConfiguration,
+  ensurePackage,
   joinPathFragments,
-  names,
   offsetFromRoot,
   readJson,
+  readNxJson,
   readProjectConfiguration,
-  removeProjectConfiguration,
   stripIndents,
   updateJson,
   updateProjectConfiguration,
-  visitNotIgnoredFiles,
   writeJson,
 } from '@nx/devkit';
-import { Linter, lintProjectGenerator } from '@nx/linter';
+import { Linter, lintProjectGenerator } from '@nx/eslint';
 import { getRootTsConfigPathInTree, insertImport } from '@nx/js';
+import { ensureTypescript } from '@nx/js/src/utils/typescript/ensure-typescript';
 import { basename, relative } from 'path';
 import type {
   Node,
   ObjectLiteralExpression,
   PropertyAssignment,
 } from 'typescript';
-import {
-  isObjectLiteralExpression,
-  isPropertyAssignment,
-  isStringLiteralLike,
-  isTemplateExpression,
-  SyntaxKind,
-} from 'typescript';
+import { FileChangeRecorder } from '../../../../utils/file-change-recorder';
+import { nxVersion } from '../../../../utils/versions';
 import type { GeneratorOptions } from '../../schema';
 import type {
   Logger,
@@ -42,9 +34,7 @@ import type {
   Target,
   ValidationResult,
 } from '../../utilities';
-import { FileChangeRecorder } from '../../../../utils/file-change-recorder';
 import { ProjectMigrator } from './project.migrator';
-import { ensureTypescript } from '@nx/js/src/utils/typescript/ensure-typescript';
 
 type SupportedTargets = 'e2e';
 const supportedTargets: Record<SupportedTargets, Target> = {
@@ -82,7 +72,7 @@ export class E2eMigrator extends ProjectMigrator<SupportedTargets> {
   private appName: string;
   private isProjectUsingEsLint: boolean;
   private cypressInstalledVersion: number;
-  private cypressPreset: ReturnType<typeof nxE2EPreset>;
+  private cypressPreset: Record<string, any>;
 
   constructor(
     tree: Tree,
@@ -270,6 +260,10 @@ export class E2eMigrator extends ProjectMigrator<SupportedTargets> {
         newSourceRoot,
       };
     } else if (this.isCypressE2eProject()) {
+      ensurePackage('@nx/cypress', nxVersion);
+      const {
+        installedCypressVersion,
+      } = require('@nx/cypress/src/utils/cypress-version');
       this.cypressInstalledVersion = installedCypressVersion();
       this.project = {
         ...this.project,
@@ -324,7 +318,6 @@ export class E2eMigrator extends ProjectMigrator<SupportedTargets> {
       await lintProjectGenerator(this.tree, {
         project: this.project.name,
         linter: Linter.EsLint,
-        eslintFilePatterns: [`${this.project.newRoot}/**/*.{js,ts}`],
         unitTestRunner: this.options.unitTestRunner,
         tsConfigPaths: [
           joinPathFragments(this.project.newRoot, 'tsconfig.json'),
@@ -337,12 +330,29 @@ export class E2eMigrator extends ProjectMigrator<SupportedTargets> {
   private async migrateCypressE2eProject(): Promise<void> {
     const oldCypressConfigFilePath = this.getOldCypressConfigFilePath();
 
-    await cypressProjectGenerator(this.tree, {
-      name: this.project.name,
-      project: this.appName,
+    addProjectConfiguration(this.tree, this.project.name, {
+      projectType: 'application',
+      root: this.project.newRoot,
+      sourceRoot: this.project.newSourceRoot,
+      targets: {},
+      tags: [],
+      implicitDependencies: [this.appName],
+    });
+    const nxJson = readNxJson(this.tree) ?? {};
+    const addPlugin =
+      process.env.NX_ADD_PLUGINS !== 'false' &&
+      nxJson.useInferencePlugins !== false;
+    const { configurationGenerator } = <typeof import('@nx/cypress')>(
+      require('@nx/cypress')
+    );
+    await configurationGenerator(this.tree, {
+      project: this.project.name,
       linter: this.isProjectUsingEsLint ? Linter.EsLint : Linter.None,
-      standaloneConfig: true,
       skipFormat: true,
+      // any target would do, we replace it later with the target existing in the project being migrated
+      devServerTarget: `${this.appName}:serve`,
+      baseUrl: 'http://localhost:4200',
+      addPlugin,
     });
 
     const cypressConfigFilePath = this.updateOrCreateCypressConfigFile(
@@ -362,7 +372,7 @@ export class E2eMigrator extends ProjectMigrator<SupportedTargets> {
     );
 
     // replace the generated source with the project source
-    visitNotIgnoredFiles(this.tree, this.project.newSourceRoot, (filePath) => {
+    this.visitFiles(this.project.newSourceRoot, (filePath) => {
       this.tree.delete(filePath);
     });
     this.moveDir(
@@ -388,48 +398,15 @@ export class E2eMigrator extends ProjectMigrator<SupportedTargets> {
   }
 
   private updateCypressProjectConfiguration(cypressConfigPath: string): void {
-    /**
-     * The `cypressProjectGenerator` function normalizes the project name. The
-     * migration keeps the names for existing projects as-is to avoid any
-     * confusion. The e2e project is technically new, but it's associated
-     * to an existing application, so we keep it familiar.
-     */
-    const generatedProjectName = names(this.project.name).fileName;
-    if (this.project.name !== generatedProjectName) {
-      // If the names are different, we "rename" the newly added project.
-      this.projectConfig = readProjectConfiguration(
-        this.tree,
-        generatedProjectName
-      );
-
-      this.projectConfig.root = this.project.newRoot;
-      this.projectConfig.sourceRoot = this.project.newSourceRoot;
-      removeProjectConfiguration(this.tree, generatedProjectName);
-      addProjectConfiguration(
-        this.tree,
-        this.project.name,
-        { ...this.projectConfig },
-        true
-      );
-    } else {
-      this.projectConfig = readProjectConfiguration(
-        this.tree,
-        this.project.name
-      );
-    }
+    this.projectConfig = readProjectConfiguration(this.tree, this.project.name);
 
     if (this.isProjectUsingEsLint) {
       // the generated cypress project always generates a "lint" target,
       // in case the app was using a different name for it, we use it
-      const lintTarget = this.projectConfig.targets.lint;
       if (this.lintTargetName && this.lintTargetName !== 'lint') {
         this.projectConfig.targets[this.lintTargetName] =
           this.projectConfig.targets.lint;
       }
-      lintTarget.options.lintFilePatterns =
-        lintTarget.options.lintFilePatterns.map((pattern) =>
-          pattern.replace(`apps/${generatedProjectName}`, this.project.newRoot)
-        );
     }
 
     [this.targetNames.e2e, 'cypress-run', 'cypress-open'].forEach((target) => {
@@ -577,8 +554,9 @@ export class E2eMigrator extends ProjectMigrator<SupportedTargets> {
   }
 
   private updateCypress10ConfigFile(configFilePath: string): void {
-    ensureTypescript();
+    const { isPropertyAssignment } = ensureTypescript();
     const { tsquery } = require('@phenomnomnominal/tsquery');
+    const { nxE2EPreset } = require('@nx/cypress/plugins/cypress-preset');
     this.cypressPreset = nxE2EPreset(configFilePath);
 
     const fileContent = this.tree.read(configFilePath, 'utf-8');
@@ -635,6 +613,8 @@ export class E2eMigrator extends ProjectMigrator<SupportedTargets> {
       return;
     }
 
+    const { isObjectLiteralExpression, isPropertyAssignment } =
+      ensureTypescript();
     if (!isObjectLiteralExpression(componentNode.initializer)) {
       this.logger.warn(
         'The automatic migration only supports having an object literal in the "component" option of the Cypress configuration. ' +
@@ -677,6 +657,8 @@ export class E2eMigrator extends ProjectMigrator<SupportedTargets> {
       },`;
       recorder.insertRight(defineConfigNode.getStart() + 1, e2eAssignment);
     } else {
+      const { isObjectLiteralExpression, isPropertyAssignment } =
+        ensureTypescript();
       if (!isObjectLiteralExpression(e2eNode.initializer)) {
         this.logger.warn(
           'The automatic migration only supports having an object literal in the "e2e" option of the Cypress configuration. ' +
@@ -831,6 +813,12 @@ export class E2eMigrator extends ProjectMigrator<SupportedTargets> {
     node: Node,
     properties: string[]
   ): boolean {
+    const {
+      isPropertyAssignment,
+      isStringLiteralLike,
+      isTemplateExpression,
+      SyntaxKind,
+    } = ensureTypescript();
     if (!isPropertyAssignment(node)) {
       // TODO(leo): handle more scenarios (spread assignments, etc)
       return false;

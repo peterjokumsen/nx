@@ -67,10 +67,27 @@ export class DocumentsApi {
     const document: DocumentMetadata | null =
       this.manifest[this.getManifestKey(path.join('/'))] || null;
 
-    if (!document)
+    if (!document) {
+      if (
+        path[0] === 'nx-api' &&
+        path[1] === 'devkit' &&
+        path[2] === 'documents'
+      ) {
+        const file = `generated/devkit/${path.slice(3).join('/')}`;
+        return {
+          content: readFileSync(this.getFilePath(file), 'utf8'),
+          description: '',
+          filePath: this.getFilePath(file),
+          id: path.at(-1) || '',
+          name: path.at(-1) || '',
+          relatedDocuments: {},
+          tags: [],
+        };
+      }
       throw new Error(
         `Document not found in manifest with: "${path.join('/')}"`
       );
+    }
     if (this.isDocumentIndex(document)) return this.getDocumentIndex(path);
     return {
       content: readFileSync(this.getFilePath(document.file), 'utf8'),
@@ -78,7 +95,29 @@ export class DocumentsApi {
       filePath: this.getFilePath(document.file),
       id: document.id,
       name: document.name,
+      mediaImage: document.mediaImage || '',
       relatedDocuments: this.getRelatedDocuments(document.tags),
+      parentDocuments: path.map((segment, index): RelatedDocument => {
+        const parentPath = path.slice(0, index + 1).join('/');
+        const parentDocument =
+          this.manifest[this.getManifestKey(parentPath)] || null;
+        if (!parentDocument) {
+          return {
+            id: segment,
+            name: '',
+            description: '',
+            file: '',
+            path: '/' + path.slice(0, index + 1).join('/'),
+          };
+        }
+        return {
+          id: parentDocument.id,
+          name: parentDocument.name,
+          description: parentDocument.description,
+          file: parentDocument.file,
+          path: parentDocument.path,
+        };
+      }),
       tags: document.tags,
     };
   }

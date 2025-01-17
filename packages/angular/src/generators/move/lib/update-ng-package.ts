@@ -7,9 +7,9 @@ import {
   workspaceRoot,
 } from '@nx/devkit';
 import { join, relative } from 'path';
-import type { NormalizedSchema } from '../schema';
+import type { MoveImplOptions } from './types';
 
-export function updateNgPackage(tree: Tree, schema: NormalizedSchema): void {
+export function updateNgPackage(tree: Tree, schema: MoveImplOptions): void {
   const project = readProjectConfiguration(tree, schema.newProjectName);
 
   if (project.projectType === 'application') {
@@ -26,12 +26,10 @@ export function updateNgPackage(tree: Tree, schema: NormalizedSchema): void {
   );
   const outputs = getOutputsForTargetAndConfiguration(
     {
-      target: {
-        project: schema.newProjectName,
-        target: 'build',
-      },
-      overrides: {},
+      project: schema.newProjectName,
+      target: 'build',
     },
+    {},
     {
       name: schema.newProjectName,
       type: 'lib',

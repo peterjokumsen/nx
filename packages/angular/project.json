@@ -4,7 +4,6 @@
   "sourceRoot": "packages/angular",
   "projectType": "library",
   "targets": {
-    "test": {},
     "build-ng": {
       "dependsOn": ["build-base"],
       "executor": "@nx/angular:package",
@@ -63,16 +62,10 @@
       "outputs": ["{workspaceRoot}/build/packages/angular"],
       "dependsOn": ["build-ng", "build-base", "^build"],
       "options": {
-        "commands": [
-          {
-            "command": "node ./scripts/copy-readme.js angular"
-          },
-          "node ./scripts/add-dependency-to-build.js angular @nrwl/angular"
-        ],
+        "command": "node ./scripts/copy-readme.js angular",
         "parallel": false
       }
-    },
-    "lint": {}
+    }
   },
   "implicitDependencies": []
 }

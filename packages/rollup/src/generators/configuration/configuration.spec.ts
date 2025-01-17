@@ -1,3 +1,5 @@
+import 'nx/src/internal-testing-utils/mock-project-graph';
+
 import {
   addProjectConfiguration,
   readJson,
@@ -28,16 +30,7 @@ describe('configurationGenerator', () => {
 
     const project = readProjectConfiguration(tree, 'mypkg');
 
-    expect(project.targets).toMatchObject({
-      build: {
-        executor: '@nx/rollup:rollup',
-        outputs: ['{options.outputPath}'],
-        defaultConfiguration: 'production',
-        options: {
-          main: 'libs/mypkg/src/main.ts',
-        },
-      },
-    });
+    expect(project.targets?.build).toBeUndefined();
 
     expect(readJson(tree, 'libs/mypkg/package.json')).toEqual({
       name: '@proj/mypkg',
@@ -63,21 +56,30 @@ describe('configurationGenerator', () => {
   it('should support --main option', async () => {
     await configurationGenerator(tree, {
       project: 'mypkg',
-      main: 'libs/mypkg/index.ts',
+      main: './libs/mypkg/src/index.ts',
     });
 
-    const project = readProjectConfiguration(tree, 'mypkg');
+    const rollupConfig = tree.read('libs/mypkg/rollup.config.cjs', 'utf-8');
 
-    expect(project.targets).toMatchObject({
-      build: {
-        executor: '@nx/rollup:rollup',
-        outputs: ['{options.outputPath}'],
-        defaultConfiguration: 'production',
-        options: {
-          main: 'libs/mypkg/index.ts',
-        },
-      },
-    });
+    expect(rollupConfig)
+      .toEqual(`const { withNx } = require('@nx/rollup/with-nx');
+
+module.exports = withNx(
+  {
+    main: './src/index.ts',
+    outputPath: '../../dist/libs/mypkg',
+    tsConfig: './tsconfig.lib.json',
+    compiler: 'babel',
+    format: ['esm'],
+    assets: [{ input: '.', output: '.', glob: '*.md' }],
+  },
+  {
+    // Provide additional rollup configuration here. See: https://rollupjs.org/configuration-options
+    // e.g.
+    // output: { sourcemap: true },
+  }
+);
+`);
   });
 
   it('should support --tsConfig option', async () => {
@@ -86,17 +88,26 @@ describe('configurationGenerator', () => {
       tsConfig: 'libs/mypkg/tsconfig.custom.json',
     });
 
-    const project = readProjectConfiguration(tree, 'mypkg');
+    const rollupConfig = tree.read('libs/mypkg/rollup.config.cjs', 'utf-8');
 
-    expect(project.targets).toMatchObject({
-      build: {
-        executor: '@nx/rollup:rollup',
-        outputs: ['{options.outputPath}'],
-        defaultConfiguration: 'production',
-        options: {
-          tsConfig: 'libs/mypkg/tsconfig.custom.json',
-        },
-      },
-    });
+    expect(rollupConfig)
+      .toEqual(`const { withNx } = require('@nx/rollup/with-nx');
+
+module.exports = withNx(
+  {
+    main: './src/index.ts',
+    outputPath: '../../dist/libs/mypkg',
+    tsConfig: './tsconfig.custom.json',
+    compiler: 'babel',
+    format: ['esm'],
+    assets: [{ input: '.', output: '.', glob: '*.md' }],
+  },
+  {
+    // Provide additional rollup configuration here. See: https://rollupjs.org/configuration-options
+    // e.g.
+    // output: { sourcemap: true },
+  }
+);
+`);
   });
 });

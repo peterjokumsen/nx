@@ -1,10 +1,10 @@
 import {
   createProjectFileMapCache as _createCache,
   extractCachedFileData,
-  ProjectFileMapCache,
+  FileMapCache,
   shouldRecomputeWholeGraph,
 } from './nx-deps-cache';
-import { ProjectsConfigurations } from '../config/workspace-json-project-json';
+import { ProjectConfiguration } from '../config/workspace-json-project-json';
 import { NxJsonConfiguration } from '../config/nx-json';
 import { nxVersion } from '../utils/versions';
 
@@ -52,9 +52,12 @@ describe('nx deps utils', () => {
       expect(
         shouldRecomputeWholeGraph(
           createCache({
-            projectFileMap: {
-              'renamed-mylib': [],
-            } as any,
+            fileMap: {
+              projectFileMap: {
+                'renamed-mylib': [],
+              } as any,
+              nonProjectFiles: [],
+            },
           }),
           createPackageJsonDeps({}),
           createProjectsConfiguration({}),
@@ -108,7 +111,7 @@ describe('nx deps utils', () => {
           createCache({}),
           createPackageJsonDeps({ plugin: '2.0.0' }),
           createProjectsConfiguration({}),
-          createNxJson({ pluginsConfig: { one: 1 } }),
+          createNxJson({ pluginsConfig: { somePlugin: { one: 1 } } }),
           createTsConfigJson()
         )
       ).toEqual(true);
@@ -119,14 +122,7 @@ describe('nx deps utils', () => {
     it('should return the cache project graph when nothing has changed', () => {
       const r = extractCachedFileData(
         {
-          mylib: [
-            {
-              file: 'index.ts',
-              hash: 'hash1',
-            },
-          ],
-        },
-        createCache({
+          nonProjectFiles: [],
           projectFileMap: {
             mylib: [
               {
@@ -135,14 +131,33 @@ describe('nx deps utils', () => {
               },
             ],
           },
+        },
+        createCache({
+          fileMap: {
+            nonProjectFiles: [],
+            projectFileMap: {
+              mylib: [
+                {
+                  file: 'index.ts',
+                  hash: 'hash1',
+                },
+              ],
+            },
+          },
         })
       );
-      expect(r.filesToProcess).toEqual({});
+      expect(r.filesToProcess).toEqual({
+        projectFileMap: {},
+        nonProjectFiles: [],
+      });
       expect(r.cachedFileData).toEqual({
-        mylib: {
-          'index.ts': {
-            file: 'index.ts',
-            hash: 'hash1',
+        nonProjectFiles: {},
+        projectFileMap: {
+          mylib: {
+            'index.ts': {
+              file: 'index.ts',
+              hash: 'hash1',
+            },
           },
         },
       });
@@ -151,20 +166,7 @@ describe('nx deps utils', () => {
     it('should handle cases when new projects are added', () => {
       const r = extractCachedFileData(
         {
-          mylib: [
-            {
-              file: 'index.ts',
-              hash: 'hash1',
-            },
-          ],
-          secondlib: [
-            {
-              file: 'index.ts',
-              hash: 'hash2',
-            },
-          ],
-        },
-        createCache({
+          nonProjectFiles: [],
           projectFileMap: {
             mylib: [
               {
@@ -172,38 +174,99 @@ describe('nx deps utils', () => {
                 hash: 'hash1',
               },
             ],
+            secondlib: [
+              {
+                file: 'index.ts',
+                hash: 'hash2',
+              },
+            ],
+          },
+        },
+        createCache({
+          fileMap: {
+            nonProjectFiles: [],
+            projectFileMap: {
+              mylib: [
+                {
+                  file: 'index.ts',
+                  hash: 'hash1',
+                },
+              ],
+            },
           },
         })
       );
       expect(r.filesToProcess).toEqual({
-        secondlib: [
-          {
-            file: 'index.ts',
-            hash: 'hash2',
-          },
-        ],
+        projectFileMap: {
+          secondlib: [
+            {
+              file: 'index.ts',
+              hash: 'hash2',
+            },
+          ],
+        },
+        nonProjectFiles: [],
       });
       expect(r.cachedFileData).toEqual({
-        mylib: {
-          'index.ts': {
-            file: 'index.ts',
-            hash: 'hash1',
+        nonProjectFiles: {},
+        projectFileMap: {
+          mylib: {
+            'index.ts': {
+              file: 'index.ts',
+              hash: 'hash1',
+            },
           },
         },
-      });
-      expect(r.filesToProcess).toEqual({
-        secondlib: [{ file: 'index.ts', hash: 'hash2' }],
       });
     });
 
     it('should handle cases when files change', () => {
       const r = extractCachedFileData(
         {
-          mylib: [
-            {
-              file: 'index1.ts',
-              hash: 'hash1',
+          nonProjectFiles: [],
+          projectFileMap: {
+            mylib: [
+              {
+                file: 'index1.ts',
+                hash: 'hash1',
+              },
+              {
+                file: 'index2.ts',
+                hash: 'hash2b',
+              },
+              {
+                file: 'index4.ts',
+                hash: 'hash4',
+              },
+            ],
+          },
+        },
+        createCache({
+          fileMap: {
+            nonProjectFiles: [],
+            projectFileMap: {
+              mylib: [
+                {
+                  file: 'index1.ts',
+                  hash: 'hash1',
+                },
+                {
+                  file: 'index2.ts',
+                  hash: 'hash2',
+                },
+                {
+                  file: 'index3.ts',
+                  hash: 'hash3',
+                },
+              ],
             },
+          },
+        })
+      );
+      expect(r.filesToProcess).toEqual({
+        nonProjectFiles: [],
+        projectFileMap: {
+          mylib: [
             {
               file: 'index2.ts',
               hash: 'hash2b',
@@ -214,42 +277,15 @@ describe('nx deps utils', () => {
             },
           ],
         },
-        createCache({
-          projectFileMap: {
-            mylib: [
-              {
-                file: 'index1.ts',
-                hash: 'hash1',
-              },
-              {
-                file: 'index2.ts',
-                hash: 'hash2',
-              },
-              {
-                file: 'index3.ts',
-                hash: 'hash3',
-              },
-            ],
-          },
-        })
-      );
-      expect(r.filesToProcess).toEqual({
-        mylib: [
-          {
-            file: 'index2.ts',
-            hash: 'hash2b',
-          },
-          {
-            file: 'index4.ts',
-            hash: 'hash4',
-          },
-        ],
       });
       expect(r.cachedFileData).toEqual({
-        mylib: {
-          'index1.ts': {
-            file: 'index1.ts',
-            hash: 'hash1',
+        nonProjectFiles: {},
+        projectFileMap: {
+          mylib: {
+            'index1.ts': {
+              file: 'index1.ts',
+              hash: 'hash1',
+            },
           },
         },
       });
@@ -273,17 +309,19 @@ describe('nx deps utils', () => {
     });
   });
 
-  function createCache(p: Partial<ProjectFileMapCache>): ProjectFileMapCache {
-    const defaults: ProjectFileMapCache = {
+  function createCache(p: Partial<FileMapCache>): FileMapCache {
+    const defaults: FileMapCache = {
       version: '6.0',
       nxVersion: nxVersion,
-      deps: {},
       pathMappings: {
         mylib: ['libs/mylib/index.ts'],
       },
       nxJsonPlugins: [{ name: 'plugin', version: '1.0.0' }],
-      projectFileMap: {
-        mylib: [],
+      fileMap: {
+        nonProjectFiles: [],
+        projectFileMap: {
+          mylib: [],
+        },
       },
     };
     return { ...defaults, ...p };
@@ -299,16 +337,14 @@ describe('nx deps utils', () => {
     return { ...defaults, ...p };
   }
 
-  function createProjectsConfiguration(p: any): ProjectsConfigurations {
-    const defaults = {
-      projects: { mylib: {} },
-    } as any;
-    return { ...defaults, ...p };
+  function createProjectsConfiguration(
+    p: any
+  ): Record<string, ProjectConfiguration> {
+    return { mylib: {}, ...p };
   }
 
   function createNxJson(p: Partial<NxJsonConfiguration>): NxJsonConfiguration {
     const defaults: NxJsonConfiguration = {
-      npmScope: '',
       workspaceLayout: {} as any,
       plugins: ['plugin'],
     };

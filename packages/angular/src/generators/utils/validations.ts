@@ -1,13 +1,5 @@
 import type { Tree } from '@nx/devkit';
-import {
-  getProjects,
-  normalizePath,
-  readProjectConfiguration,
-  stripIndents,
-} from '@nx/devkit';
-import { lt } from 'semver';
-import { pathStartsWith } from './path';
-import { getInstalledAngularVersionInfo } from './version-utils';
+import { getProjects } from '@nx/devkit';
 
 export function validateProject(tree: Tree, projectName: string): void {
   const projects = getProjects(tree);
@@ -19,44 +11,15 @@ export function validateProject(tree: Tree, projectName: string): void {
   }
 }
 
-export function validateStandaloneOption(
-  tree: Tree,
-  standalone: boolean | undefined,
-  angularVersion?: string
-): void {
-  if (!standalone) {
-    return;
-  }
+// The below validation matches that of the Angular CLI:
+// https://github.com/angular/angular-cli/blob/1316930a1cbad8e71a4454743862cfa9253bef4e/packages/schematics/angular/utility/validation.ts#L25
 
-  const installedAngularVersion =
-    angularVersion ?? getInstalledAngularVersionInfo(tree).version;
+// See: https://github.com/tc39/proposal-regexp-unicode-property-escapes/blob/fe6d07fad74cd0192d154966baa1e95e7cda78a1/README.md#other-examples
+const ecmaIdentifierNameRegExp =
+  /^(?:[$_\p{ID_Start}])(?:[$_\u200C\u200D\p{ID_Continue}])*$/u;
 
-  if (lt(installedAngularVersion, '14.1.0')) {
-    throw new Error(stripIndents`The "standalone" option is only supported in Angular >= 14.1.0. You are currently using "${installedAngularVersion}".
-    You can resolve this error by removing the "standalone" option or by migrating to Angular 14.1.0.`);
-  }
-}
-
-export function validatePathIsUnderProjectRoot(
-  tree: Tree,
-  projectName: string,
-  path: string
-): void {
-  if (!path) {
-    return;
-  }
-
-  const { root } = readProjectConfiguration(tree, projectName);
-
-  let pathToComponent = normalizePath(path);
-  pathToComponent = pathToComponent.startsWith('/')
-    ? pathToComponent.slice(1)
-    : pathToComponent;
-
-  if (!pathStartsWith(pathToComponent, root)) {
-    throw new Error(
-      `The path provided (${path}) does not exist under the project root (${root}). ` +
-        `Please make sure to provide a path that exists under the project root.`
-    );
+export function validateClassName(className: string): void {
+  if (!ecmaIdentifierNameRegExp.test(className)) {
+    throw new Error(`Class name "${className}" is invalid.`);
   }
 }

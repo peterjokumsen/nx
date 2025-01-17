@@ -14,142 +14,176 @@ describe('pipe generator', () => {
       sourceRoot: 'test/src',
       projectType: 'application',
     });
-
-    tree.write(
-      'test/src/app/test.module.ts',
-      `import {NgModule} from "@angular/core";
-    @NgModule({
-      imports: [],
-      declarations: [],
-      exports: []
-    })
-    export class TestModule {}`
-    );
   });
 
-  it('should generate a pipe with test files and attach to the NgModule automatically', async () => {
-    // ARRANGE
-
+  it('should generate correctly', async () => {
     // ACT
-    await generatePipeWithDefaultOptions(tree);
+    await generatePipeWithDefaultOptions(tree, { skipFormat: false });
 
     // ASSERT
     expect(tree.read('test/src/app/test.pipe.ts', 'utf-8')).toMatchSnapshot();
     expect(
       tree.read('test/src/app/test.pipe.spec.ts', 'utf-8')
     ).toMatchSnapshot();
-    expect(tree.read('test/src/app/test.module.ts', 'utf-8')).toMatchSnapshot();
   });
 
-  it('should import the pipe correctly when flat=false', async () => {
-    // ARRANGE
+  it('should handle path with file extension', async () => {
+    await generatePipeWithDefaultOptions(tree, {
+      path: 'test/src/app/test.pipe.ts',
+      skipFormat: false,
+    });
 
-    // ACT
-    await generatePipeWithDefaultOptions(tree, { flat: false });
-
-    // ASSERT
+    expect(tree.read('test/src/app/test.pipe.ts', 'utf-8')).toMatchSnapshot();
     expect(
-      tree.read('test/src/app/test/test.pipe.ts', 'utf-8')
+      tree.read('test/src/app/test.pipe.spec.ts', 'utf-8')
     ).toMatchSnapshot();
-    expect(
-      tree.read('test/src/app/test/test.pipe.spec.ts', 'utf-8')
-    ).toMatchSnapshot();
-    expect(tree.read('test/src/app/test.module.ts', 'utf-8')).toMatchSnapshot();
   });
 
-  it('should not import the pipe when standalone=true', async () => {
+  it('should not import the pipe into an existing module', async () => {
     // ARRANGE
+    addModule(tree);
 
     // ACT
     await generatePipeWithDefaultOptions(tree, { standalone: true });
 
     // ASSERT
-    expect(tree.read('test/src/app/test.pipe.ts', 'utf-8')).toMatchSnapshot();
-    expect(
-      tree.read('test/src/app/test.pipe.spec.ts', 'utf-8')
-    ).toMatchSnapshot();
-    expect(tree.read('test/src/app/test.module.ts', 'utf-8')).toMatchSnapshot();
-  });
-
-  it('should import the pipe correctly when flat=false and path is nested deeper', async () => {
-    // ARRANGE
-
-    // ACT
-    await generatePipeWithDefaultOptions(tree, {
-      flat: false,
-      path: 'test/src/app/my-pipes',
-    });
-
-    // ASSERT
-    expect(
-      tree.read('test/src/app/my-pipes/test/test.pipe.ts', 'utf-8')
-    ).toMatchSnapshot();
-    expect(
-      tree.read('test/src/app/my-pipes/test/test.pipe.spec.ts', 'utf-8')
-    ).toMatchSnapshot();
-    expect(tree.read('test/src/app/test.module.ts', 'utf-8')).toMatchSnapshot();
-  });
-
-  it('should export the pipe correctly when flat=false and path is nested deeper', async () => {
-    // ARRANGE
-
-    // ACT
-    await generatePipeWithDefaultOptions(tree, {
-      flat: false,
-      path: 'test/src/app/my-pipes',
-      export: true,
-    });
-
-    // ASSERT
-    expect(
-      tree.read('test/src/app/my-pipes/test/test.pipe.ts', 'utf-8')
-    ).toMatchSnapshot();
-    expect(
-      tree.read('test/src/app/my-pipes/test/test.pipe.spec.ts', 'utf-8')
-    ).toMatchSnapshot();
-    expect(tree.read('test/src/app/test.module.ts', 'utf-8')).toMatchSnapshot();
-  });
-
-  it('should not import the pipe when skipImport=true', async () => {
-    // ARRANGE
-
-    // ACT
-    await generatePipeWithDefaultOptions(tree, {
-      flat: false,
-      path: 'test/src/app/my-pipes',
-      skipImport: true,
-    });
-
-    // ASSERT
-    expect(
-      tree.read('test/src/app/my-pipes/test/test.pipe.ts', 'utf-8')
-    ).toMatchSnapshot();
-    expect(
-      tree.read('test/src/app/my-pipes/test/test.pipe.spec.ts', 'utf-8')
-    ).toMatchSnapshot();
-    expect(tree.read('test/src/app/test.module.ts', 'utf-8')).toMatchSnapshot();
+    expect(tree.read('test/src/app/test.module.ts', 'utf-8')).not.toContain(
+      'TestPipe'
+    );
   });
 
   it('should not generate test file when skipTests=true', async () => {
-    // ARRANGE
-
     // ACT
     await generatePipeWithDefaultOptions(tree, {
-      flat: false,
-      path: 'test/src/app/my-pipes',
+      path: 'test/src/app/my-pipes/test',
       skipTests: true,
     });
 
     // ASSERT
     expect(
-      tree.read('test/src/app/my-pipes/test/test.pipe.ts', 'utf-8')
-    ).toMatchSnapshot();
-    expect(
       tree.exists('test/src/app/my-pipes/test/test.pipe.spec.ts')
     ).toBeFalsy();
-    expect(tree.read('test/src/app/test.module.ts', 'utf-8')).toMatchSnapshot();
+  });
+
+  it('should error when the class name is invalid', async () => {
+    await expect(
+      generatePipeWithDefaultOptions(tree, { name: '404' })
+    ).rejects.toThrow('Class name "404Pipe" is invalid.');
+  });
+
+  describe('--no-standalone', () => {
+    beforeEach(() => {
+      addModule(tree);
+    });
+
+    it('should generate a pipe with test files and attach to the NgModule automatically', async () => {
+      // ARRANGE
+
+      // ACT
+      await generatePipeWithDefaultOptions(tree, {
+        standalone: false,
+        skipFormat: false,
+      });
+
+      // ASSERT
+      expect(tree.read('test/src/app/test.pipe.ts', 'utf-8')).toMatchSnapshot();
+      expect(
+        tree.read('test/src/app/test.pipe.spec.ts', 'utf-8')
+      ).toMatchSnapshot();
+      expect(
+        tree.read('test/src/app/test.module.ts', 'utf-8')
+      ).toMatchSnapshot();
+    });
+
+    it('should import the pipe correctly when files are flat', async () => {
+      // ARRANGE
+
+      // ACT
+      await generatePipeWithDefaultOptions(tree, {
+        path: 'test/src/app/test/test',
+        standalone: false,
+      });
+
+      // ASSERT
+      expect(
+        tree.read('test/src/app/test/test.pipe.ts', 'utf-8')
+      ).toMatchSnapshot();
+      expect(
+        tree.read('test/src/app/test/test.pipe.spec.ts', 'utf-8')
+      ).toMatchSnapshot();
+      expect(
+        tree.read('test/src/app/test.module.ts', 'utf-8')
+      ).toMatchSnapshot();
+    });
+
+    it('should import the pipe correctly when files are flat but deeply nested', async () => {
+      // ARRANGE
+
+      // ACT
+      await generatePipeWithDefaultOptions(tree, {
+        path: 'test/src/app/my-pipes/test/test',
+        standalone: false,
+      });
+
+      // ASSERT
+      expect(
+        tree.read('test/src/app/my-pipes/test/test.pipe.ts', 'utf-8')
+      ).toMatchSnapshot();
+      expect(
+        tree.read('test/src/app/my-pipes/test/test.pipe.spec.ts', 'utf-8')
+      ).toMatchSnapshot();
+      expect(
+        tree.read('test/src/app/test.module.ts', 'utf-8')
+      ).toMatchSnapshot();
+    });
+
+    it('should export the pipe correctly when directory is nested deeper', async () => {
+      // ARRANGE
+
+      // ACT
+      await generatePipeWithDefaultOptions(tree, {
+        path: 'test/src/app/my-pipes/test/test',
+        export: true,
+        standalone: false,
+      });
+
+      // ASSERT
+      expect(
+        tree.read('test/src/app/test.module.ts', 'utf-8')
+      ).toMatchSnapshot();
+    });
+
+    it('should not import the pipe when skipImport=true', async () => {
+      // ARRANGE
+
+      // ACT
+      await generatePipeWithDefaultOptions(tree, {
+        path: 'test/src/app/my-pipes/test/test',
+        skipImport: true,
+        standalone: false,
+      });
+
+      // ASSERT
+      expect(tree.read('test/src/app/test.module.ts', 'utf-8')).not.toContain(
+        'TestPipe'
+      );
+    });
   });
 });
+
+function addModule(tree: Tree) {
+  tree.write(
+    'test/src/app/test.module.ts',
+    `import { NgModule } from '@angular/core';
+@NgModule({
+  imports: [],
+  declarations: [],
+  exports: [],
+})
+export class TestModule {}
+`
+  );
+}
 
 async function generatePipeWithDefaultOptions(
   tree: Tree,
@@ -157,8 +191,8 @@ async function generatePipeWithDefaultOptions(
 ) {
   await pipeGenerator(tree, {
     name: 'test',
-    project: 'test',
-    flat: true,
+    path: 'test/src/app/test',
+    skipFormat: true,
     ...overrides,
   });
 }

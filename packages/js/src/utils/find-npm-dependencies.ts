@@ -1,20 +1,20 @@
-import { join } from 'path';
+import { join, relative } from 'path';
 import { readNxJson } from 'nx/src/config/configuration';
 import {
-  getTargetInputs,
-  filterUsingGlobPatterns,
-} from 'nx/src/hasher/task-hasher';
-import {
+  joinPathFragments,
+  normalizePath,
+  type ProjectFileMap,
   type ProjectGraph,
   type ProjectGraphProjectNode,
-  type ProjectFileMap,
   readJsonFile,
-  FileData,
-  joinPathFragments,
 } from '@nx/devkit';
 import { fileExists } from 'nx/src/utils/fileutils';
 import { fileDataDepTarget } from 'nx/src/config/project-graph';
-import { readTsConfig } from './typescript/ts-config';
+import { getRootTsConfigFileName, readTsConfig } from './typescript/ts-config';
+import {
+  filterUsingGlobPatterns,
+  getTargetInputs,
+} from 'nx/src/hasher/task-hasher';
 
 /**
  * Finds all npm dependencies and their expected versions for a given project.
@@ -27,6 +27,8 @@ export function findNpmDependencies(
   buildTarget: string,
   options: {
     includeTransitiveDependencies?: boolean;
+    ignoredFiles?: string[];
+    useLocalPathsForWorkspaceDependencies?: boolean;
   } = {}
 ): Record<string, string> {
   let seen: null | Set<string> = null;
@@ -41,6 +43,7 @@ export function findNpmDependencies(
     collectedDeps: Record<string, string>
   ): void {
     if (seen?.has(currentProject.name)) return;
+    seen?.add(currentProject.name);
 
     collectDependenciesFromFileMap(
       workspaceRoot,
@@ -48,6 +51,8 @@ export function findNpmDependencies(
       projectGraph,
       projectFileMap,
       buildTarget,
+      options.ignoredFiles,
+      options.useLocalPathsForWorkspaceDependencies,
       collectedDeps
     );
 
@@ -82,19 +87,23 @@ function collectDependenciesFromFileMap(
   projectGraph: ProjectGraph,
   projectFileMap: ProjectFileMap,
   buildTarget: string,
+  ignoredFiles: string[],
+  useLocalPathsForWorkspaceDependencies: boolean,
   npmDeps: Record<string, string>
 ): void {
   const rawFiles = projectFileMap[sourceProject.name];
   if (!rawFiles) return;
 
-  // Cannot read inputs if the target does not exist on the project.
-  if (!sourceProject.data.targets[buildTarget]) return;
-
-  const inputs = getTargetInputs(
-    readNxJson(),
-    sourceProject,
-    buildTarget
-  ).selfInputs;
+  // If build target does not exist in project, use all files as input.
+  // This is needed for transitive dependencies for apps -- where libs may not be buildable.
+  const inputs = sourceProject.data.targets[buildTarget]
+    ? getTargetInputs(readNxJson(), sourceProject, buildTarget).selfInputs
+    : ['{projectRoot}/**/*'];
+  if (ignoredFiles) {
+    for (const pattern of ignoredFiles) {
+      inputs.push(`!${pattern}`);
+    }
+  }
   const files = filterUsingGlobPatterns(
     sourceProject.data.root,
     projectFileMap[sourceProject.name] || [],
@@ -128,13 +137,32 @@ function collectDependenciesFromFileMap(
         npmDeps[cached.name] = cached.version;
       } else {
         const packageJson = readPackageJson(workspaceDep, workspaceRoot);
-        if (packageJson) {
-          // This is a workspace lib so we can't reliably read in a specific version since it depends on how the workspace is set up.
-          // ASSUMPTION: Most users will use '*' for workspace lib versions. Otherwise, they can manually update it.
-          npmDeps[packageJson.name] = '*';
+        if (
+          // Check that this is a buildable project, otherwise it cannot be a dependency in package.json.
+          workspaceDep.data.targets[buildTarget] &&
+          // Make sure package.json exists and has a valid name.
+          packageJson?.name
+        ) {
+          let version: string;
+          if (useLocalPathsForWorkspaceDependencies) {
+            // Find the relative `file:...` path and use that as the version value.
+            // This is useful for monorepos like Nx where the release will handle setting the correct version in dist.
+            const depRoot = join(workspaceRoot, workspaceDep.data.root);
+            const ownRoot = join(workspaceRoot, sourceProject.data.root);
+            const relativePath = relative(ownRoot, depRoot);
+            const filePath = normalizePath(relativePath); // normalize slashes for windows
+            version = `file:${filePath}`;
+          } else {
+            // Otherwise, read the version from the dependencies `package.json` file.
+            // This is useful for monorepos that commit release versions.
+            // Users can also set version as "*" in source `package.json` files, which will be the value set here.
+            // This is useful if they use custom scripts to update them in dist.
+            version = packageJson.version ?? '*'; // fallback in case version is missing
+          }
+          npmDeps[packageJson.name] = version;
           seenWorkspaceDeps[workspaceDep.name] = {
             name: packageJson.name,
-            version: '*',
+            version,
           };
         }
       }
@@ -147,6 +175,7 @@ function readPackageJson(
   workspaceRoot: string
 ): null | {
   name: string;
+  version?: string;
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
@@ -172,8 +201,11 @@ function collectHelperDependencies(
 
   if (target.executor === '@nx/js:tsc' && target.options?.tsConfig) {
     const tsConfig = readTsConfig(join(workspaceRoot, target.options.tsConfig));
-    if (tsConfig?.options['importHelpers']) {
-      npmDeps['tslib'] = projectGraph.externalNodes['npm:tslib']?.data.version;
+    if (
+      tsConfig?.options['importHelpers'] &&
+      projectGraph.externalNodes['npm:tslib']?.type === 'npm'
+    ) {
+      npmDeps['tslib'] = projectGraph.externalNodes['npm:tslib'].data.version;
     }
   }
   if (target.executor === '@nx/js:swc') {
@@ -183,9 +215,29 @@ function collectHelperDependencies(
     const swcConfig = fileExists(swcConfigPath)
       ? readJsonFile(swcConfigPath)
       : {};
-    if (swcConfig?.jsc?.externalHelpers) {
+    if (
+      swcConfig?.jsc?.externalHelpers &&
+      projectGraph.externalNodes['npm:@swc/helpers']?.type === 'npm'
+    ) {
       npmDeps['@swc/helpers'] =
-        projectGraph.externalNodes['npm:@swc/helpers']?.data.version;
+        projectGraph.externalNodes['npm:@swc/helpers'].data.version;
+    }
+  }
+
+  // For inferred targets or manually added run-commands, check if user is using `tsc` in build target.
+  if (
+    target.executor === 'nx:run-commands' &&
+    /\btsc\b/.test(target.options.command)
+  ) {
+    const tsConfigFileName = getRootTsConfigFileName();
+    if (tsConfigFileName) {
+      const tsConfig = readTsConfig(join(workspaceRoot, tsConfigFileName));
+      if (
+        tsConfig?.options['importHelpers'] &&
+        projectGraph.externalNodes['npm:tslib']?.type === 'npm'
+      ) {
+        npmDeps['tslib'] = projectGraph.externalNodes['npm:tslib'].data.version;
+      }
     }
   }
 }

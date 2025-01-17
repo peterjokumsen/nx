@@ -4,7 +4,7 @@ import { ProjectConfiguration } from '../../config/workspace-json-project-json';
 
 import { createTree } from '../testing-utils/create-tree';
 import { createTreeWithEmptyWorkspace } from '../testing-utils/create-tree-with-empty-workspace';
-import { readJson, updateJson, writeJson } from '../utils/json';
+import { readJson, writeJson } from '../utils/json';
 import {
   addProjectConfiguration,
   getProjects,
@@ -15,12 +15,12 @@ import {
 
 import * as projectSchema from '../../../schemas/project-schema.json';
 import { joinPathFragments } from '../../utils/path';
+import { PackageJson } from '../../utils/package-json';
 
 const projectConfiguration: ProjectConfiguration = {
   name: 'test',
   root: 'libs/test',
   sourceRoot: 'libs/test/src',
-  targets: {},
 };
 
 describe('project configuration', () => {
@@ -31,7 +31,32 @@ describe('project configuration', () => {
   });
 
   it('should create project.json file when adding a project if standalone is true', () => {
-    addProjectConfiguration(tree, 'test', projectConfiguration);
+    addProjectConfiguration(tree, 'test', {
+      ...projectConfiguration,
+      targets: {
+        test: {},
+      },
+    });
+
+    expect(readProjectConfiguration(tree, 'test')).toMatchInlineSnapshot(`
+      {
+        "$schema": "../../node_modules/nx/schemas/project-schema.json",
+        "name": "test",
+        "root": "libs/test",
+        "sourceRoot": "libs/test/src",
+        "targets": {
+          "test": {},
+        },
+      }
+    `);
+    expect(tree.exists('libs/test/project.json')).toBeTruthy();
+  });
+
+  it('should add a comment to show project details when targets are missing', () => {
+    addProjectConfiguration(tree, 'test', {
+      ...projectConfiguration,
+      targets: {},
+    });
 
     expect(readProjectConfiguration(tree, 'test')).toMatchInlineSnapshot(`
       {
@@ -42,7 +67,54 @@ describe('project configuration', () => {
         "targets": {},
       }
     `);
-    expect(tree.exists('libs/test/project.json')).toBeTruthy();
+
+    expect(tree.read('libs/test/project.json', 'utf-8')).toMatchInlineSnapshot(`
+      "{
+        "name": "test",
+        "$schema": "../../node_modules/nx/schemas/project-schema.json",
+        "sourceRoot": "libs/test/src",
+        "// targets": "to see all targets run: nx show project test --web",
+        "targets": {}
+      }
+      "
+    `);
+
+    // Adding a target removes the "// targets" comment.
+    updateProjectConfiguration(tree, 'test', {
+      ...projectConfiguration,
+      targets: {
+        test: {},
+      },
+    });
+
+    expect(tree.read('libs/test/project.json', 'utf-8')).toMatchInlineSnapshot(`
+      "{
+        "name": "test",
+        "$schema": "../../node_modules/nx/schemas/project-schema.json",
+        "sourceRoot": "libs/test/src",
+        "targets": {
+          "test": {}
+        }
+      }
+      "
+    `);
+
+    // Emptying out targets add "// targets" comment back.
+    updateProjectConfiguration(tree, 'test', {
+      ...projectConfiguration,
+      targets: {},
+    });
+
+    expect(tree.read('libs/test/project.json', 'utf-8')).toMatchInlineSnapshot(`
+      "{
+        "name": "test",
+        "$schema": "../../node_modules/nx/schemas/project-schema.json",
+        "sourceRoot": "libs/test/src",
+        "// targets": "to see all targets run: nx show project test --web",
+        "targets": {}
+      }
+      "
+    `);
   });
 
   it('should update project.json file when updating a project', () => {
@@ -171,6 +243,11 @@ describe('project configuration', () => {
   describe('for npm workspaces', () => {
     beforeEach(() => {
       tree = createTree();
+      writeJson<PackageJson>(tree, 'package.json', {
+        name: '@testing/root',
+        version: '0.0.1',
+        workspaces: ['*/**/package.json'],
+      });
     });
 
     it('should read project configuration from package.json files', () => {
@@ -182,9 +259,8 @@ describe('project configuration', () => {
       const proj = readProjectConfiguration(tree, 'proj');
 
       expect(proj).toEqual({
+        name: 'proj',
         root: 'proj',
-        sourceRoot: 'proj',
-        projectType: 'library',
       });
     });
 
@@ -197,10 +273,61 @@ describe('project configuration', () => {
 
       expect(projects.size).toEqual(1);
       expect(projects.get('proj')).toEqual({
+        name: 'proj',
         root: 'proj',
-        sourceRoot: 'proj',
-        projectType: 'library',
       });
+    });
+
+    it('should handle reading + writing project configuration', () => {
+      writeJson(tree, 'proj/package.json', {
+        name: 'proj',
+        nx: {},
+      });
+
+      const proj = readProjectConfiguration(tree, 'proj');
+      expect(proj).toEqual({
+        name: 'proj',
+        root: 'proj',
+      });
+
+      updateProjectConfiguration(tree, 'proj', {
+        name: 'proj',
+        root: 'proj',
+        sourceRoot: 'proj/src',
+        targets: {
+          build: {
+            command: 'echo "building"',
+          },
+        },
+      });
+
+      const updatedProj = readProjectConfiguration(tree, 'proj');
+      expect(updatedProj).toEqual({
+        name: 'proj',
+        root: 'proj',
+        sourceRoot: 'proj/src',
+        targets: {
+          build: {
+            command: 'echo "building"',
+          },
+        },
+      });
+
+      expect(tree.read('proj/package.json', 'utf-8')).toMatchInlineSnapshot(`
+        "{
+          "name": "proj",
+          "nx": {
+            "sourceRoot": "proj/src",
+            "targets": {
+              "build": {
+                "command": "echo \\"building\\""
+              }
+            }
+          }
+        }
+        "
+      `);
+      expect(tree.exists('proj/project.json')).toBeFalsy();
     });
   });
 });

@@ -1,22 +1,39 @@
-import {
-  readProjectFileMapCache,
-  readProjectGraphCache,
-} from './nx-deps-cache';
-import { buildProjectGraphUsingProjectFileMap } from './build-project-graph';
-import { output } from '../utils/output';
-import { markDaemonAsDisabled, writeDaemonLogs } from '../daemon/tmp-dir';
+import { performance } from 'perf_hooks';
+
+import { readNxJson } from '../config/nx-json';
 import { ProjectGraph } from '../config/project-graph';
-import { stripIndents } from '../utils/strip-indents';
 import {
   ProjectConfiguration,
   ProjectsConfigurations,
 } from '../config/workspace-json-project-json';
 import { daemonClient } from '../daemon/client/client';
+import { markDaemonAsDisabled, writeDaemonLogs } from '../daemon/tmp-dir';
 import { fileExists } from '../utils/fileutils';
+import { output } from '../utils/output';
+import { stripIndents } from '../utils/strip-indents';
 import { workspaceRoot } from '../utils/workspace-root';
-import { performance } from 'perf_hooks';
-import { retrieveWorkspaceFiles } from './utils/retrieve-workspace-files';
-import { readNxJson } from '../config/nx-json';
+import {
+  buildProjectGraphUsingProjectFileMap,
+  hydrateFileMap,
+} from './build-project-graph';
+import {
+  AggregateProjectGraphError,
+  isAggregateProjectGraphError,
+  ProjectConfigurationsError,
+  ProjectGraphError,
+} from './error-types';
+import {
+  readFileMapCache,
+  readProjectGraphCache,
+  writeCache,
+} from './nx-deps-cache';
+import { ConfigurationResult } from './utils/project-configuration-utils';
+import {
+  retrieveProjectConfigurations,
+  retrieveWorkspaceFiles,
+} from './utils/retrieve-workspace-files';
+import { getPlugins } from './plugins/get-plugins';
+import { logger } from '../utils/logger';
 
 /**
  * Synchronously reads the latest cached copy of the workspace's ProjectGraph.
@@ -24,14 +41,15 @@ import { readNxJson } from '../config/nx-json';
  */
 export function readCachedProjectGraph(): ProjectGraph {
   const projectGraphCache: ProjectGraph = readProjectGraphCache();
-  const angularSpecificError = fileExists(`${workspaceRoot}/angular.json`)
-    ? stripIndents`
+  if (!projectGraphCache) {
+    const angularSpecificError = fileExists(`${workspaceRoot}/angular.json`)
+      ? stripIndents`
       Make sure invoke 'node ./decorate-angular-cli.js' in your postinstall script.
       The decorated CLI will compute the project graph.
-      'ng --help' should say 'Smart, Fast and Extensible Build System'.
+      'ng --help' should say 'Smart Monorepos · Fast CI'.
       `
-    : '';
-  if (!projectGraphCache) {
+      : '';
+
     throw new Error(stripIndents`
       [readCachedProjectGraph] ERROR: No cached ProjectGraph is available.
 
@@ -51,9 +69,16 @@ export function readCachedProjectConfiguration(
 ): ProjectConfiguration {
   const graph = readCachedProjectGraph();
   const node = graph.nodes[projectName];
-  return node.data;
+  try {
+    return node.data;
+  } catch (e) {
+    throw new Error(`Cannot find project: '${projectName}' in your workspace.`);
+  }
 }
 
+/**
+ * Get the {@link ProjectsConfigurations} from the {@link ProjectGraph}
+ */
 export function readProjectsConfigurationFromProjectGraph(
   projectGraph: ProjectGraph
 ): ProjectsConfigurations {
@@ -68,33 +93,109 @@ export function readProjectsConfigurationFromProjectGraph(
   };
 }
 
-export async function buildProjectGraphWithoutDaemon() {
+export async function buildProjectGraphAndSourceMapsWithoutDaemon() {
+  global.NX_GRAPH_CREATION = true;
   const nxJson = readNxJson();
 
-  const { allWorkspaceFiles, projectFileMap, projectConfigurations } =
-    await retrieveWorkspaceFiles(workspaceRoot, nxJson);
+  performance.mark('retrieve-project-configurations:start');
+  let configurationResult: ConfigurationResult;
+  let projectConfigurationsError: ProjectConfigurationsError;
+  const plugins = await getPlugins();
+  try {
+    configurationResult = await retrieveProjectConfigurations(
+      plugins,
+      workspaceRoot,
+      nxJson
+    );
+  } catch (e) {
+    if (e instanceof ProjectConfigurationsError) {
+      projectConfigurationsError = e;
+      configurationResult = e.partialProjectConfigurationsResult;
+    } else {
+      throw e;
+    }
+  }
+  const { projects, externalNodes, sourceMaps, projectRootMap } =
+    configurationResult;
+  performance.mark('retrieve-project-configurations:end');
+
+  performance.mark('retrieve-workspace-files:start');
+  const { allWorkspaceFiles, fileMap, rustReferences } =
+    await retrieveWorkspaceFiles(workspaceRoot, projectRootMap);
+  performance.mark('retrieve-workspace-files:end');
 
   const cacheEnabled = process.env.NX_CACHE_PROJECT_GRAPH !== 'false';
-  return (
-    await buildProjectGraphUsingProjectFileMap(
-      projectConfigurations,
-      projectFileMap,
+  performance.mark('build-project-graph-using-project-file-map:start');
+  let projectGraphError: AggregateProjectGraphError;
+  let projectGraphResult: Awaited<
+    ReturnType<typeof buildProjectGraphUsingProjectFileMap>
+  >;
+  try {
+    projectGraphResult = await buildProjectGraphUsingProjectFileMap(
+      projects,
+      externalNodes,
+      fileMap,
       allWorkspaceFiles,
-      cacheEnabled ? readProjectFileMapCache() : null,
-      cacheEnabled
-    )
-  ).projectGraph;
+      rustReferences,
+      cacheEnabled ? readFileMapCache() : null,
+      plugins,
+      sourceMaps
+    );
+  } catch (e) {
+    if (isAggregateProjectGraphError(e)) {
+      projectGraphResult = {
+        projectGraph: e.partialProjectGraph,
+        projectFileMapCache: null,
+      };
+      projectGraphError = e;
+    } else {
+      throw e;
+    }
+  }
+
+  const { projectGraph, projectFileMapCache } = projectGraphResult;
+  performance.mark('build-project-graph-using-project-file-map:end');
+
+  delete global.NX_GRAPH_CREATION;
+
+  const errors = [
+    ...(projectConfigurationsError?.errors ?? []),
+    ...(projectGraphError?.errors ?? []),
+  ];
+
+  if (errors.length > 0) {
+    throw new ProjectGraphError(errors, projectGraph, sourceMaps);
+  } else {
+    if (cacheEnabled) {
+      writeCache(projectFileMapCache, projectGraph);
+    }
+    return { projectGraph, sourceMaps };
+  }
 }
 
-function handleProjectGraphError(opts: { exitOnError: boolean }, e) {
+export function handleProjectGraphError(opts: { exitOnError: boolean }, e) {
   if (opts.exitOnError) {
-    const lines = e.message.split('\n');
-    output.error({
-      title: lines[0],
-      bodyLines: lines.slice(1),
-    });
-    if (process.env.NX_VERBOSE_LOGGING === 'true') {
-      console.error(e);
+    const isVerbose = process.env.NX_VERBOSE_LOGGING === 'true';
+    if (e instanceof ProjectGraphError) {
+      let title = e.message;
+
+      const bodyLines = isVerbose
+        ? [e.stack]
+        : ['Pass --verbose to see the stacktraces.'];
+
+      output.error({
+        title,
+        bodyLines: bodyLines,
+      });
+    } else {
+      const lines = e.message.split('\n');
+      output.error({
+        title: lines[0],
+        bodyLines: lines.slice(1),
+      });
+      if (isVerbose) {
+        console.error(e);
+      }
     }
     process.exit(1);
   } else {
@@ -112,7 +213,7 @@ function handleProjectGraphError(opts: { exitOnError: boolean }, e) {
  * * It is running in the docker container.
  * * The daemon process is disabled because of the previous error when starting the daemon.
  * * `NX_DAEMON` is set to `false`.
- * * `useDaemon` is set to false in `nx.json`
+ * * `useDaemonProcess` is set to false in the options of the tasks runner inside `nx.json`
  *
  * `NX_DAEMON` env variable takes precedence:
  * * If it is set to true, the daemon will always be used.
@@ -129,11 +230,57 @@ export async function createProjectGraphAsync(
     resetDaemonClient: false,
   }
 ): Promise<ProjectGraph> {
+  if (process.env.NX_FORCE_REUSE_CACHED_GRAPH === 'true') {
+    try {
+      const graph = readCachedProjectGraph();
+      const projectRootMap = Object.fromEntries(
+        Object.entries(graph.nodes).map(([project, { data }]) => [
+          data.root,
+          project,
+        ])
+      );
+      const { allWorkspaceFiles, fileMap, rustReferences } =
+        await retrieveWorkspaceFiles(workspaceRoot, projectRootMap);
+      hydrateFileMap(fileMap, allWorkspaceFiles, rustReferences);
+      return graph;
+      // If no cached graph is found, we will fall through to the normal flow
+    } catch (e) {
+      logger.verbose('Unable to use cached project graph', e);
+    }
+  }
+
+  const projectGraphAndSourceMaps = await createProjectGraphAndSourceMapsAsync(
+    opts
+  );
+  return projectGraphAndSourceMaps.projectGraph;
+}
+
+export async function createProjectGraphAndSourceMapsAsync(
+  opts: { exitOnError: boolean; resetDaemonClient?: boolean } = {
+    exitOnError: false,
+    resetDaemonClient: false,
+  }
+) {
   performance.mark('create-project-graph-async:start');
 
   if (!daemonClient.enabled()) {
     try {
-      const res = await buildProjectGraphWithoutDaemon();
+      const res = await buildProjectGraphAndSourceMapsWithoutDaemon();
+      performance.measure(
+        'create-project-graph-async >> retrieve-project-configurations',
+        'retrieve-project-configurations:start',
+        'retrieve-project-configurations:end'
+      );
+      performance.measure(
+        'create-project-graph-async >> retrieve-workspace-files',
+        'retrieve-workspace-files:start',
+        'retrieve-workspace-files:end'
+      );
+      performance.measure(
+        'create-project-graph-async >> build-project-graph-using-project-file-map',
+        'build-project-graph-using-project-file-map:start',
+        'build-project-graph-using-project-file-map:end'
+      );
       performance.mark('create-project-graph-async:end');
       performance.measure(
         'create-project-graph-async',
@@ -146,19 +293,17 @@ export async function createProjectGraphAsync(
     }
   } else {
     try {
-      const projectGraph = await daemonClient.getProjectGraph();
-      if (opts.resetDaemonClient) {
-        daemonClient.reset();
-      }
+      const projectGraphAndSourceMaps =
+        await daemonClient.getProjectGraphAndSourceMaps();
       performance.mark('create-project-graph-async:end');
       performance.measure(
         'create-project-graph-async',
         'create-project-graph-async:start',
         'create-project-graph-async:end'
       );
-      return projectGraph;
+      return projectGraphAndSourceMaps;
     } catch (e) {
-      if (e.message.indexOf('inotify_add_watch') > -1) {
+      if (e.message && e.message.indexOf('inotify_add_watch') > -1) {
         // common errors with the daemon due to OS settings (cannot watch all the files available)
         output.note({
           title: `Unable to start Nx Daemon due to the limited amount of inotify watches, continuing without the daemon.`,
@@ -168,7 +313,7 @@ export async function createProjectGraphAsync(
           ],
         });
         markDaemonAsDisabled();
-        return buildProjectGraphWithoutDaemon();
+        return buildProjectGraphAndSourceMapsWithoutDaemon();
       }
 
       if (e.internalDaemonError) {
@@ -182,10 +327,14 @@ export async function createProjectGraphAsync(
           ],
         });
         markDaemonAsDisabled();
-        return buildProjectGraphWithoutDaemon();
+        return buildProjectGraphAndSourceMapsWithoutDaemon();
       }
 
       handleProjectGraphError(opts, e);
+    } finally {
+      if (opts.resetDaemonClient) {
+        daemonClient.reset();
+      }
     }
   }
 }

@@ -1,64 +1,86 @@
+import { readNxJson, type Tree } from '@nx/devkit';
 import {
-  extractLayoutDirectory,
-  getWorkspaceLayout,
-  joinPathFragments,
-  names,
-  Tree,
-} from '@nx/devkit';
-import { Schema } from '../schema';
-import { getImportPath } from '@nx/js/src/utils/get-import-path';
+  determineProjectNameAndRootOptions,
+  ensureProjectName,
+} from '@nx/devkit/src/generators/project-name-and-root-utils';
+import type { LinterType } from '@nx/eslint';
+import {
+  normalizeLinterOption,
+  normalizeUnitTestRunnerOption,
+} from '@nx/js/src/utils/generator-prompts';
+import { isUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
+import type { Schema } from '../schema';
 
 export interface NormalizedSchema extends Schema {
   name: string;
   fileName: string;
-  libsDir: string;
   projectRoot: string;
   projectDirectory: string;
   parsedTags: string[];
   npmPackageName: string;
   bundler: 'swc' | 'tsc';
   publishable: boolean;
+  unitTestRunner: 'jest' | 'vitest' | 'none';
+  linter: LinterType;
+  useProjectJson: boolean;
+  addPlugin: boolean;
+  isTsSolutionSetup: boolean;
 }
-export function normalizeOptions(
+
+export async function normalizeOptions(
   host: Tree,
   options: Schema
-): NormalizedSchema {
-  const { layoutDirectory, projectDirectory } = extractLayoutDirectory(
-    options.directory
+): Promise<NormalizedSchema> {
+  const linter = await normalizeLinterOption(host, options.linter);
+  const unitTestRunner = await normalizeUnitTestRunnerOption(
+    host,
+    options.unitTestRunner,
+    ['jest', 'vitest']
   );
-  const { libsDir: defaultLibsDir } = getWorkspaceLayout(host);
-  const libsDir = layoutDirectory ?? defaultLibsDir;
-  const name = names(options.name).fileName;
-  const fullProjectDirectory = projectDirectory
-    ? `${names(projectDirectory).fileName}/${name}`
-    : options.rootProject
-    ? '.'
-    : name;
 
-  const projectName = options.rootProject
-    ? name
-    : fullProjectDirectory.replace(new RegExp('/', 'g'), '-');
-  const fileName = projectName;
-  const projectRoot = options.rootProject
-    ? fullProjectDirectory
-    : joinPathFragments(libsDir, fullProjectDirectory);
+  const isTsSolutionSetup = isUsingTsSolutionSetup(host);
+  const nxJson = readNxJson(host);
+  const addPlugin =
+    options.addPlugin ??
+    (isTsSolutionSetup &&
+      process.env.NX_ADD_PLUGINS !== 'false' &&
+      nxJson.useInferencePlugins !== false);
+
+  await ensureProjectName(host, options, 'application');
+  const {
+    projectName,
+    projectRoot,
+    importPath: npmPackageName,
+  } = await determineProjectNameAndRootOptions(host, {
+    name: options.name,
+    projectType: 'library',
+    directory: options.directory,
+    importPath: options.importPath,
+    rootProject: options.rootProject,
+  });
+  options.rootProject = projectRoot === '.';
+
+  const projectDirectory = projectRoot;
 
   const parsedTags = options.tags
     ? options.tags.split(',').map((s) => s.trim())
     : [];
 
-  const npmPackageName = options.importPath || getImportPath(host, name);
-
   return {
     ...options,
     bundler: options.compiler ?? 'tsc',
-    fileName,
-    libsDir,
+    fileName: projectName,
     name: projectName,
     projectRoot,
-    projectDirectory: fullProjectDirectory,
+    projectDirectory,
     parsedTags,
     npmPackageName,
     publishable: options.publishable ?? false,
+    linter,
+    unitTestRunner,
+    // We default to generate a project.json file if the new setup is not being used
+    useProjectJson: options.useProjectJson ?? !isTsSolutionSetup,
+    addPlugin,
+    isTsSolutionSetup,
   };
 }

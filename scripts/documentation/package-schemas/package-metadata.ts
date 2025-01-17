@@ -2,7 +2,7 @@ import {
   convertToDocumentMetadata,
   DocumentMetadata,
 } from '@nx/nx-dev/models-document';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { readJsonSync } from 'fs-extra';
 import { sync } from 'glob';
 import { join, resolve } from 'path';
@@ -105,7 +105,8 @@ function getSchemaList(
  */
 export function findPackageMetadataList(
   absoluteRoot: string,
-  packagesDirectory: string = 'packages'
+  packagesDirectory: string = 'packages',
+  prefix = ''
 ): PackageData[] {
   const packagesDir = resolve(join(absoluteRoot, packagesDirectory));
 
@@ -117,10 +118,16 @@ export function findPackageMetadataList(
     .itemList.map((item) => convertToDocumentMetadata(item));
 
   // Do not use map.json, but add a documentation property on the package.json directly that can be easily resolved
-  return sync(`${packagesDir}/*`, { ignore: [`${packagesDir}/cli`] })
+  return sync(`${packagesDir}/${prefix}*`, {
+    ignore: [`${packagesDir}/cli`, `${packagesDir}/*-e2e`],
+  })
     .map((folderPath: string): PackageData => {
       const folderName = folderPath.substring(packagesDir.length + 1);
+
       const relativeFolderPath = folderPath.replace(absoluteRoot, '');
+      if (!existsSync(join(folderPath, 'package.json'))) {
+        return null;
+      }
       const packageJson = readJsonSync(
         join(folderPath, 'package.json'),
         'utf8'

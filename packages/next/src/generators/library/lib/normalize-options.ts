@@ -1,26 +1,42 @@
-import { getWorkspaceLayout, joinPathFragments, names, Tree } from '@nx/devkit';
-import { getImportPath } from '@nx/js/src/utils/get-import-path';
+import { readNxJson, Tree } from '@nx/devkit';
+import {
+  determineProjectNameAndRootOptions,
+  ensureProjectName,
+} from '@nx/devkit/src/generators/project-name-and-root-utils';
 import { Schema } from '../schema';
+import { isUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
 
 export interface NormalizedSchema extends Schema {
   importPath: string;
   projectRoot: string;
+  isUsingTsSolutionConfig: boolean;
 }
 
-export function normalizeOptions(
+export async function normalizeOptions(
   host: Tree,
   options: Schema
-): NormalizedSchema {
-  const name = names(options.name).fileName;
-  const projectDirectory = options.directory
-    ? `${names(options.directory).fileName}/${name}`
-    : name;
+): Promise<NormalizedSchema> {
+  await ensureProjectName(host, options, 'library');
+  const { projectRoot, importPath } = await determineProjectNameAndRootOptions(
+    host,
+    {
+      name: options.name,
+      projectType: 'library',
+      directory: options.directory,
+      importPath: options.importPath,
+    }
+  );
 
-  const { libsDir } = getWorkspaceLayout(host);
-  const projectRoot = joinPathFragments(libsDir, projectDirectory);
+  const nxJson = readNxJson(host);
+  const addPlugin =
+    process.env.NX_ADD_PLUGINS !== 'false' &&
+    nxJson.useInferencePlugins !== false;
+  options.addPlugin ??= addPlugin;
+
   return {
     ...options,
-    importPath: options.importPath ?? getImportPath(host, projectDirectory),
+    importPath,
     projectRoot,
+    isUsingTsSolutionConfig: isUsingTsSolutionSetup(host),
   };
 }

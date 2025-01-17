@@ -27,6 +27,8 @@ export type {
 export type {
   Generator,
   GeneratorCallback,
+  PromiseExecutor,
+  AsyncIteratorExecutor,
   Executor,
   ExecutorContext,
   TaskGraphExecutor,
@@ -37,17 +39,29 @@ export type {
   HasherContext,
 } from './config/misc-interfaces';
 
-/**
- * @category Workspace
- */
-export { Workspaces } from './config/workspaces';
+export { workspaceLayout } from './config/configuration';
 
-export {
-  readAllWorkspaceConfiguration,
-  workspaceLayout,
-} from './config/configuration';
+export type {
+  NxPlugin,
+  NxPluginV2,
+  CreateNodes,
+  CreateNodesFunction,
+  CreateNodesResult,
+  CreateNodesContext,
+  CreateNodesContextV2,
+  CreateNodesFunctionV2,
+  CreateNodesResultV2,
+  CreateNodesV2,
+  CreateDependencies,
+  CreateDependenciesContext,
+  CreateMetadata,
+  CreateMetadataContext,
+  ProjectsMetadata,
+} from './project-graph/plugins';
 
-export type { NxPlugin, ProjectTargetConfigurator } from './utils/nx-plugin';
+export { AggregateCreateNodesError } from './project-graph/error-types';
+
+export { createNodesFromFiles } from './project-graph/plugins';
 
 /**
  * @category Workspace
@@ -61,6 +75,9 @@ export type {
   ImplicitDependencyEntry,
   ImplicitJsonSubsetDependency,
   NxJsonConfiguration,
+  PluginConfiguration,
+  ExpandedPluginConfiguration,
+  TargetDefaults,
   NxAffectedConfig,
 } from './config/nx-json';
 
@@ -86,6 +103,7 @@ export {
   getPackageManagerCommand,
   detectPackageManager,
   getPackageManagerVersion,
+  isWorkspacesEnabled,
 } from './utils/package-manager';
 
 /**
@@ -111,14 +129,11 @@ export {
 /**
  * @category Generators
  */
-export {
-  readWorkspaceConfiguration,
-  updateWorkspaceConfiguration,
-  isStandaloneProject,
-  WorkspaceConfiguration,
-  getWorkspacePath,
-} from './generators/utils/deprecated';
+export { glob, globAsync } from './generators/utils/glob';
 
+/**
+ * @category Generators
+ */
 export {
   readNxJson,
   updateNxJson,
@@ -129,14 +144,15 @@ export {
  */
 export type {
   ProjectFileMap,
+  FileMap,
   FileData,
   ProjectGraph,
   ProjectGraphDependency,
-  ProjectGraphNode,
   ProjectGraphProjectNode,
   ProjectGraphExternalNode,
-  ProjectGraphProcessorContext,
 } from './config/project-graph';
+
+export type { GraphJson } from './command-line/graph/graph';
 
 /**
  * @category Project Graph
@@ -146,10 +162,16 @@ export { DependencyType } from './config/project-graph';
 /**
  * @category Project Graph
  */
-export { ProjectGraphBuilder } from './project-graph/project-graph-builder';
+export {
+  RawProjectGraphDependency,
+  DynamicDependency,
+  ImplicitDependency,
+  StaticDependency,
+  validateDependency,
+} from './project-graph/project-graph-builder';
 
 /**
- * @category Utils
+ * @category Generators
  */
 export { readJson, writeJson, updateJson } from './generators/utils/json';
 
@@ -178,11 +200,10 @@ export { stripIndents } from './utils/strip-indents';
  */
 export { joinPathFragments, normalizePath } from './utils/path';
 
-// TODO(v16): Change this to export from './utils/workspace-root'
 /**
  * @category Utils
  */
-export { workspaceRoot, appRootPath } from './utils/app-root';
+export { workspaceRoot } from './utils/workspace-root';
 
 /**
  * @category Utils
@@ -194,6 +215,7 @@ export { reverse } from './project-graph/operators';
 export {
   createProjectGraphAsync,
   readCachedProjectGraph,
+  readProjectsConfigurationFromProjectGraph,
 } from './project-graph/project-graph';
 
 /**
@@ -225,3 +247,5 @@ export { cacheDir } from './utils/cache-directory';
  * @category Utils
  */
 export { createProjectFileMapUsingProjectGraph } from './project-graph/file-map-utils';
+
+export { isDaemonEnabled } from './daemon/client/client';

@@ -1,4 +1,4 @@
-import { Linter } from '@nx/linter';
+import type { Linter, LinterType } from '@nx/eslint';
 
 export interface Schema {
   pluginName: string;
@@ -6,7 +6,9 @@ export interface Schema {
   projectDirectory?: string;
   pluginOutputPath?: string;
   jestConfig?: string;
-  linter?: Linter;
+  linter?: Linter | LinterType;
   skipFormat?: boolean;
   rootProject?: boolean;
+  useProjectJson?: boolean;
+  addPlugin?: boolean;
 }

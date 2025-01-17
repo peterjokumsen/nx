@@ -8,4 +8,5 @@ export interface Schema {
   rootProject?: boolean;
   isNest?: boolean;
   skipFormat?: boolean;
+  addPlugin?: boolean;
 }

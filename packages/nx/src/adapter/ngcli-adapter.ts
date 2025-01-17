@@ -23,7 +23,14 @@ import { Stats } from 'fs';
 import { dirname, extname, join, resolve } from 'path';
 
 import { concat, from, Observable, of, zip } from 'rxjs';
-import { catchError, concatMap, map, tap } from 'rxjs/operators';
+import {
+  catchError,
+  concatMap,
+  defaultIfEmpty,
+  last,
+  map,
+  tap,
+} from 'rxjs/operators';
 
 import type { GenerateOptions } from '../command-line/generate/generate';
 import { NxJsonConfiguration } from '../config/nx-json';
@@ -35,7 +42,10 @@ import {
   getProjects,
   updateProjectConfiguration,
 } from '../generators/utils/project-configuration';
-import { createProjectGraphAsync } from '../project-graph/project-graph';
+import {
+  createProjectGraphAsync,
+  readProjectsConfigurationFromProjectGraph,
+} from '../project-graph/project-graph';
 import { readJsonFile } from '../utils/fileutils';
 import { getNxRequirePaths } from '../utils/installation-directory';
 import { parseJson } from '../utils/json';
@@ -53,10 +63,12 @@ import {
   Executor,
   ExecutorConfig,
   ExecutorContext,
+  ExecutorJsonEntryConfig,
   ExecutorsJson,
+  GeneratorCallback,
   TaskGraphExecutor,
 } from '../config/misc-interfaces';
-import { readPluginPackageJson } from '../utils/nx-plugin';
+import { readPluginPackageJson } from '../project-graph/plugins';
 import {
   getImplementationFactory,
   resolveImplementation,
@@ -71,15 +83,19 @@ export async function createBuilderContext(
   },
   context: ExecutorContext
 ) {
-  require('nx/src/adapter/compat');
-  const fsHost = new NxScopedHost(context.root);
+  require('./compat');
+  const fsHost = new NxScopedHostForBuilders(context.root);
+  // the top level import is not patched because it is imported before the
+  // patching happens so we require it here to use the patched version below
+  const { workspaces } = require('@angular-devkit/core');
   const { workspace } = await workspaces.readWorkspace(
     'angular.json',
     workspaces.createWorkspaceHost(fsHost)
   );
   const architectHost = await getWrappedWorkspaceNodeModulesArchitectHost(
     workspace,
-    context.root
+    context.root,
+    context.projectsConfigurations.projects
   );
 
   const registry = new schema.CoreSchemaRegistry();
@@ -109,6 +125,35 @@ export async function createBuilderContext(
       architect['_scheduler'].schedule('..getProjectMetadata', target).output
     );
 
+  const getBuilderNameForTarget = (target: Target | string) => {
+    if (typeof target === 'string') {
+      return Promise.resolve(
+        context.projectGraph.nodes[context.projectName].data.targets[target]
+          .executor
+      );
+    }
+    return Promise.resolve(
+      context.projectGraph.nodes[target.project].data.targets[target.target]
+        .executor
+    );
+  };
+
+  const getTargetOptions = (target: Target | string) => {
+    if (typeof target === 'string') {
+      return Promise.resolve({
+        ...context.projectGraph.nodes[context.projectName].data.targets[target]
+          .options,
+      });
+    }
+
+    return Promise.resolve({
+      ...context.projectGraph.nodes[target.project].data.targets[target.target]
+        .options,
+      ...context.projectGraph.nodes[target.project].data.targets[target.target]
+        .configurations[target.configuration],
+    });
+  };
+
   const builderContext: import('@angular-devkit/architect').BuilderContext = {
     workspaceRoot: context.root,
     target: {
@@ -122,10 +167,8 @@ export async function createBuilderContext(
     logger: getLogger(),
     id: 1,
     currentDirectory: process.cwd(),
-    scheduleTarget: architect.scheduleTarget,
-    getBuilderNameForTarget: architectHost.getBuilderNameForTarget,
-    scheduleBuilder: architect.scheduleBuilder,
-    getTargetOptions: architectHost.getOptionsForTarget,
+    scheduleTarget: (...args) => architect.scheduleTarget(...args),
+    scheduleBuilder: (...args) => architect.scheduleBuilder(...args),
     addTeardown(teardown: () => Promise<void> | void) {
       // No-op as Nx doesn't require an implementation of this function
       return;
@@ -142,8 +185,10 @@ export async function createBuilderContext(
       // No-op as Nx doesn't require an implementation of this function
       return;
     },
+    getBuilderNameForTarget,
     getProjectMetadata,
     validateOptions,
+    getTargetOptions,
   };
 
   return builderContext;
@@ -156,13 +201,14 @@ export async function scheduleTarget(
     target: string;
     configuration: string;
     runOptions: any;
+    projects: Record<string, ProjectConfiguration>;
   },
   verbose: boolean
 ): Promise<Observable<import('@angular-devkit/architect').BuilderOutput>> {
   const { Architect } = require('@angular-devkit/architect');
 
   const logger = getLogger(verbose);
-  const fsHost = new NxScopedHost(root);
+  const fsHost = new NxScopedHostForBuilders(root);
   const { workspace } = await workspaces.readWorkspace(
     'angular.json',
     workspaces.createWorkspaceHost(fsHost)
@@ -177,7 +223,8 @@ export async function scheduleTarget(
 
   const architectHost = await getWrappedWorkspaceNodeModulesArchitectHost(
     workspace,
-    root
+    root,
+    opts.projects
   );
   const architect: Architect = new Architect(architectHost, registry);
   const run = await architect.scheduleTarget(
@@ -203,12 +250,64 @@ export async function scheduleTarget(
   );
 }
 
+function createNodeModulesEngineHost(
+  resolvePaths: string[],
+  projects: Record<string, ProjectConfiguration>
+): import('@angular-devkit/schematics/tools').NodeModulesEngineHost {
+  const NodeModulesEngineHost = require('@angular-devkit/schematics/tools')
+    .NodeModulesEngineHost as typeof import('@angular-devkit/schematics/tools').NodeModulesEngineHost;
+
+  class NxNodeModulesEngineHost extends NodeModulesEngineHost {
+    constructor() {
+      super(resolvePaths);
+    }
+
+    override _resolveCollectionPath(name: string, requester?: string): string {
+      let collectionFilePath: string;
+      const paths = requester
+        ? [dirname(requester), ...(resolvePaths || [])]
+        : resolvePaths || [];
+
+      if (name.endsWith('.json')) {
+        collectionFilePath = require.resolve(name, { paths });
+      } else {
+        const {
+          json: { generators, schematics },
+          path: packageJsonPath,
+        } = readPluginPackageJson(name, projects, paths);
+
+        if (!schematics && !generators) {
+          throw new Error(
+            `The "${name}" package does not support Nx generators or Angular Devkit schematics.`
+          );
+        }
+
+        collectionFilePath = require.resolve(
+          join(dirname(packageJsonPath), schematics ?? generators)
+        );
+      }
+
+      return collectionFilePath;
+    }
+
+    override _transformCollectionDescription(name: string, desc: any) {
+      desc.schematics ??= desc.generators;
+
+      return super._transformCollectionDescription(name, desc);
+    }
+  }
+
+  return new NxNodeModulesEngineHost();
+}
+
 function createWorkflow(
   fsHost: virtualFs.Host<Stats>,
   root: string,
-  opts: any
+  opts: any,
+  projects: Record<string, ProjectConfiguration>
 ): import('@angular-devkit/schematics/tools').NodeWorkflow {
-  const NodeWorkflow = require('@angular-devkit/schematics/tools').NodeWorkflow;
+  const NodeWorkflow: typeof import('@angular-devkit/schematics/tools').NodeWorkflow =
+    require('@angular-devkit/schematics/tools').NodeWorkflow;
   const workflow = new NodeWorkflow(fsHost, {
     force: false,
     dryRun: opts.dryRun,
@@ -218,6 +317,8 @@ function createWorkflow(
       require('@angular-devkit/schematics').formats.standardFormats
     ),
     resolvePaths: [process.cwd(), root],
+    engineHostCreator: (options) =>
+      createNodeModulesEngineHost(options.resolvePaths, projects),
   });
   workflow.registry.addPostTransform(schema.transforms.addUndefinedDefaults);
   workflow.engineHost.registerOptionsTransform(
@@ -306,7 +407,7 @@ async function runSchematic(
       })
       .toPromise();
   } catch (e) {
-    console.log(e);
+    console.error(e);
     throw e;
   }
   if (!record.error) {
@@ -338,7 +439,7 @@ export class NxScopedHost extends virtualFs.ScopedHost<any> {
     }
   }
 
-  private readMergedWorkspaceConfiguration() {
+  protected readMergedWorkspaceConfiguration() {
     return zip(
       from(createProjectGraphAsync()),
       this.readExistingAngularJson(),
@@ -378,8 +479,8 @@ export class NxScopedHost extends virtualFs.ScopedHost<any> {
         );
       }),
       catchError((err) => {
-        console.log('Unable to read angular.json');
-        console.log(err);
+        console.error('Unable to read angular.json');
+        console.error(err);
         process.exit(1);
       })
     );
@@ -506,7 +607,7 @@ export class NxScopedHost extends virtualFs.ScopedHost<any> {
     return this.readJson('angular.json');
   }
 
-  private readJson<T = any>(path: string): Observable<T> {
+  protected readJson<T = any>(path: string): Observable<T> {
     return super
       .exists(path as any)
       .pipe(
@@ -518,6 +619,39 @@ export class NxScopedHost extends virtualFs.ScopedHost<any> {
             : of(null)
         )
       );
+  }
+}
+
+/**
+ * Host used by Angular CLI builders. It reads the project configurations from
+ * the project graph to access the expanded targets.
+ */
+export class NxScopedHostForBuilders extends NxScopedHost {
+  protected readMergedWorkspaceConfiguration() {
+    return zip(
+      from(createProjectGraphAsync()),
+      this.readExistingAngularJson(),
+      this.readJson<NxJsonConfiguration>('nx.json')
+    ).pipe(
+      map(([graph, angularJson, nxJson]) => {
+        const workspaceConfig = (angularJson || { projects: {} }) as any;
+        workspaceConfig.cli ??= nxJson.cli;
+        workspaceConfig.schematics ??= nxJson.generators;
+
+        for (const projectName of Object.keys(graph.nodes)) {
+          workspaceConfig.projects[projectName] ??= {
+            ...graph.nodes[projectName].data,
+          };
+        }
+
+        return workspaceConfig;
+      }),
+      catchError((err) => {
+        console.error('Unable to read angular.json');
+        console.error(err);
+        process.exit(1);
+      })
+    );
   }
 }
 
@@ -536,6 +670,10 @@ export function arrayBufferToString(buffer: any) {
   return result;
 }
 
+/**
+ * Host used by Angular CLI schematics. It reads the project configurations from
+ * the project configuration files.
+ */
 export class NxScopeHostUsedForWrappedSchematics extends NxScopedHost {
   constructor(root: string, private readonly host: Tree) {
     super(root);
@@ -624,6 +762,7 @@ function findMatchingFileChange(host: Tree, path: Path) {
 export async function generate(
   root: string,
   opts: GenerateOptions,
+  projects: Record<string, ProjectConfiguration>,
   verbose: boolean
 ) {
   const logger = getLogger(verbose);
@@ -635,7 +774,7 @@ export async function generate(
       `ng-cli generator: ${opts.collectionName}:${opts.generatorName}`
     )
   );
-  const workflow = createWorkflow(fsHost, root, opts);
+  const workflow = createWorkflow(fsHost, root, opts, projects);
   const collection = getCollection(workflow, opts.collectionName);
   const schematic = collection.createSchematic(opts.generatorName, true);
   return (
@@ -717,6 +856,7 @@ export async function runMigration(
   root: string,
   packageName: string,
   migrationName: string,
+  projects: Record<string, ProjectConfiguration>,
   isVerbose: boolean
 ) {
   const logger = getLogger(isVerbose);
@@ -728,7 +868,7 @@ export async function runMigration(
       `ng-cli migration: ${packageName}:${migrationName}`
     )
   );
-  const workflow = createWorkflow(fsHost, root, {});
+  const workflow = createWorkflow(fsHost, root, {}, projects);
   const collection = resolveMigrationsCollection(packageName);
 
   const record = { loggingQueue: [] as string[], error: false };
@@ -793,30 +933,6 @@ let collectionResolutionOverrides = null;
 let mockedSchematics = null;
 
 /**
- * By default, Angular Devkit schematic collections will be resolved using the Node resolution.
- * This doesn't work if you are testing schematics that refer to other schematics in the
- * same repo.
- *
- * This function can can be used to override the resolution behaviour.
- *
- * Example:
- *
- * ```typescript
- *   overrideCollectionResolutionForTesting({
- *     '@nx/workspace': path.join(__dirname, '../../../../workspace/generators.json'),
- *     '@nx/angular': path.join(__dirname, '../../../../angular/generators.json'),
- *     '@nx/linter': path.join(__dirname, '../../../../linter/generators.json')
- *   });
- *
- * ```
- */
-export function overrideCollectionResolutionForTesting(collections: {
-  [name: string]: string;
-}) {
-  collectionResolutionOverrides = collections;
-}
-
-/**
  * If you have an Nx Devkit generator invoking the wrapped Angular Devkit schematic,
  * and you don't want the Angular Devkit schematic to run, you can mock it up using this function.
  *
@@ -860,7 +976,13 @@ export function wrapAngularDevkitSchematic(
   // were written with Nx in mind, and may care about tags.
   require('./compat');
 
-  return async (host: Tree, generatorOptions: { [k: string]: any }) => {
+  return async (
+    host: Tree,
+    generatorOptions: { [k: string]: any }
+  ): Promise<GeneratorCallback> => {
+    const graph = await createProjectGraphAsync();
+    const { projects } = readProjectsConfigurationFromProjectGraph(graph);
+
     if (
       mockedSchematics &&
       mockedSchematics[`${collectionName}:${generatorName}`]
@@ -870,16 +992,6 @@ export function wrapAngularDevkitSchematic(
         generatorOptions
       );
     }
-
-    const emptyLogger = {
-      log: (e) => {},
-      info: (e) => {},
-      warn: (e) => {},
-      debug: () => {},
-      error: (e) => {},
-      fatal: (e) => {},
-    } as any;
-    emptyLogger.createChild = () => emptyLogger;
 
     const recorder = (
       event: import('@angular-devkit/schematics').DryRunEvent
@@ -910,6 +1022,7 @@ export function wrapAngularDevkitSchematic(
 
     const fsHost = new NxScopeHostUsedForWrappedSchematics(host.root, host);
 
+    const logger = getLogger(generatorOptions.verbose);
     const options = {
       generatorOptions,
       dryRun: true,
@@ -922,7 +1035,7 @@ export function wrapAngularDevkitSchematic(
       defaults: false,
       quiet: false,
     };
-    const workflow = createWorkflow(fsHost, host.root, options);
+    const workflow = createWorkflow(fsHost, host.root, options, projects);
 
     // used for testing
     if (collectionResolutionOverrides) {
@@ -942,7 +1055,7 @@ export function wrapAngularDevkitSchematic(
       fsHost,
       host.root,
       workflow,
-      emptyLogger,
+      logger,
       options,
       schematic,
       false,
@@ -952,6 +1065,19 @@ export function wrapAngularDevkitSchematic(
     if (res.status !== 0) {
       throw new Error(res.loggingQueue.join('\n'));
     }
+
+    const { lastValueFrom } = require('rxjs');
+    const toPromise = (obs: Observable<any>) =>
+      lastValueFrom ? lastValueFrom(obs) : obs.toPromise();
+
+    return async () => {
+      // https://github.com/angular/angular-cli/blob/344193f79d880177e421cff85dd3e94338d07420/packages/angular_devkit/schematics/src/workflow/base.ts#L194-L200
+      await toPromise(
+        workflow.engine
+          .executePostTasks()
+          .pipe(defaultIfEmpty(undefined), last())
+      );
+    };
   };
 }
 
@@ -1025,16 +1151,22 @@ function saveProjectsConfigurationsInWrappedSchematic(
 
 async function getWrappedWorkspaceNodeModulesArchitectHost(
   workspace: workspaces.WorkspaceDefinition,
-  root: string
+  root: string,
+  projects: Record<string, ProjectConfiguration>
 ) {
   const {
     WorkspaceNodeModulesArchitectHost: AngularWorkspaceNodeModulesArchitectHost,
   } = await import('@angular-devkit/architect/node');
 
   class WrappedWorkspaceNodeModulesArchitectHost extends AngularWorkspaceNodeModulesArchitectHost {
-    constructor(private workspace, private root) {
+    constructor(
+      private workspace,
+      private root: string,
+      private projects: Record<string, ProjectConfiguration>
+    ) {
       super(workspace, root);
     }
+
     async resolveBuilder(builderStr: string): Promise<NodeModulesBuilderInfo> {
       const [packageName, builderName] = builderStr.split(':');
 
@@ -1043,25 +1175,37 @@ async function getWrappedWorkspaceNodeModulesArchitectHost(
         builderName
       );
       const builderInfo = this.readExecutor(packageName, builderName);
+
       return {
         name: builderStr,
         builderName,
-        description:
-          readJsonFile<ExecutorsJson>(executorsFilePath).builders[builderName]
-            .description,
+        description: executorConfig.description,
         optionSchema: builderInfo.schema,
         import: resolveImplementation(
           executorConfig.implementation,
-          dirname(executorsFilePath)
+          dirname(executorsFilePath),
+          packageName,
+          this.projects
         ),
       };
     }
 
-    private readExecutorsJson(nodeModule: string, builder: string) {
+    private readExecutorsJson(
+      nodeModule: string,
+      builder: string,
+      extraRequirePaths: string[] = []
+    ): {
+      executorsFilePath: string;
+      executorConfig: ExecutorJsonEntryConfig;
+      isNgCompat: true;
+    } {
       const { json: packageJson, path: packageJsonPath } =
         readPluginPackageJson(
           nodeModule,
-          this.root ? [this.root, __dirname] : [__dirname]
+          this.projects,
+          this.root
+            ? [this.root, __dirname, ...extraRequirePaths]
+            : [__dirname, ...extraRequirePaths]
         );
       const executorsFile = packageJson.executors ?? packageJson.builders;
 
@@ -1071,21 +1215,22 @@ async function getWrappedWorkspaceNodeModulesArchitectHost(
         );
       }
 
-      const executorsFilePath = require.resolve(
-        join(dirname(packageJsonPath), executorsFile)
-      );
+      const basePath = dirname(packageJsonPath);
+      const executorsFilePath = require.resolve(join(basePath, executorsFile));
       const executorsJson = readJsonFile<ExecutorsJson>(executorsFilePath);
-      const executorConfig: {
-        implementation: string;
-        batchImplementation?: string;
-        schema: string;
-        hasher?: string;
-      } = executorsJson.builders?.[builder];
+      const executorConfig =
+        executorsJson.builders?.[builder] ?? executorsJson.executors?.[builder];
       if (!executorConfig) {
         throw new Error(
           `Cannot find builder '${builder}' in ${executorsFilePath}.`
         );
       }
+      if (typeof executorConfig === 'string') {
+        // Angular CLI can have a builder pointing to another package:builder
+        const [packageName, executorName] = executorConfig.split(':');
+        return this.readExecutorsJson(packageName, executorName, [basePath]);
+      }
+
       return { executorsFilePath, executorConfig, isNgCompat: true };
     }
 
@@ -1097,25 +1242,33 @@ async function getWrappedWorkspaceNodeModulesArchitectHost(
         const { executorsFilePath, executorConfig, isNgCompat } =
           this.readExecutorsJson(nodeModule, executor);
         const executorsDir = dirname(executorsFilePath);
-        const schemaPath = resolveSchema(executorConfig.schema, executorsDir);
+        const schemaPath = resolveSchema(
+          executorConfig.schema,
+          executorsDir,
+          nodeModule,
+          this.projects
+        );
         const schema = normalizeExecutorSchema(readJsonFile(schemaPath));
 
         const implementationFactory = this.getImplementationFactory<Executor>(
           executorConfig.implementation,
-          executorsDir
+          executorsDir,
+          nodeModule
         );
 
         const batchImplementationFactory = executorConfig.batchImplementation
           ? this.getImplementationFactory<TaskGraphExecutor>(
               executorConfig.batchImplementation,
-              executorsDir
+              executorsDir,
+              nodeModule
             )
           : null;
 
         const hasherFactory = executorConfig.hasher
           ? this.getImplementationFactory<CustomHasher>(
               executorConfig.hasher,
-              executorsDir
+              executorsDir,
+              nodeModule
             )
           : null;
 
@@ -1135,11 +1288,21 @@ async function getWrappedWorkspaceNodeModulesArchitectHost(
 
     private getImplementationFactory<T>(
       implementation: string,
-      executorsDir: string
+      executorsDir: string,
+      packageName: string
     ): () => T {
-      return getImplementationFactory(implementation, executorsDir);
+      return getImplementationFactory(
+        implementation,
+        executorsDir,
+        packageName,
+        this.projects
+      );
     }
   }
 
-  return new WrappedWorkspaceNodeModulesArchitectHost(workspace, root);
+  return new WrappedWorkspaceNodeModulesArchitectHost(
+    workspace,
+    root,
+    projects
+  );
 }

@@ -1,44 +1,42 @@
-use crate::native::types::FileData;
-use crate::native::utils::path::Normalize;
-use crate::native::walker::nx_walker;
-use std::collections::HashMap;
+use std::path::Path;
+
+use tracing::trace;
 use xxhash_rust::xxh3;
+
+pub fn hash(content: &[u8]) -> String {
+    xxh3::xxh3_64(content).to_string()
+}
 
 #[napi]
 pub fn hash_array(input: Vec<String>) -> String {
     let joined = input.join(",");
     let content = joined.as_bytes();
-    xxh3::xxh3_64(content).to_string()
+    hash(content)
 }
 
 #[napi]
-pub fn hash_file(file: String) -> Option<FileData> {
-    let Ok(content) = std::fs::read(&file) else {
+pub fn hash_file(file: String) -> Option<String> {
+    hash_file_path(file)
+}
+
+#[inline]
+pub fn hash_file_path<P: AsRef<Path>>(path: P) -> Option<String> {
+    let path = path.as_ref();
+    trace!("Reading {:?} to hash", path);
+    let Ok(content) = std::fs::read(path) else {
+        trace!("Failed to read file: {:?}", path);
         return None;
     };
+    trace!("Hashing {:?}", path);
+    let hash = hash(&content);
+    trace!("Hashed file {:?} - {:?}", path, hash);
 
-    let hash = xxh3::xxh3_64(&content).to_string();
-
-    Some(FileData { hash, file })
-}
-
-#[napi]
-pub fn hash_files(workspace_root: String) -> HashMap<String, String> {
-    nx_walker(workspace_root, |rec| {
-        let mut collection: HashMap<String, String> = HashMap::new();
-        for (path, content) in rec {
-            collection.insert(
-                path.to_normalized_string(),
-                xxh3::xxh3_64(&content).to_string(),
-            );
-        }
-        collection
-    })
+    Some(hash)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::native::hasher::hash_file;
     use assert_fs::prelude::*;
     use assert_fs::TempDir;
 
@@ -72,6 +70,6 @@ mod tests {
         let test_file_path = temp_dir.display().to_string() + "/test.txt";
         let content = hash_file(test_file_path);
 
-        assert_eq!(content.unwrap().hash, "6193209363630369380");
+        assert_eq!(content.unwrap(), "6193209363630369380");
     }
 }

@@ -1,10 +1,30 @@
 import type { NxJsonConfiguration, Tree } from '@nx/devkit';
-import { readJson } from '@nx/devkit';
+import { formatFiles, readJson } from '@nx/devkit';
 import Ajv from 'ajv';
 import { generateWorkspaceFiles } from './generate-workspace-files';
 import { createTree } from '@nx/devkit/testing';
 import { Preset } from '../utils/presets';
 import * as nxSchema from 'nx/schemas/nx-schema.json';
+import { mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
+
+jest.mock(
+  'nx/src/nx-cloud/generators/connect-to-nx-cloud/connect-to-nx-cloud',
+  () => ({
+    ...jest.requireActual(
+      'nx/src/nx-cloud/generators/connect-to-nx-cloud/connect-to-nx-cloud'
+    ),
+    connectToNxCloud: async () => {
+      return 'TEST_NX_CLOUD_TOKEN';
+    },
+  })
+);
+jest.mock('nx/src/nx-cloud/utilities/url-shorten', () => ({
+  ...jest.requireActual('nx/src/nx-cloud/utilities/url-shorten'),
+  createNxCloudOnboardingURL: async (source, token) => {
+    return `https://test.nx.app/connect?source=${source}&token=${token}`;
+  },
+}));
 
 describe('@nx/workspace:generateWorkspaceFiles', () => {
   let tree: Tree;
@@ -19,7 +39,7 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
     await generateWorkspaceFiles(tree, {
       name: 'proj',
       directory: 'proj',
-      preset: Preset.Empty,
+      preset: Preset.Apps,
       defaultBase: 'main',
       isCustomPreset: false,
     });
@@ -28,37 +48,54 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
   });
 
   describe('README.md', () => {
-    it.each(Object.keys(Preset))(
-      'should be created for %s preset',
-      async (preset) => {
-        let appName;
-        if (
-          [
-            Preset.ReactMonorepo,
-            Preset.ReactStandalone,
-            Preset.AngularMonorepo,
-            Preset.AngularStandalone,
-            Preset.Nest,
-            Preset.NextJs,
-            Preset.WebComponents,
-            Preset.Express,
-            Preset.NodeStandalone,
-            Preset.NextJsStandalone,
-            Preset.TsStandalone,
-          ].includes(Preset[preset])
-        ) {
-          appName = 'app1';
-        }
+    describe.each(['github', 'yes', 'skip'] as const)(
+      'Nx Cloud (%s)',
+      (nxCloud) => {
+        it.each(Object.keys(Preset))(
+          'should be created for %s preset',
+          async (preset) => {
+            let appName;
+            if (
+              [
+                Preset.ReactMonorepo,
+                Preset.ReactStandalone,
+                Preset.VueMonorepo,
+                Preset.VueStandalone,
+                Preset.Nuxt,
+                Preset.NuxtStandalone,
+                Preset.AngularMonorepo,
+                Preset.AngularStandalone,
+                Preset.Nest,
+                Preset.NextJs,
+                Preset.WebComponents,
+                Preset.Express,
+                Preset.NodeStandalone,
+                Preset.NextJsStandalone,
+                Preset.TsStandalone,
+              ].includes(Preset[preset])
+            ) {
+              appName = 'app1';
+            }
 
-        await generateWorkspaceFiles(tree, {
-          name: 'proj',
-          directory: 'proj',
-          preset: Preset[preset],
-          defaultBase: 'main',
-          appName,
-          isCustomPreset: false,
-        });
-        expect(tree.read('proj/README.md', 'utf-8')).toMatchSnapshot();
+            await generateWorkspaceFiles(tree, {
+              name: 'proj',
+              directory: 'proj',
+              preset: Preset[preset],
+              defaultBase: 'main',
+              appName,
+              isCustomPreset: false,
+              nxCloud: nxCloud,
+            });
+            await formatFiles(tree);
+            const dir = join(__dirname, 'tmp', `${preset}-${nxCloud}`);
+            mkdirSync(dir, { recursive: true });
+            writeFileSync(
+              join(dir, 'README.md'),
+              tree.read('proj/README.md', 'utf-8')
+            );
+            expect(tree.read('proj/README.md', 'utf-8')).toMatchSnapshot();
+          }
+        );
       }
     );
     it('should be created for custom plugins', async () => {
@@ -80,7 +117,7 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
     await generateWorkspaceFiles(tree, {
       name: 'proj',
       directory: 'proj',
-      preset: Preset.Empty,
+      preset: Preset.Apps,
       defaultBase: 'main',
       isCustomPreset: false,
     });
@@ -88,25 +125,15 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
     expect(nxJson).toMatchInlineSnapshot(`
       {
         "$schema": "./node_modules/nx/schemas/nx-schema.json",
-        "targetDefaults": {
-          "build": {
-            "dependsOn": [
-              "^build",
-            ],
-          },
-        },
-        "tasksRunnerOptions": {
-          "default": {
-            "options": {
-              "cacheableOperations": [
-                "build",
-                "lint",
-                "test",
-                "e2e",
-              ],
-            },
-            "runner": "nx/tasks-runners/default",
-          },
+        "namedInputs": {
+          "default": [
+            "{projectRoot}/**/*",
+            "sharedGlobals",
+          ],
+          "production": [
+            "default",
+          ],
+          "sharedGlobals": [],
         },
       }
     `);
@@ -114,7 +141,7 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
     expect(validateNxJson(nxJson)).toEqual(true);
   });
 
-  it('should setup named inputs and target defaults for non-empty presets', async () => {
+  it('should setup named inputs for non-empty presets', async () => {
     await generateWorkspaceFiles(tree, {
       name: 'proj',
       directory: 'proj',
@@ -136,30 +163,6 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
           ],
           "sharedGlobals": [],
         },
-        "targetDefaults": {
-          "build": {
-            "dependsOn": [
-              "^build",
-            ],
-            "inputs": [
-              "production",
-              "^production",
-            ],
-          },
-        },
-        "tasksRunnerOptions": {
-          "default": {
-            "options": {
-              "cacheableOperations": [
-                "build",
-                "lint",
-                "test",
-                "e2e",
-              ],
-            },
-            "runner": "nx/tasks-runners/default",
-          },
-        },
       }
     `);
   });
@@ -168,7 +171,7 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
     await generateWorkspaceFiles(tree, {
       name: 'proj',
       directory: 'proj',
-      preset: Preset.Empty,
+      preset: Preset.Apps,
       defaultBase: 'main',
       isCustomPreset: false,
     });
@@ -184,7 +187,7 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
     await generateWorkspaceFiles(tree, {
       name: 'proj',
       directory: 'proj',
-      preset: Preset.Empty,
+      preset: Preset.Apps,
       defaultBase: 'main',
       isCustomPreset: false,
     });
@@ -206,27 +209,11 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
       packageManager: 'npm',
       isCustomPreset: false,
     });
-    expect(tree.exists('/proj/packages/.gitkeep')).toBe(true);
-    expect(tree.exists('/proj/apps/.gitkeep')).toBe(false);
-    expect(tree.exists('/proj/libs/.gitkeep')).toBe(false);
     const nx = readJson(tree, '/proj/nx.json');
     expect(nx).toMatchInlineSnapshot(`
       {
         "$schema": "./node_modules/nx/schemas/nx-schema.json",
         "extends": "nx/presets/npm.json",
-        "tasksRunnerOptions": {
-          "default": {
-            "options": {
-              "cacheableOperations": [
-                "build",
-                "lint",
-                "test",
-                "e2e",
-              ],
-            },
-            "runner": "nx/tasks-runners/default",
-          },
-        },
       }
     `);
 
@@ -238,7 +225,7 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
           "nx": "0.0.1",
         },
         "license": "MIT",
-        "name": "proj",
+        "name": "@proj/source",
         "private": true,
         "scripts": {},
         "version": "0.0.0",
@@ -267,7 +254,7 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
           "nx": "0.0.1",
         },
         "license": "MIT",
-        "name": "proj",
+        "name": "@proj/source",
         "private": true,
         "scripts": {},
         "version": "0.0.0",
@@ -275,5 +262,79 @@ describe('@nx/workspace:generateWorkspaceFiles', () => {
     `);
     const pnpm = tree.read('/proj/pnpm-workspace.yaml').toString();
     expect(pnpm).toContain('packages/*');
+  });
+
+  it.each([
+    Preset.ReactStandalone,
+    Preset.VueStandalone,
+    Preset.NuxtStandalone,
+    Preset.AngularStandalone,
+    Preset.NodeStandalone,
+    Preset.NextJsStandalone,
+    Preset.TsStandalone,
+  ])('should create package scripts for %s preset', async (preset) => {
+    await generateWorkspaceFiles(tree, {
+      name: 'proj',
+      directory: 'proj',
+      preset,
+      defaultBase: 'main',
+      appName: 'demo',
+      isCustomPreset: false,
+    });
+
+    expect(readJson(tree, 'proj/package.json').scripts).toMatchSnapshot();
+  });
+
+  it('should create workspaces from workspaceGlobs (npm)', async () => {
+    tree.write('/proj/package.json', JSON.stringify({}));
+    await generateWorkspaceFiles(tree, {
+      name: 'proj',
+      directory: 'proj',
+      preset: Preset.NPM,
+      defaultBase: 'main',
+      packageManager: 'npm',
+      isCustomPreset: false,
+      workspaceGlobs: ['apps/*', 'packages/*'],
+    });
+
+    const packageJson = readJson(tree, '/proj/package.json');
+    expect(packageJson).toMatchInlineSnapshot(`
+      {
+        "dependencies": {},
+        "devDependencies": {
+          "nx": "0.0.1",
+        },
+        "license": "MIT",
+        "name": "@proj/source",
+        "private": true,
+        "scripts": {},
+        "version": "0.0.0",
+        "workspaces": [
+          "apps/*",
+          "packages/*",
+        ],
+      }
+    `);
+  });
+
+  it('should create workspaces from workspaceGlobs (pnpm)', async () => {
+    tree.write('/proj/package.json', JSON.stringify({}));
+    await generateWorkspaceFiles(tree, {
+      name: 'proj',
+      directory: 'proj',
+      preset: Preset.NPM,
+      defaultBase: 'main',
+      packageManager: 'pnpm',
+      isCustomPreset: false,
+      workspaceGlobs: ['apps/*', 'packages/*'],
+    });
+
+    const packageJson = tree.read('/proj/pnpm-workspace.yaml', 'utf-8');
+    expect(packageJson).toMatchInlineSnapshot(`
+      "packages: 
+        - "apps/*"
+        - "packages/*"
+      "
+    `);
   });
 });

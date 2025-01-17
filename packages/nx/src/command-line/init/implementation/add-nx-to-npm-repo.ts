@@ -1,19 +1,23 @@
 import * as enquirer from 'enquirer';
-import { InitArgs } from '../init';
+import { join } from 'path';
+import { InitArgs } from '../init-v1';
 import { readJsonFile } from '../../../utils/fileutils';
 import { output } from '../../../utils/output';
 import { getPackageManagerCommand } from '../../../utils/package-manager';
 import {
   addDepsToPackageJson,
-  askAboutNxCloud,
   createNxJsonFile,
   initCloud,
-  markRootPackageJsonAsNxProject,
-  printFinalMessage,
+  markPackageJsonAsNxProject,
+  markRootPackageJsonAsNxProjectLegacy,
   runInstall,
+  updateGitIgnore,
 } from './utils';
+import { connectExistingRepoToNxCloudPrompt } from '../../connect/connect-to-nx-cloud';
 
-type Options = Pick<InitArgs, 'nxCloud' | 'interactive' | 'cacheable'>;
+type Options = Pick<InitArgs, 'nxCloud' | 'interactive' | 'cacheable'> & {
+  legacy?: boolean;
+};
 
 export async function addNxToNpmRepo(options: Options) {
   const repoRoot = process.cwd();
@@ -36,15 +40,19 @@ export async function addNxToNpmRepo(options: Options) {
     });
 
     cacheableOperations = (
-      (await enquirer.prompt([
+      await enquirer.prompt<{ cacheableOperations: string[] }>([
         {
           type: 'multiselect',
           name: 'cacheableOperations',
           message:
             'Which of the following scripts are cacheable? (Produce the same output given the same input, e.g. build, test and lint usually are, serve and start are not). You can use spacebar to select one or more scripts.',
           choices: scripts,
-        },
-      ])) as any
+          /**
+           * limit is missing from the interface but it limits the amount of options shown
+           */
+          limit: process.stdout.rows - 4, // 4 leaves room for the header above, the prompt and some whitespace
+        } as any,
+      ])
     ).cacheableOperations;
 
     for (const scriptName of cacheableOperations) {
@@ -60,25 +68,28 @@ export async function addNxToNpmRepo(options: Options) {
       )[scriptName];
     }
 
-    useNxCloud = options.nxCloud ?? (await askAboutNxCloud());
+    useNxCloud =
+      options.nxCloud ?? (await connectExistingRepoToNxCloudPrompt());
   } else {
     cacheableOperations = options.cacheable ?? [];
     useNxCloud =
       options.nxCloud ??
-      (options.interactive ? await askAboutNxCloud() : false);
+      (options.interactive
+        ? await connectExistingRepoToNxCloudPrompt()
+        : false);
   }
 
-  createNxJsonFile(repoRoot, [], cacheableOperations, {});
+  createNxJsonFile(repoRoot, [], cacheableOperations, scriptOutputs);
 
   const pmc = getPackageManagerCommand();
 
-  addDepsToPackageJson(repoRoot, useNxCloud);
-  markRootPackageJsonAsNxProject(
-    repoRoot,
-    cacheableOperations,
-    scriptOutputs,
-    pmc
-  );
+  updateGitIgnore(repoRoot);
+  addDepsToPackageJson(repoRoot);
+  if (options.legacy) {
+    markRootPackageJsonAsNxProjectLegacy(repoRoot, cacheableOperations, pmc);
+  } else {
+    markPackageJsonAsNxProject(join(repoRoot, 'package.json'));
+  }
 
   output.log({ title: '📦 Installing dependencies' });
 
@@ -86,11 +97,6 @@ export async function addNxToNpmRepo(options: Options) {
 
   if (useNxCloud) {
     output.log({ title: '🛠️ Setting up Nx Cloud' });
-    initCloud(repoRoot, 'nx-init-npm-repo');
+    await initCloud('nx-init-npm-repo');
   }
-
-  printFinalMessage({
-    learnMoreLink:
-      'https://nx.dev/recipes/adopting-nx/adding-to-existing-project',
-  });
 }

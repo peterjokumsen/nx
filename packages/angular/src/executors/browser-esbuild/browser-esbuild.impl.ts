@@ -1,57 +1,54 @@
-import { type EsBuildSchema } from './schema';
-import { validateOptions } from './lib/validate-options';
-import { type DependentBuildableProjectNode } from '@nx/js/src/utils/buildable-libs-utils';
-import { type ExecutorContext, readCachedProjectGraph } from '@nx/devkit';
-import { createTmpTsConfigForBuildableLibs } from './lib/buildable-libs';
+import type { buildEsbuildBrowser as buildEsbuildBrowserFn } from '@angular-devkit/build-angular/src/builders/browser-esbuild';
+import type { ExecutorContext } from '@nx/devkit';
+import type { DependentBuildableProjectNode } from '@nx/js/src/utils/buildable-libs-utils';
 import { createBuilderContext } from 'nx/src/adapter/ngcli-adapter';
-import { type BuilderOutput } from '@angular-devkit/architect';
-import { type OutputFile } from 'esbuild';
+import { createTmpTsConfigForBuildableLibs } from '../utilities/buildable-libs';
+import { loadPlugins } from '../utilities/esbuild-extensions';
+import type { EsBuildSchema } from './schema';
 
 export default async function* esbuildExecutor(
   options: EsBuildSchema,
   context: ExecutorContext
-) {
-  validateOptions(options);
+): ReturnType<typeof buildEsbuildBrowserFn> {
   options.buildLibsFromSource ??= true;
 
-  const { buildLibsFromSource, ...delegateExecutorOptions } = options;
+  const {
+    buildLibsFromSource,
+    plugins: pluginPaths,
+    ...delegateExecutorOptions
+  } = options;
 
   let dependencies: DependentBuildableProjectNode[];
-  let projectGraph = context.projectGraph;
 
   if (!buildLibsFromSource) {
-    projectGraph = projectGraph ?? readCachedProjectGraph();
     const { tsConfigPath, dependencies: foundDependencies } =
       createTmpTsConfigForBuildableLibs(
         delegateExecutorOptions.tsConfig,
-        context,
-        { projectGraph }
+        context
       );
     dependencies = foundDependencies;
     delegateExecutorOptions.tsConfig = tsConfigPath;
   }
-  const { buildEsbuildBrowser } = await import(
-    '@angular-devkit/build-angular/src/builders/browser-esbuild/index'
-  );
+
+  const plugins = await loadPlugins(pluginPaths, options.tsConfig);
+
+  const { buildEsbuildBrowser } = <
+    typeof import('@angular-devkit/build-angular/src/builders/browser-esbuild')
+  >require('@angular-devkit/build-angular/src/builders/browser-esbuild');
 
   const builderContext = await createBuilderContext(
     {
       builderName: 'browser-esbuild',
       description: 'Build a browser application',
-      optionSchema: await import(
-        '@angular-devkit/build-angular/src/builders/browser-esbuild/schema.json'
-      ),
+      optionSchema: require('@angular-devkit/build-angular/src/builders/browser-esbuild/schema.json'),
     },
     context
   );
 
   return yield* buildEsbuildBrowser(
     delegateExecutorOptions,
-    builderContext
-  ) as AsyncIterable<
-    BuilderOutput & {
-      outputFiles?: OutputFile[];
-      assetFiles?: { source: string; destination: string }[];
-    }
-  >;
+    builderContext,
+    /* infrastructureSettings */ undefined,
+    plugins
+  );
 }

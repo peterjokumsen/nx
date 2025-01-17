@@ -1,7 +1,8 @@
 import { coerce, major } from 'semver';
 import type {
+  PackageCompatVersions,
+  PackageLatestVersions,
   PackageVersionNames,
-  PackageVersions,
 } from './backward-compatible-versions';
 import { backwardCompatibleVersions } from './backward-compatible-versions';
 import * as versions from './versions';
@@ -20,7 +21,7 @@ export function getPkgVersionForAngularMajorVersion(
 
 export function getPkgVersionsForAngularMajorVersion(
   angularMajorVersion: number
-): PackageVersions {
+): PackageLatestVersions | PackageCompatVersions {
   return angularMajorVersion < major(coerce(angularVersion))
     ? backwardCompatibleVersions[`angularV${angularMajorVersion}`] ?? versions
     : versions;

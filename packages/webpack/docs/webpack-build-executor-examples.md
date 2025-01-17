@@ -5,22 +5,18 @@ description: Examples and a short guide on how to use the @nx/webpack:webpack bu
 
 `project.json`:
 
-```json
+```json5
 //...
 "my-app": {
-    "targets": {
-        //...
-        "build": {
-            "executor": "@nx/webpack:webpack",
-            //...
-            //...
-            "options": {
-                ...
-            },
-                //...
-            }
-        },
-    }
+  "targets": {
+    "build": {
+      "executor": "@nx/webpack:webpack",
+      "options": {
+        "webpackConfig": "apps/my-app/webpack.config.js"
+      }
+    },
+    //...
+  }
 }
 ```
 
@@ -40,21 +36,19 @@ Copying from the [Babel documentation](https://babeljs.io/docs/config-files#root
 
 Setting `babelUpwardRootMode` to `true` in your `project.json` will set `rootMode` option to `upward` in the Babel config. You may want the `upward` mode in a monorepo when projects must apply their individual `.babelrc` file. We recommend that you don't set it at all, so it will use the default to `false` as the `upward` mode brings additional complexity to the build process.
 
-```json
+```json5
 //...
 "my-app": {
   "targets": {
     "build": {
       "executor": "@nx/webpack:webpack",
       "options": {
-          "babelUpwardRootMode": true,
-          //...
-      },
-      //...
+        "webpackConfig": "apps/my-app/webpack.config.js",
+        "babelUpwardRootMode": true
+      }
     },
     //...
-  },
-  //...
+  }
 }
 ```
 
@@ -94,23 +88,19 @@ In workspace above, if `demo` imports `a` and `b`, it will apply the config `lib
 
 If you have a custom Babel config file (i.e. not `.babelrc`), you can use the `configFile` option as follows:
 
-```json
+```json5
 //...
 "my-app": {
-    "targets": {
-        //...
-        "build": {
-            "executor": "@nx/webpack:webpack",
-            //...
-            "options": {
-                //...
-                "babelConfig": "apps/my-app/.babelrc.custom.json",
-            },
-            "configurations": {
-                ...
-            }
-        },
-    }
+  "targets": {
+    "build": {
+      "executor": "@nx/webpack:webpack",
+      "options": {
+        "webpackConfig": "apps/my-app/webpack.config.js",
+        "babelConfig": "apps/my-app/.babelrc.custom.json",
+      }
+    },
+    // ...
+  }
 }
 ```
 
@@ -124,7 +114,7 @@ Note that this option does not work if `babelUpwardRootMode` is set to `true`.
 
 Setting `isolatedConfig` to `true` in your `project.json` file means that Nx will not apply the Nx webpack plugins automatically. In that case, the Nx plugins need to be applied in the project's `webpack.config.js` file (e.g. `withNx`, `withReact`, etc.). So don't forget to also specify the path to your webpack config file (using the `webpackConfig` option).
 
-Read more on how to configure Webpack in our [Nx Webpack config guide](/packages/webpack/documents/webpack-config-setup) an in our [Webpack Plugins guide](/packages/webpack/documents/webpack-plugins).
+Read more on how to configure Webpack in our [Nx Webpack config guide](/recipes/webpack/webpack-config-setup) an in our [Webpack Plugins guide](/recipes/webpack/webpack-plugins).
 
 Note that this is the new default setup for webpack in the latest version of Nx.
 
@@ -133,21 +123,15 @@ Set `isolatedConfig` to `true` in your `project.json` file in the `build` target
 ```json
 //...
 "my-app": {
-    "targets": {
-        //...
-        "build": {
-            "executor": "@nx/webpack:webpack",
-            //...
-            "options": {
-                //...
-                "webpackConfig": "apps/my-app/webpack.config.js",
-                "isolatedConfig": true
-            },
-            "configurations": {
-                ...
-            }
-        },
-    }
+  "targets": {
+    "build": {
+      "executor": "@nx/webpack:webpack",
+      "options": {
+        "webpackConfig": "apps/my-app/webpack.config.js",
+        "isolatedConfig": true
+      }
+    },
+  }
 }
 ```
 

@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "$id": "NxCypressE2EConfigGenerator",
   "cli": "nx",
   "title": "Add a Cypress Configuration.",
@@ -46,8 +46,8 @@
     "linter": {
       "description": "The tool to use for running lint checks.",
       "type": "string",
-      "enum": ["eslint", "none"],
-      "default": "eslint"
+      "enum": ["none", "eslint"],
+      "x-priority": "important"
     },
     "js": {
       "description": "Generate JavaScript files rather than TypeScript files.",
@@ -84,6 +84,11 @@
       "enum": ["vite", "webpack", "none"],
       "x-prompt": "Which Cypress bundler do you want to use?",
       "default": "webpack"
+    },
+    "jsx": {
+      "description": "Whether or not this project uses JSX.",
+      "type": "boolean",
+      "default": true
     }
   },
   "required": ["project"],

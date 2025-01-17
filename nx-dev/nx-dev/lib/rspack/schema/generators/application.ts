@@ -2,14 +2,14 @@ export const schema = {
   name: 'application',
   factory: './src/generators/application/application#applicationGenerator',
   schema: {
-    $schema: 'http://json-schema.org/schema',
+    $schema: 'https://json-schema.org/schema',
     cli: 'nx',
     $id: 'Application',
     title: 'Application generator for React + rspack',
     type: 'object',
     examples: [
       {
-        command: 'nx g app myapp --directory=myorg',
+        command: 'nx g app apps/myorg/myapp',
         description: 'Generate `apps/myorg/myapp` and `apps/myorg/myapp-e2e`',
       },
     ],
@@ -51,17 +51,12 @@ export const schema = {
             {
               value: 'scss',
               label:
-                'SASS(.scss)       [ http://sass-lang.com                     ]',
+                'SASS(.scss)       [ https://sass-lang.com                     ]',
             },
             {
               value: 'less',
               label:
-                'LESS              [ http://lesscss.org                       ]',
-            },
-            {
-              value: 'styl',
-              label:
-                'DEPRECATED: Stylus(.styl) [ http://stylus-lang.com           ]',
+                'LESS              [ https://lesscss.org                       ]',
             },
             {
               value: 'none',
@@ -108,6 +103,6 @@ export const schema = {
   hidden: false,
   implementation:
     '/packages/rspack/src/generators/application/application#applicationGenerator.ts',
-  path: '/packages/rspack/src/generators/application/schema.json',
+  path: '/api/rspack/src/generators/application/schema.json',
   type: 'generator',
 };

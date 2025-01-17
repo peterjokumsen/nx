@@ -1,12 +1,12 @@
-import { workspaceRoot } from '@nx/devkit';
+import { detectPackageManager, workspaceRoot } from '@nx/devkit';
 import {
   getPackageManagerCommand,
   readJsonFile,
   writeJsonFile,
 } from '@nx/devkit';
 import { execSync } from 'child_process';
+import { mkdirSync } from 'node:fs';
 import { dirname } from 'path';
-import { ensureDirSync } from 'fs-extra';
 import { tmpProjPath } from './paths';
 import { cleanup } from './utils';
 
@@ -15,12 +15,13 @@ function runNxNewCommand(args?: string, silent?: boolean) {
   return execSync(
     `node ${require.resolve(
       'nx'
-    )} new proj --nx-workspace-root=${localTmpDir} --no-interactive --skip-install --collection=@nx/workspace --npmScope=proj --preset=empty ${
+    )} new proj --nx-workspace-root=${localTmpDir} --no-interactive --skip-install --collection=@nx/workspace --npmScope=proj --preset=apps ${
       args || ''
     }`,
     {
       cwd: localTmpDir,
       ...(silent && false ? { stdio: ['ignore', 'ignore', 'ignore'] } : {}),
+      windowsHide: false,
     }
   );
 }
@@ -50,10 +51,12 @@ export function uniq(prefix: string) {
  * @param silent silent output from the install
  */
 export function runPackageManagerInstall(silent: boolean = true) {
-  const pmc = getPackageManagerCommand();
+  const cwd = tmpProjPath();
+  const pmc = getPackageManagerCommand(detectPackageManager(cwd));
   const install = execSync(pmc.install, {
-    cwd: tmpProjPath(),
+    cwd,
     ...(silent ? { stdio: ['ignore', 'ignore', 'ignore'] } : {}),
+    windowsHide: false,
   });
   return install ? install.toString() : '';
 }
@@ -82,6 +85,6 @@ export function ensureNxProject(
   npmPackageName?: string,
   pluginDistPath?: string
 ): void {
-  ensureDirSync(tmpProjPath());
+  mkdirSync(tmpProjPath(), { recursive: true });
   newNxProject(npmPackageName, pluginDistPath);
 }

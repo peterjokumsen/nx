@@ -10,8 +10,12 @@ export * from './utils/typescript/ast-utils';
 export * from './utils/package-json';
 export * from './utils/assets';
 export * from './utils/package-json/update-package-json';
+export * from './utils/package-json/create-entry-points';
 export { libraryGenerator } from './generators/library/library';
 export { initGenerator } from './generators/init/init';
+export { setupPrettierGenerator } from './generators/setup-prettier/generator';
+export { setupVerdaccio } from './generators/setup-verdaccio/generator';
+export { isValidVariable } from './utils/is-valid-variable';
 
 // eslint-disable-next-line @typescript-eslint/no-restricted-imports
 export {

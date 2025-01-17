@@ -1,23 +1,45 @@
 import {
   addProjectConfiguration,
-  convertNxGenerator,
   formatFiles,
   generateFiles,
-  getWorkspaceLayout,
-  names,
   Tree,
   writeJson,
 } from '@nx/devkit';
+import {
+  determineProjectNameAndRootOptions,
+  ensureProjectName,
+} from '@nx/devkit/src/generators/project-name-and-root-utils';
 import { join } from 'path';
 import { getImportPath } from '../../utilities/get-import-path';
 
 export interface ProjectOptions {
-  name: string;
+  directory: string;
+  name?: string;
 }
 
-function normalizeOptions(options: ProjectOptions): ProjectOptions {
-  options.name = names(options.name).fileName;
-  return options;
+interface NormalizedProjectOptions extends ProjectOptions {
+  projectRoot: string;
+}
+
+async function normalizeOptions(
+  tree: Tree,
+  options: ProjectOptions
+): Promise<NormalizedProjectOptions> {
+  await ensureProjectName(tree, options, 'library');
+  const { projectName, projectRoot } = await determineProjectNameAndRootOptions(
+    tree,
+    {
+      name: options.name,
+      projectType: 'library',
+      directory: options.directory,
+    }
+  );
+
+  return {
+    ...options,
+    name: projectName,
+    projectRoot,
+  };
 }
 
 function addFiles(projectRoot: string, tree: Tree, options: ProjectOptions) {
@@ -33,25 +55,25 @@ function addFiles(projectRoot: string, tree: Tree, options: ProjectOptions) {
   generateFiles(tree, join(__dirname, './files'), projectRoot, {});
 }
 
-export async function npmPackageGenerator(tree: Tree, options: ProjectOptions) {
-  options = normalizeOptions(options);
-
-  const { libsDir } = getWorkspaceLayout(tree);
-  const projectRoot = join(libsDir, options.name);
+export async function npmPackageGenerator(
+  tree: Tree,
+  _options: ProjectOptions
+) {
+  const options = await normalizeOptions(tree, _options);
 
   addProjectConfiguration(tree, options.name, {
-    root: projectRoot,
+    root: options.projectRoot,
   });
 
-  const fileCount = tree.children(projectRoot).length;
-  const projectJsonExists = tree.exists(join(projectRoot, 'project.json'));
+  const fileCount = tree.children(options.projectRoot).length;
+  const projectJsonExists = tree.exists(
+    join(options.projectRoot, 'project.json')
+  );
   const isEmpty = fileCount === 0 || (fileCount === 1 && projectJsonExists);
 
   if (isEmpty) {
-    addFiles(projectRoot, tree, options);
+    addFiles(options.projectRoot, tree, options);
   }
 
   await formatFiles(tree);
 }
-
-export const npmPackageSchematic = convertNxGenerator(npmPackageGenerator);

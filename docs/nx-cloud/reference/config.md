@@ -2,30 +2,83 @@
 
 The Nx Cloud runner is configured in `nx.json`.
 
-```json
+{% tabs %}
+{% tab label="Nx >= 19.7" %}
+
+```json {% fileName="nx.json" %}
 {
-  "tasksRunnerOptions": {
+  "nxCloudId": "SOMEID"
+}
+```
+
+{% /tab %}
+{% tab label="Nx <= 19.6" %}
+
+```json {% fileName="nx.json" %}"
+"tasksRunnerOptions": {
     "default": {
       "runner": "nx-cloud",
       "options": {
-        "accessToken": "SOMETOKEN",
-        "cacheableOperations": ["build", "test", "lint", "e2e"]
+        "nxCloudId": "SOMEID"
       }
     }
+  }
+```
+
+To utilize personal access tokens and Nx Cloud ID with Nx <= 19.6, the nx-cloud npm package is also required to be installed in your workspaces `package.json`.
+
+```json {% fileName="package.json" %}"
+{
+  "devDependencies": {
+    "nx-cloud": "latest"
   }
 }
 ```
 
+{% /tab %}
+{% /tabs %}
+
+## CI Access Tokens
+
+CI Access Tokens are used in CI environments to provide read-write privileges for pipelines. They should not be committed to source control and should instead be exposed as CI environment secrets.  
+You can configure CI Access Tokens as environment variables (`NX_CLOUD_AUTH_TOKEN` and `NX_CLOUD_ACCESS_TOKEN` are aliases of each other) or define them in `nx.json` as follows:
+
+{% tabs %}
+{% tab label="Nx >= 17" %}
+
+```json
+{
+  "nxCloudAccessToken": "SOMETOKEN"
+}
+```
+
+{% /tab %}
+{% tab label="Nx < 17" %}
+
+```json
+"tasksRunnerOptions": {
+    "default": {
+      "runner": "nx-cloud",
+      "options": {
+        "accessToken": "SOMETOKEN"
+      }
+    }
+  }
+```
+
+{% /tab %}
+{% /tabs %}
+
 ## Cacheable Operations
 
-Only operations listed in `cacheableOperations` can be cached using Nx Cloud and distributed using the distributed task execution (DTE). You can add new targets to that list.
+Targets can be marked as cacheable either in the `targetDefaults` in `nx.json` or in the project configuration by setting `"cache": true`. With this option enabled they can be cached and distributed using Nx Cloud.
 
 ## Timeouts
 
 By default, Nx Cloud requests will time out after 10 seconds. `NX_CLOUD_NO_TIMEOUTS` disables the timeout.
 
 ```shell
-NX_CLOUD_NO_TIMEOUTS=true nx run-many -t build --all
+NX_CLOUD_NO_TIMEOUTS=true nx run-many -t build
 ```
 
 ## Logging
@@ -38,15 +91,23 @@ This can be useful for debugging unexpected cache misses, and issues with on-pre
 
 `NX_VERBOSE_LOGGING` is often enabled in CI globally while debugging your CI setups.
 
-## Access Tokens
-
-`NX_CLOUD_AUTH_TOKEN` and `NX_CLOUD_ACCESS_TOKEN` are aliases of each other. This configuration allows you to override the access token set in `nx.json`. It is often enabled in CI to provide read-write privileges where only a read token is committed to the workspace's `nx.json`.
-
 ## Enabling End-to-End Encryption
 
 All communication with Nx Cloud’s API and cache is completed over HTTPS, but you can optionally enable e2e encryption by providing a secret key through `nx.json` or the `NX_CLOUD_ENCRYPTION_KEY` environment variable.
 
-In `nx.json`, locate the `taskRunnerOptions` property. It will look something like this:
+{% tabs %}
+{% tab label="Nx >= 17" %}
+In `nx.json`, add the `nxCloudEncryptionKey` property. It will look something like this:
+
+```json
+{
+  "nxCloudEncryptionKey": "cheddar"
+}
+```
+
+{% /tab %}
+{% tab label="Nx < 17" %}
+In `nx.json`, locate the `taskRunnerOptions` property. Under its "options" property, you can add another property called `encryptionKey`. This is what will be used to encrypt your artifacts. It will look something like this:
 
 ```json
 {
@@ -55,7 +116,6 @@ In `nx.json`, locate the `taskRunnerOptions` property. It will look something li
       "runner": "nx-cloud",
       "options": {
         "accessToken": "SOMETOKEN",
-        "cacheableOperations": ["build", "test", "lint", "e2e"],
         // Add the following property with your secret key
         "encryptionKey": "cheddar"
       }
@@ -64,7 +124,8 @@ In `nx.json`, locate the `taskRunnerOptions` property. It will look something li
 }
 ```
 
-Under the "options" property, you can add another property called `encryptionKey`. This is what will be used to encrypt your artifacts.
+{% /tab %}
+{% /tabs %}
 
 To instead use an environment variable to provide your secret key, run any Nx command as follows:
 
@@ -90,9 +151,6 @@ You must be on version `16.0.4` or later of `nx-cloud` or `@nrwl/nx-cloud` for t
 
 ```json
 {
-  "tasksRunnerOptions": {
-    ...
-  },
   // The following will cause all attempts to connect your workspace to Nx Cloud to fail
   "neverConnectToCloud": true
 }

@@ -1,26 +1,27 @@
-import 'dotenv/config';
 import {
   detectPackageManager,
   ExecutorContext,
-  getPackageManagerVersion,
   logger,
   readJsonFile,
   workspaceRoot,
   writeJsonFile,
 } from '@nx/devkit';
 import { createLockFile, createPackageJson, getLockFileName } from '@nx/js';
-import { join } from 'path';
-import { copySync, existsSync, mkdir, writeFileSync } from 'fs-extra';
+import { join, resolve as pathResolve } from 'path';
+import { cpSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { gte } from 'semver';
-import { directoryExists } from '@nx/workspace/src/utilities/fileutils';
 import { checkAndCleanWithSemver } from '@nx/devkit/src/utils/semver';
 
 import { updatePackageJson } from './lib/update-package-json';
 import { createNextConfigFile } from './lib/create-next-config-file';
 import { checkPublicDirectory } from './lib/check-project';
 import { NextBuildBuilderOptions } from '../../utils/types';
-import { execSync, ExecSyncOptions } from 'child_process';
+import { ChildProcess, fork } from 'child_process';
 import { createCliOptions } from '../../utils/create-cli-options';
+import { signalToCode } from 'nx/src/utils/exit-codes';
+
+let childProcess: ChildProcess;
 
 export default async function buildExecutor(
   options: NextBuildBuilderOptions,
@@ -49,37 +50,27 @@ export default async function buildExecutor(
     process.env['__NEXT_REACT_ROOT'] ||= 'true';
   }
 
-  const { experimentalAppOnly, profile, debug, outputPath } = options;
-
-  // Set output path here since it can also be set via CLI
-  // We can retrieve it inside plugins/with-nx
-  process.env.NX_NEXT_OUTPUT_PATH ??= outputPath;
-
-  const args = createCliOptions({ experimentalAppOnly, profile, debug });
-  const isYarnBerry =
-    detectPackageManager() === 'yarn' &&
-    gte(getPackageManagerVersion('yarn', workspaceRoot), '2.0.0');
-  const buildCommand = isYarnBerry
-    ? `yarn next build ${projectRoot}`
-    : 'npx next build';
-
-  const command = `${buildCommand} ${args.join(' ')}`;
-  const execSyncOptions: ExecSyncOptions = {
-    stdio: 'inherit',
-    encoding: 'utf-8',
-    cwd: projectRoot,
-  };
   try {
-    execSync(command, execSyncOptions);
-  } catch (error) {
-    logger.error(`Error occurred while trying to run the ${command}`);
-    logger.error(error);
+    await runCliBuild(workspaceRoot, projectRoot, options);
+  } catch ({ error, code, signal }) {
+    if (code || signal) {
+      logger.error(
+        `Build process exited due to ${code ? 'code ' + code : ''} ${
+          code && signal ? 'and' : ''
+        } ${signal ? 'signal ' + signal : ''}`
+      );
+    } else {
+      logger.error(`Error occurred while trying to run the build command`);
+      logger.error(error);
+    }
     return { success: false };
+  } finally {
+    if (childProcess) {
+      childProcess.kill();
+    }
   }
 
-  if (!directoryExists(options.outputPath)) {
-    mkdir(options.outputPath);
-  }
+  await mkdir(options.outputPath, { recursive: true });
 
   const builtPackageJson = createPackageJson(
     context.projectName,
@@ -88,6 +79,8 @@ export default async function buildExecutor(
       target: context.targetName,
       root: context.root,
       isProduction: !options.includeDevDependenciesInPackageJson, // By default we remove devDependencies since this is a production build.
+      skipOverrides: options.skipOverrides,
+      skipPackageManager: options.skipPackageManager,
     }
   );
 
@@ -100,19 +93,87 @@ export default async function buildExecutor(
   writeJsonFile(`${options.outputPath}/package.json`, builtPackageJson);
 
   if (options.generateLockfile) {
-    const lockFile = createLockFile(builtPackageJson);
-    writeFileSync(`${options.outputPath}/${getLockFileName()}`, lockFile, {
-      encoding: 'utf-8',
-    });
+    const packageManager = detectPackageManager(context.root);
+    const lockFile = createLockFile(
+      builtPackageJson,
+      context.projectGraph,
+      packageManager
+    );
+    writeFileSync(
+      `${options.outputPath}/${getLockFileName(packageManager)}`,
+      lockFile,
+      {
+        encoding: 'utf-8',
+      }
+    );
   }
 
   // If output path is different from source path, then copy over the config and public files.
   // This is the default behavior when running `nx build <app>`.
   if (options.outputPath.replace(/\/$/, '') !== projectRoot) {
     createNextConfigFile(options, context);
-    copySync(join(projectRoot, 'public'), join(options.outputPath, 'public'), {
+    cpSync(join(projectRoot, 'public'), join(options.outputPath, 'public'), {
       dereference: true,
+      recursive: true,
     });
   }
   return { success: true };
+}
+
+function runCliBuild(
+  workspaceRoot: string,
+  projectRoot: string,
+  options: NextBuildBuilderOptions
+) {
+  const {
+    experimentalAppOnly,
+    experimentalBuildMode,
+    profile,
+    debug,
+    outputPath,
+  } = options;
+
+  // Set output path here since it can also be set via CLI
+  // We can retrieve it inside plugins/with-nx
+  process.env.NX_NEXT_OUTPUT_PATH ??= outputPath;
+
+  const args = createCliOptions({
+    experimentalAppOnly,
+    experimentalBuildMode,
+    profile,
+    debug,
+  });
+  return new Promise((resolve, reject) => {
+    childProcess = fork(
+      require.resolve('next/dist/bin/next'),
+      ['build', ...args],
+      {
+        cwd: pathResolve(workspaceRoot, projectRoot),
+        stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+        env: process.env,
+      }
+    );
+
+    // Ensure the child process is killed when the parent exits
+    process.on('exit', () => childProcess.kill());
+
+    process.on('SIGTERM', (signal) => {
+      reject({ code: signalToCode(signal), signal });
+    });
+    process.on('SIGINT', (signal) => {
+      reject({ code: signalToCode(signal), signal });
+    });
+
+    childProcess.on('error', (err) => {
+      reject({ error: err });
+    });
+
+    childProcess.on('exit', (code, signal) => {
+      if (code === 0) {
+        resolve({ code, signal });
+      } else {
+        reject({ code, signal });
+      }
+    });
+  });
 }

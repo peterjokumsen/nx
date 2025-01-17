@@ -15,9 +15,9 @@ describe('SCAM Pipe Generator', () => {
     // ACT
     await scamPipeGenerator(tree, {
       name: 'example',
-      project: 'app1',
+      path: 'apps/app1/src/app/example/example',
       inlineScam: true,
-      flat: false,
+      skipFormat: true,
     });
 
     // ASSERT
@@ -31,6 +31,7 @@ describe('SCAM Pipe Generator', () => {
 
       @Pipe({
         name: 'example',
+        standalone: false
       })
       export class ExamplePipe implements PipeTransform {
         transform(value: unknown, ...args: unknown[]): unknown {
@@ -60,9 +61,9 @@ describe('SCAM Pipe Generator', () => {
     // ACT
     await scamPipeGenerator(tree, {
       name: 'example',
-      project: 'app1',
+      path: 'apps/app1/src/app/example/example',
       inlineScam: false,
-      flat: false,
+      skipFormat: true,
     });
 
     // ASSERT
@@ -74,6 +75,49 @@ describe('SCAM Pipe Generator', () => {
       "import { NgModule } from '@angular/core';
       import { CommonModule } from '@angular/common';
       import { ExamplePipe } from './example.pipe';
+
+      @NgModule({
+        imports: [CommonModule],
+        declarations: [ExamplePipe],
+        exports: [ExamplePipe],
+      })
+      export class ExamplePipeModule {}
+      "
+    `);
+  });
+
+  it('should handle path with file extension', async () => {
+    const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
+    addProjectConfiguration(tree, 'app1', {
+      projectType: 'application',
+      sourceRoot: 'apps/app1/src',
+      root: 'apps/app1',
+    });
+
+    await scamPipeGenerator(tree, {
+      name: 'example',
+      path: 'apps/app1/src/app/example/example.pipe.ts',
+      inlineScam: true,
+      skipFormat: true,
+    });
+
+    const pipeSource = tree.read(
+      'apps/app1/src/app/example/example.pipe.ts',
+      'utf-8'
+    );
+    expect(pipeSource).toMatchInlineSnapshot(`
+      "import { Pipe, PipeTransform, NgModule } from '@angular/core';
+      import { CommonModule } from '@angular/common';
+
+      @Pipe({
+        name: 'example',
+        standalone: false
+      })
+      export class ExamplePipe implements PipeTransform {
+        transform(value: unknown, ...args: unknown[]): unknown {
+          return null;
+        }
+      }
 
       @NgModule({
         imports: [CommonModule],
@@ -101,10 +145,10 @@ describe('SCAM Pipe Generator', () => {
     // ACT
     await scamPipeGenerator(tree, {
       name: 'example',
-      project: 'lib1',
-      path: 'libs/lib1/feature/src/lib',
+      path: 'libs/lib1/feature/src/lib/example/example',
       inlineScam: false,
       export: true,
+      skipFormat: true,
     });
 
     // ASSERT
@@ -131,9 +175,24 @@ describe('SCAM Pipe Generator', () => {
     );
     expect(secondaryEntryPointSource).toMatchInlineSnapshot(`
       "export * from './lib/example/example.pipe';
-      export * from './lib/example/example.module';
-      "
+      export * from './lib/example/example.module';"
     `);
+  });
+
+  it('should error when the class name is invalid', async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    addProjectConfiguration(tree, 'app1', {
+      projectType: 'application',
+      sourceRoot: 'apps/app1/src',
+      root: 'apps/app1',
+    });
+
+    await expect(
+      scamPipeGenerator(tree, {
+        name: '404',
+        path: 'apps/app1/src/app/example/example',
+      })
+    ).rejects.toThrow('Class name "404Pipe" is invalid.');
   });
 
   describe('--path', () => {
@@ -149,10 +208,9 @@ describe('SCAM Pipe Generator', () => {
       // ACT
       await scamPipeGenerator(tree, {
         name: 'example',
-        project: 'app1',
-        path: 'apps/app1/src/app/random',
+        path: 'apps/app1/src/app/random/example/example',
         inlineScam: true,
-        flat: false,
+        skipFormat: true,
       });
 
       // ASSERT
@@ -166,6 +224,7 @@ describe('SCAM Pipe Generator', () => {
 
         @Pipe({
           name: 'example',
+          standalone: false
         })
         export class ExamplePipe implements PipeTransform {
           transform(value: unknown, ...args: unknown[]): unknown {
@@ -195,10 +254,9 @@ describe('SCAM Pipe Generator', () => {
       // ACT
       await scamPipeGenerator(tree, {
         name: 'example',
-        project: 'app1',
-        path: '/apps/app1/src/app/random',
+        path: '/apps/app1/src/app/random/example/example',
         inlineScam: true,
-        flat: false,
+        skipFormat: true,
       });
 
       // ASSERT
@@ -212,6 +270,7 @@ describe('SCAM Pipe Generator', () => {
 
         @Pipe({
           name: 'example',
+          standalone: false
         })
         export class ExamplePipe implements PipeTransform {
           transform(value: unknown, ...args: unknown[]): unknown {
@@ -242,12 +301,12 @@ describe('SCAM Pipe Generator', () => {
       expect(
         scamPipeGenerator(tree, {
           name: 'example',
-          project: 'app1',
-          path: 'libs/proj/src/lib/random',
+          path: 'libs/proj/src/lib/random/example/example',
           inlineScam: true,
+          skipFormat: true,
         })
-      ).rejects.toThrow(
-        'The path provided (libs/proj/src/lib/random) does not exist under the project root (apps/app1).'
+      ).rejects.toThrowErrorMatchingInlineSnapshot(
+        `"The provided directory resolved relative to the current working directory "libs/proj/src/lib/random/example" does not exist under any project root. Please make sure to navigate to a location or provide a directory that exists under a project root."`
       );
     });
   });

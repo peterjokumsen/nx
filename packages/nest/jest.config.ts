@@ -6,6 +6,6 @@ export default {
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'html'],
   globals: {},
   displayName: 'nest',
-  testEnvironment: 'node',
   preset: '../../jest.preset.js',
+  setupFilesAfterEnv: ['<rootDir>/test-setup.ts'],
 };

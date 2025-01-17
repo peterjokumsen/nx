@@ -18,7 +18,7 @@ describe('exportScam', () => {
         directory: 'apps/app1/src/app/example',
         filePath: 'apps/app1/src/example/example.component.ts',
         name: 'example',
-        project: 'app1',
+        projectName: 'app1',
         inlineScam: true,
         export: true,
       })
@@ -40,7 +40,7 @@ describe('exportScam', () => {
       directory: 'libs/lib1/src/lib/example',
       filePath: 'libs/lib1/src/lib/example/example.component.ts',
       name: 'example',
-      project: 'lib1',
+      projectName: 'lib1',
       inlineScam: true,
       export: true,
     });
@@ -48,7 +48,7 @@ describe('exportScam', () => {
     // ASSERT
     const entryPointSource = tree.read(`libs/lib1/src/index.ts`, 'utf-8');
     expect(entryPointSource).toMatchInlineSnapshot(
-      `"export * from "./lib/example/example.component";"`
+      `"export * from './lib/example/example.component';"`
     );
   });
 
@@ -67,7 +67,7 @@ describe('exportScam', () => {
       directory: 'libs/lib1/src/lib/example',
       filePath: 'libs/lib1/src/lib/example/example.component.ts',
       name: 'example',
-      project: 'lib1',
+      projectName: 'lib1',
       inlineScam: false,
       export: true,
     });
@@ -75,8 +75,8 @@ describe('exportScam', () => {
     // ASSERT
     const entryPointSource = tree.read(`libs/lib1/src/index.ts`, 'utf-8');
     expect(entryPointSource).toMatchInlineSnapshot(`
-      "export * from "./lib/example/example.component";
-      export * from "./lib/example/example.module";"
+      "export * from './lib/example/example.component';
+      export * from './lib/example/example.module';"
     `);
   });
 
@@ -99,7 +99,7 @@ describe('exportScam', () => {
       directory: 'libs/lib1/feature/src/lib/example',
       filePath: 'libs/lib1/feature/src/lib/example/example.component.ts',
       name: 'example',
-      project: 'lib1',
+      projectName: 'lib1',
       inlineScam: true,
       export: true,
     });
@@ -110,7 +110,7 @@ describe('exportScam', () => {
       'utf-8'
     );
     expect(entryPointSource).toMatchInlineSnapshot(
-      `"export * from "./lib/example/example.component";"`
+      `"export * from './lib/example/example.component';"`
     );
   });
 });

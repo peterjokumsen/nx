@@ -2,7 +2,7 @@ export const schema = {
   name: 'init',
   factory: './src/generators/init/init#rspackInitGenerator',
   schema: {
-    $schema: 'http://json-schema.org/schema',
+    $schema: 'https://json-schema.org/schema',
     cli: 'nx',
     $id: 'Init',
     title: '',
@@ -31,6 +31,6 @@ export const schema = {
   hidden: false,
   implementation:
     '/packages/rspack/src/generators/init/init#rspackInitGenerator.ts',
-  path: '/packages/rspack/src/generators/init/schema.json',
+  path: '/nx-api/rspack/src/generators/init/schema.json',
   type: 'generator',
 };

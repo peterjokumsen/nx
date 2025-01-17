@@ -1,23 +1,17 @@
 import {
+  addDependenciesToPackageJson,
   formatFiles,
   GeneratorCallback,
   installPackagesTask,
   joinPathFragments,
   Tree,
 } from '@nx/devkit';
-import { configurationGenerator } from '@nx/jest';
-import { Linter } from '@nx/linter';
-import { addTsConfigPath } from '@nx/js';
-import { lt } from 'semver';
+import { Linter } from '@nx/eslint';
+import { addTsConfigPath, initGenerator as jsInitGenerator } from '@nx/js';
 import init from '../../generators/init/init';
-import { E2eTestRunner } from '../../utils/test-runners';
 import addLintingGenerator from '../add-linting/add-linting';
 import setupTailwindGenerator from '../setup-tailwind/setup-tailwind';
-import {
-  addDependenciesToPackageJsonIfDontExist,
-  getInstalledAngularVersionInfo,
-  versions,
-} from '../utils/version-utils';
+import { versions } from '../utils/version-utils';
 import { addBuildableLibrariesPostCssDependencies } from '../utils/dependencies';
 import { addModule } from './lib/add-module';
 import { addStandaloneComponent } from './lib/add-standalone-component';
@@ -32,11 +26,20 @@ import { updateTsConfig } from './lib/update-tsconfig';
 import { Schema } from './schema';
 import { createFiles } from './lib/create-files';
 import { addProject } from './lib/add-project';
+import { addJest } from '../utils/add-jest';
+import { setGeneratorDefaults } from './lib/set-generator-defaults';
+import { ensureAngularDependencies } from '../utils/ensure-angular-dependencies';
+import { logShowProjectCommand } from '@nx/devkit/src/utils/log-show-project-command';
+import { UnitTestRunner } from '../../utils/test-runners';
+import { addVitest } from '../utils/add-vitest';
+import { assertNotUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
 
 export async function libraryGenerator(
   tree: Tree,
   schema: Schema
 ): Promise<GeneratorCallback> {
+  assertNotUsingTsSolutionSetup(tree, 'angular', 'library');
+
   // Do some validation checks
   if (!schema.routing && schema.lazy) {
     throw new Error(`To use "--lazy" option, "--routing" must also be set.`);
@@ -54,23 +57,21 @@ export async function libraryGenerator(
     );
   }
 
-  const userInstalledAngularVersion = getInstalledAngularVersionInfo(tree);
-  if (lt(userInstalledAngularVersion.version, '14.1.0') && schema.standalone) {
-    throw new Error(
-      `The "--standalone" option is not supported in Angular versions < 14.1.0.`
-    );
-  }
-
-  const options = normalizeOptions(tree, schema);
+  const options = await normalizeOptions(tree, schema);
   const { libraryOptions } = options;
 
   const pkgVersions = versions(tree);
 
-  await init(tree, {
+  await jsInitGenerator(tree, {
     ...libraryOptions,
+    js: false,
     skipFormat: true,
-    e2eTestRunner: E2eTestRunner.None,
   });
+  await init(tree, { ...libraryOptions, skipFormat: true });
+
+  if (!libraryOptions.skipPackageJson) {
+    ensureAngularDependencies(tree);
+  }
 
   const project = addProject(tree, libraryOptions);
 
@@ -78,6 +79,7 @@ export async function libraryGenerator(
   updateTsConfig(tree, libraryOptions);
   await addUnitTestRunner(tree, libraryOptions);
   updateNpmScopeIfBuildableOrPublishable(tree, libraryOptions);
+  setGeneratorDefaults(tree, options);
 
   if (!libraryOptions.standalone) {
     addModule(tree, libraryOptions);
@@ -92,16 +94,22 @@ export async function libraryGenerator(
     await setupTailwindGenerator(tree, {
       project: libraryOptions.name,
       skipFormat: true,
+      skipPackageJson: libraryOptions.skipPackageJson,
     });
   }
 
-  if (libraryOptions.buildable || libraryOptions.publishable) {
-    addDependenciesToPackageJsonIfDontExist(
+  if (
+    (libraryOptions.buildable || libraryOptions.publishable) &&
+    !libraryOptions.skipPackageJson
+  ) {
+    addDependenciesToPackageJson(
       tree,
       {},
       {
         'ng-packagr': pkgVersions.ngPackagrVersion,
-      }
+      },
+      undefined,
+      true
     );
     addBuildableLibrariesPostCssDependencies(tree);
   }
@@ -116,6 +124,7 @@ export async function libraryGenerator(
 
   return () => {
     installPackagesTask(tree);
+    logShowProjectCommand(libraryOptions.name);
   };
 }
 
@@ -123,34 +132,23 @@ async function addUnitTestRunner(
   host: Tree,
   options: NormalizedSchema['libraryOptions']
 ) {
-  if (options.unitTestRunner === 'jest') {
-    await configurationGenerator(host, {
-      project: options.name,
-      setupFile: 'angular',
-      supportTsx: false,
-      skipSerializers: false,
-      skipFormat: true,
-      skipPackageJson: options.skipPackageJson,
-    });
-    const setupFile = joinPathFragments(
-      options.projectRoot,
-      'src',
-      'test-setup.ts'
-    );
-    if (options.strict && host.exists(setupFile)) {
-      const contents = host.read(setupFile, 'utf-8');
-      host.write(
-        setupFile,
-        `// @ts-expect-error https://thymikee.github.io/jest-preset-angular/docs/getting-started/test-environment
-globalThis.ngJest = {
-  testEnvironmentOptions: {
-    errorOnUnknownElements: true,
-    errorOnUnknownProperties: true,
-  },
-};
-${contents}`
-      );
-    }
+  switch (options.unitTestRunner) {
+    case UnitTestRunner.Jest:
+      await addJest(host, {
+        name: options.name,
+        projectRoot: options.projectRoot,
+        skipPackageJson: options.skipPackageJson,
+        strict: options.strict,
+      });
+      break;
+    case UnitTestRunner.Vitest:
+      await addVitest(host, {
+        name: options.name,
+        projectRoot: options.projectRoot,
+        skipPackageJson: options.skipPackageJson,
+        strict: options.strict,
+      });
+      break;
   }
 }
 

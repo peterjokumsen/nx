@@ -2,17 +2,18 @@ import type * as ts from 'typescript';
 import {
   addDependenciesToPackageJson,
   applyChangesToString,
-  convertNxGenerator,
+  createProjectGraphAsync,
   formatFiles,
   generateFiles,
   joinPathFragments,
+  type ProjectGraph,
+  readCachedProjectGraph,
   readNxJson,
   readProjectConfiguration,
   Tree,
   updateNxJson,
   updateProjectConfiguration,
 } from '@nx/devkit';
-import initGenerator from '../init/init';
 
 import type { Schema } from './schema';
 import {
@@ -24,6 +25,7 @@ import {
 } from '../../utils/versions';
 import { addStaticRouter } from '../../utils/ast-utils';
 import { ensureTypescript } from '@nx/js/src/utils/typescript/ensure-typescript';
+import { join } from 'path';
 
 let tsModule: typeof import('typescript');
 
@@ -52,9 +54,22 @@ interface AppComponentInfo {
   filePath: string;
 }
 
+async function getProjectConfig(tree: Tree, projectName: string) {
+  let maybeProjectConfig = readProjectConfiguration(tree, projectName);
+  if (!maybeProjectConfig.targets?.build) {
+    let projectGraph;
+    try {
+      projectGraph = readCachedProjectGraph();
+    } catch {
+      projectGraph = await createProjectGraphAsync();
+    }
+    maybeProjectConfig = projectGraph.nodes[projectName].data;
+  }
+  return maybeProjectConfig;
+}
+
 export async function setupSsrGenerator(tree: Tree, options: Schema) {
-  await initGenerator(tree, { skipFormat: true });
-  const projectConfig = readProjectConfiguration(tree, options.project);
+  const projectConfig = await getProjectConfig(tree, options.project);
   const projectRoot = projectConfig.root;
   const appImportCandidates: AppComponentInfo[] = [
     options.appComponentImportPath ?? 'app/app',
@@ -92,23 +107,37 @@ export async function setupSsrGenerator(tree: Tree, options: Schema) {
     throw new Error(`Project ${options.project} already has a server target.`);
   }
 
-  const originalOutputPath = projectConfig.targets.build?.options?.outputPath;
+  const originalOutputPath =
+    projectConfig.targets.build?.options?.outputPath ??
+    projectConfig.targets.build?.outputs[0];
 
   if (!originalOutputPath) {
     throw new Error(
       `Project ${options.project} does not contain a outputPath for the build target.`
     );
   }
+  // TODO(colum): We need to figure out how to handle this for Crystal
+  if (projectConfig.targets.build.options?.outputPath) {
+    projectConfig.targets.build.options.outputPath = joinPathFragments(
+      originalOutputPath,
+      'browser'
+    );
+  }
 
-  projectConfig.targets.build.options.outputPath = joinPathFragments(
-    originalOutputPath,
-    'browser'
-  );
+  if (projectConfig.targets.build.executor === '@nx/rspack:rspack') {
+    options.bundler = 'rspack';
+  } else if (projectConfig.targets.build.executor === '@nx/webpack:webpack') {
+    options.bundler = 'webpack';
+  }
+
   projectConfig.targets = {
     ...projectConfig.targets,
     server: {
       dependsOn: ['build'],
-      executor: '@nx/webpack:webpack',
+      executor:
+        options.bundler === 'rspack'
+          ? '@nx/rspack:rspack'
+          : '@nx/webpack:webpack',
       outputs: ['{options.outputPath}'],
       defaultConfiguration: 'production',
       options: {
@@ -120,8 +149,14 @@ export async function setupSsrGenerator(tree: Tree, options: Schema) {
         compiler: 'babel',
         externalDependencies: 'all',
         outputHashing: 'none',
-        isolatedConfig: true,
-        webpackConfig: joinPathFragments(projectRoot, 'webpack.config.js'),
+        ...(options.bundler === 'rspack'
+          ? { rspackConfig: joinPathFragments(projectRoot, 'rspack.config.js') }
+          : {
+              webpackConfig: joinPathFragments(
+                projectRoot,
+                'webpack.config.js'
+              ),
+            }),
       },
       configurations: {
         development: {
@@ -157,7 +192,10 @@ export async function setupSsrGenerator(tree: Tree, options: Schema) {
       },
     },
     serve: {
-      executor: '@nx/webpack:ssr-dev-server',
+      executor:
+        options.bundler === 'rspack'
+          ? '@nx/rspack:ssr-dev-server'
+          : '@nx/webpack:ssr-dev-server',
       defaultConfiguration: 'development',
       options: {
         browserTarget: `${options.project}:build:development`,
@@ -182,7 +220,7 @@ export async function setupSsrGenerator(tree: Tree, options: Schema) {
   const nxJson = readNxJson(tree);
   if (
     nxJson.tasksRunnerOptions?.default &&
-    !nxJson.tasksRunnerOptions.default.options.cacheableOperations.includes(
+    !nxJson.tasksRunnerOptions?.default.options.cacheableOperations.includes(
       'server'
     )
   ) {
@@ -191,15 +229,21 @@ export async function setupSsrGenerator(tree: Tree, options: Schema) {
       'server',
     ];
   }
+  nxJson.targetDefaults ??= {};
+  nxJson.targetDefaults['server'] ??= {};
+  nxJson.targetDefaults.server.cache = true;
 
-  generateFiles(tree, joinPathFragments(__dirname, 'files'), projectRoot, {
+  generateFiles(tree, join(__dirname, 'files'), projectRoot, {
     tmpl: '',
+    port: Number(options?.serverPort) || 4200,
     extraInclude:
       options.extraInclude?.length > 0
         ? `"${options.extraInclude.join('", "')}",`
         : '',
     appComponentImport: appComponentInfo.importPath,
-    browserBuildOutputPath: projectConfig.targets.build.options.outputPath,
+    browserBuildOutputPath:
+      projectConfig.targets.build?.options?.outputPath ??
+      projectConfig.targets.build?.outputs[0],
   });
 
   // Add <StaticRouter> to server main if needed.
@@ -237,5 +281,3 @@ export async function setupSsrGenerator(tree: Tree, options: Schema) {
 }
 
 export default setupSsrGenerator;
-
-export const setupSsrSchematic = convertNxGenerator(setupSsrGenerator);

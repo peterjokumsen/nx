@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "cli": "nx",
   "$id": "NxPluginE2E",
   "title": "Create an E2E app for a Nx Plugin",
@@ -33,8 +33,7 @@
     "linter": {
       "description": "The tool to use for running lint checks.",
       "type": "string",
-      "enum": ["eslint", "none"],
-      "default": "eslint"
+      "enum": ["none", "eslint"]
     },
     "minimal": {
       "type": "boolean",
@@ -46,6 +45,10 @@
       "type": "boolean",
       "default": false,
       "x-priority": "internal"
+    },
+    "useProjectJson": {
+      "type": "boolean",
+      "description": "Use a `project.json` configuration file instead of inlining the Nx configuration in the `package.json` file."
     }
   },
   "required": ["pluginName", "npmPackageName"]

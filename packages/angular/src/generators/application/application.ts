@@ -4,59 +4,55 @@ import {
   installPackagesTask,
   offsetFromRoot,
   readNxJson,
-  stripIndents,
   Tree,
   updateNxJson,
 } from '@nx/devkit';
+import { logShowProjectCommand } from '@nx/devkit/src/utils/log-show-project-command';
+import { initGenerator as jsInitGenerator } from '@nx/js';
+import { assertNotUsingTsSolutionSetup } from '@nx/js/src/utils/typescript/ts-solution-setup';
 import { angularInitGenerator } from '../init/init';
+import { setupSsr } from '../setup-ssr/setup-ssr';
 import { setupTailwindGenerator } from '../setup-tailwind/setup-tailwind';
-import { getInstalledAngularVersionInfo } from '../utils/version-utils';
+import { ensureAngularDependencies } from '../utils/ensure-angular-dependencies';
 import {
   addE2e,
   addLinting,
   addProxyConfig,
+  addServeStaticTarget,
   addUnitTestRunner,
   createFiles,
   createProject,
   enableStrictTypeChecking,
   normalizeOptions,
   setApplicationStrictDefault,
+  setGeneratorDefaults,
   updateEditorTsConfig,
 } from './lib';
 import type { Schema } from './schema';
-import { gte, lt } from 'semver';
-import { prompt } from 'enquirer';
 
 export async function applicationGenerator(
   tree: Tree,
   schema: Partial<Schema>
 ): Promise<GeneratorCallback> {
-  const installedAngularVersionInfo = getInstalledAngularVersionInfo(tree);
+  assertNotUsingTsSolutionSetup(tree, 'angular', 'application');
 
-  if (lt(installedAngularVersionInfo.version, '14.1.0') && schema.standalone) {
-    throw new Error(stripIndents`The "standalone" option is only supported in Angular >= 14.1.0. You are currently using ${installedAngularVersionInfo.version}.
-    You can resolve this error by removing the "standalone" option or by migrating to Angular 14.1.0.`);
-  }
-
-  if (
-    gte(installedAngularVersionInfo.version, '14.1.0') &&
-    schema.standalone === undefined &&
-    process.env.NX_INTERACTIVE === 'true'
-  ) {
-    schema.standalone = await prompt({
-      name: 'standalone-components',
-      message: 'Would you like to use Standalone Components?',
-      type: 'confirm',
-    }).then((a) => a['standalone-components']);
-  }
-
-  const options = normalizeOptions(tree, schema);
+  const options = await normalizeOptions(tree, schema);
   const rootOffset = offsetFromRoot(options.appProjectRoot);
 
+  await jsInitGenerator(tree, {
+    ...options,
+    tsConfigName: options.rootProject ? 'tsconfig.json' : 'tsconfig.base.json',
+    js: false,
+    skipFormat: true,
+  });
   await angularInitGenerator(tree, {
     ...options,
     skipFormat: true,
   });
+
+  if (!options.skipPackageJson) {
+    ensureAngularDependencies(tree);
+  }
 
   createProject(tree, options);
 
@@ -72,8 +68,14 @@ export async function applicationGenerator(
 
   await addLinting(tree, options);
   await addUnitTestRunner(tree, options);
-  await addE2e(tree, options);
+  const e2ePort = await addE2e(tree, options);
+  addServeStaticTarget(
+    tree,
+    options,
+    options.e2eTestRunner !== 'none' ? e2ePort : options.port
+  );
   updateEditorTsConfig(tree, options);
+  setGeneratorDefaults(tree, options);
 
   if (options.rootProject) {
     const nxJson = readNxJson(tree);
@@ -91,12 +93,22 @@ export async function applicationGenerator(
     setApplicationStrictDefault(tree, false);
   }
 
+  if (options.ssr) {
+    await setupSsr(tree, {
+      project: options.name,
+      standalone: options.standalone,
+      skipPackageJson: options.skipPackageJson,
+      serverRouting: options.serverRouting,
+    });
+  }
+
   if (!options.skipFormat) {
     await formatFiles(tree);
   }
 
   return () => {
     installPackagesTask(tree);
+    logShowProjectCommand(options.name);
   };
 }
 

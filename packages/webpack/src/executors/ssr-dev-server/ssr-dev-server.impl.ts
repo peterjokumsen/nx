@@ -4,7 +4,7 @@ import {
   readTargetOptions,
   runExecutor,
 } from '@nx/devkit';
-import * as chalk from 'chalk';
+import * as pc from 'picocolors';
 import { combineAsyncIterables } from '@nx/devkit/src/utils/async-iterable';
 
 import { WebpackExecutorOptions } from '../webpack/schema';
@@ -19,10 +19,7 @@ export async function* ssrDevServerExecutor(
     options.browserTarget,
     context.projectGraph
   );
-  const serverTarget = parseTargetString(
-    options.serverTarget,
-    context.projectGraph
-  );
+  const serverTarget = parseTargetString(options.serverTarget, context);
   const browserOptions = readTargetOptions<WebpackExecutorOptions>(
     browserTarget,
     context
@@ -54,8 +51,6 @@ export async function* ssrDevServerExecutor(
   let nodeStarted = false;
   const combined = combineAsyncIterables(runBrowser, runServer);
 
-  process.env['port'] = `${options.port}`;
-
   for await (const output of combined) {
     if (!output.success) throw new Error('Could not build application');
     if (output.options?.target === 'node') {
@@ -67,7 +62,7 @@ export async function* ssrDevServerExecutor(
     if (nodeStarted && browserBuilt) {
       await waitUntilServerIsListening(options.port);
       console.log(
-        `[ ${chalk.green('ready')} ] on http://localhost:${options.port}`
+        `[ ${pc.green('ready')} ] on http://localhost:${options.port}`
       );
       yield {
         ...output,

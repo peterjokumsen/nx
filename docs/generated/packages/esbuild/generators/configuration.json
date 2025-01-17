@@ -3,7 +3,7 @@
   "aliases": ["esbuild-project"],
   "factory": "./src/generators/configuration/configuration",
   "schema": {
-    "$schema": "http://json-schema.org/schema",
+    "$schema": "https://json-schema.org/schema",
     "$id": "NxEsBuildProject",
     "cli": "nx",
     "title": "Add esbuild configuration to a project",
@@ -61,6 +61,12 @@
         "description": "The build target to add.",
         "type": "string",
         "default": "build"
+      },
+      "format": {
+        "description": "The format to build the library (esm or cjs).",
+        "type": "array",
+        "items": { "type": "string", "enum": ["esm", "cjs"] },
+        "default": ["esm"]
       }
     },
     "required": [],
@@ -68,8 +74,8 @@
     "presets": []
   },
   "description": "Add esbuild configuration to a project.",
-  "hidden": true,
   "implementation": "/packages/esbuild/src/generators/configuration/configuration.ts",
+  "hidden": false,
   "path": "/packages/esbuild/src/generators/configuration/schema.json",
   "type": "generator"
 }

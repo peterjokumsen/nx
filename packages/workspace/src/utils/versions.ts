@@ -1,7 +1,7 @@
 export const nxVersion = require('../../package.json').version;
 
-export const typescriptVersion = '~5.1.3';
+export const typescriptVersion = '~5.7.2';
 
 // TODO: remove when preset generation is reworked and
 // deps are not installed from workspace
-export const angularCliVersion = '~16.1.0';
+export const angularCliVersion = '~19.1.0';

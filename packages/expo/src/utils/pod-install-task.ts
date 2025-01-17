@@ -1,19 +1,19 @@
 import { execSync } from 'child_process';
+import { existsSync } from 'node:fs';
 import { platform } from 'os';
-import * as chalk from 'chalk';
-import { GeneratorCallback, logger } from '@nx/devkit';
-import { existsSync } from 'fs-extra';
 import { join } from 'path';
+import * as pc from 'picocolors';
+import { GeneratorCallback, logger } from '@nx/devkit';
 
 const podInstallErrorMessage = `
-Running ${chalk.bold('pod install')} failed, see above.
+Running ${pc.bold('pod install')} failed, see above.
 Do you have CocoaPods (https://cocoapods.org/) installed?
 
 Check that your XCode path is correct:
-${chalk.bold('sudo xcode-select --print-path')}
+${pc.bold('sudo xcode-select --print-path')}
 
 If the path is wrong, switch the path: (your path may be different)
-${chalk.bold('sudo xcode-select --switch /Applications/Xcode.app')}
+${pc.bold('sudo xcode-select --switch /Applications/Xcode.app')}
 `;
 
 /**
@@ -24,7 +24,15 @@ ${chalk.bold('sudo xcode-select --switch /Applications/Xcode.app')}
 export function runPodInstall(
   iosDirectory: string,
   install: boolean = true,
-  buildFolder?: string
+  options: {
+    buildFolder?: string;
+    repoUpdate?: boolean;
+    deployment?: boolean;
+  } = {
+    buildFolder: './build',
+    repoUpdate: false,
+    deployment: false,
+  }
 ): GeneratorCallback {
   return () => {
     if (platform() !== 'darwin') {
@@ -39,16 +47,40 @@ export function runPodInstall(
 
     logger.info(`Running \`pod install\` from "${iosDirectory}"`);
 
-    return podInstall(iosDirectory, buildFolder);
+    return podInstall(iosDirectory, options);
   };
 }
 
-export function podInstall(iosDirectory: string, buildFolder?: string) {
+export function podInstall(
+  iosDirectory: string,
+  options: {
+    buildFolder?: string;
+    repoUpdate?: boolean;
+    deployment?: boolean;
+  } = {
+    buildFolder: './build',
+    repoUpdate: false,
+    deployment: false,
+  }
+) {
   try {
-    execSync('pod install', {
-      cwd: iosDirectory,
-      stdio: 'inherit',
-    });
+    if (existsSync(join(iosDirectory, '.xcode.env'))) {
+      execSync('touch .xcode.env', {
+        cwd: iosDirectory,
+        stdio: 'inherit',
+        windowsHide: false,
+      });
+    }
+    execSync(
+      `pod install ${options.repoUpdate ? '--repo-update' : ''} ${
+        options.deployment ? '--deployment' : ''
+      }`,
+      {
+        cwd: iosDirectory,
+        stdio: 'inherit',
+        windowsHide: false,
+      }
+    );
   } catch (e) {
     logger.error(podInstallErrorMessage);
     throw e;

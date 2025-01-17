@@ -1,14 +1,14 @@
-import * as chalk from 'chalk';
-import { output } from '../output';
-import type { PluginCapabilities } from './models';
-import { getPluginCapabilities } from './plugin-capabilities';
-import { hasElements } from './shared';
+import { join } from 'path';
+import { readNxJson } from '../../config/nx-json';
+import { ProjectConfiguration } from '../../config/workspace-json-project-json';
 import { readJsonFile } from '../fileutils';
+import { getNxRequirePaths } from '../installation-directory';
 import { PackageJson, readModulePackageJson } from '../package-json';
 import { workspaceRoot } from '../workspace-root';
-import { join } from 'path';
-import { NxJsonConfiguration } from '../../config/nx-json';
-import { getNxRequirePaths } from '../installation-directory';
+import {
+  PluginCapabilities,
+  getPluginCapabilities,
+} from './plugin-capabilities';
 
 export function findInstalledPlugins(): PackageJson[] {
   const packageJsonDeps = getDependenciesFromPackageJson();
@@ -56,9 +56,7 @@ function getDependenciesFromPackageJson(
 }
 
 function getDependenciesFromNxJson(): string[] {
-  const { installation } = readJsonFile<NxJsonConfiguration>(
-    join(workspaceRoot, 'nx.json')
-  );
+  const { installation } = readNxJson();
   if (!installation) {
     return [];
   }
@@ -66,14 +64,19 @@ function getDependenciesFromNxJson(): string[] {
 }
 
 export async function getInstalledPluginsAndCapabilities(
-  workspaceRoot: string
+  workspaceRoot: string,
+  projects: Record<string, ProjectConfiguration>
 ): Promise<Map<string, PluginCapabilities>> {
   const plugins = findInstalledPlugins().map((p) => p.name);
 
   const result = new Map<string, PluginCapabilities>();
   for (const plugin of Array.from(plugins).sort()) {
     try {
-      const capabilities = await getPluginCapabilities(workspaceRoot, plugin);
+      const capabilities = await getPluginCapabilities(
+        workspaceRoot,
+        plugin,
+        projects
+      );
       if (
         capabilities &&
         (capabilities.executors ||
@@ -87,32 +90,4 @@ export async function getInstalledPluginsAndCapabilities(
   }
 
   return result;
-}
-
-export function listInstalledPlugins(
-  installedPlugins: Map<string, PluginCapabilities>
-) {
-  const bodyLines: string[] = [];
-
-  for (const [, p] of installedPlugins) {
-    const capabilities = [];
-    if (hasElements(p.executors)) {
-      capabilities.push('executors');
-    }
-    if (hasElements(p.generators)) {
-      capabilities.push('generators');
-    }
-    if (p.projectGraphExtension) {
-      capabilities.push('graph-extensions');
-    }
-    if (p.projectInference) {
-      capabilities.push('project-inference');
-    }
-    bodyLines.push(`${chalk.bold(p.name)} (${capabilities.join()})`);
-  }
-
-  output.log({
-    title: `Installed plugins:`,
-    bodyLines: bodyLines,
-  });
 }

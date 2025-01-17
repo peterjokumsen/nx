@@ -1,7 +1,7 @@
 # Using Tailwind CSS with Angular projects
 
 The purpose of this page is to cover how to use and configure [Tailwind CSS](https://tailwindcss.com/)
-with [Angular](https://angular.io/) projects. It shows the different options available to set it up in existing projects
+with [Angular](https://angular.dev/) projects. It shows the different options available to set it up in existing projects
 or new projects, and it also contains a set of our recommended setups for using Tailwind CSS in different scenarios that
 can be found on an Nx workspace.
 
@@ -13,19 +13,19 @@ post [Set up Tailwind CSS with Angular in an Nx workspace](https://medium.com/nr
 To generate an Angular application with Tailwind CSS configured run:
 
 ```shell
-npx nx g @nx/angular:app my-app --add-tailwind
+npx nx g @nx/angular:app apps/my-app --add-tailwind
 ```
 
 To generate an Angular buildable library with Tailwind CSS configured run:
 
 ```shell
-npx nx g @nx/angular:lib my-lib --buildable --add-tailwind
+npx nx g @nx/angular:lib libs/my-lib --buildable --add-tailwind
 ```
 
 To generate an Angular publishable library with Tailwind CSS configured run:
 
 ```shell
-npx nx g @nx/angular:lib my-lib --publishable --importPath=@my-org/my-lib --add-tailwind
+npx nx g @nx/angular:lib libs/my-lib --publishable --importPath=@my-org/my-lib --add-tailwind
 ```
 
 To add Tailwind CSS to an existing Angular application, buildable library or publishable library, run:
@@ -34,7 +34,7 @@ To add Tailwind CSS to an existing Angular application, buildable library or pub
 npx nx g @nx/angular:setup-tailwind my-project
 ```
 
-You can see the available options for the above generator in [its docs](/packages/angular/generators/setup-tailwind).
+You can see the available options for the above generator in [its docs](/nx-api/angular/generators/setup-tailwind).
 
 ## Configuring the content sources for a project and its dependencies
 
@@ -423,8 +423,7 @@ to have the following targets:
   "executor": "@nx/angular:package",
   "outputs": ["{workspaceRoot}/dist/libs/lib1"],
   "options": {
-    "project": "libs/lib1/ng-package.json",
-    "tailwindConfig": "libs/lib1/tailwind.config.js"
+    "project": "libs/lib1/ng-package.json"
   },
   "configurations": {
     "production": {

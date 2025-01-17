@@ -1,22 +1,40 @@
 import {
   joinPathFragments,
   normalizePath,
+  NX_VERSION,
   ProjectGraphExternalNode,
   ProjectGraphProjectNode,
   workspaceRoot,
 } from '@nx/devkit';
+import {
+  AST_NODE_TYPES,
+  ESLintUtils,
+  TSESTree,
+} from '@typescript-eslint/utils';
+import { isBuiltinModuleImport } from '@nx/js/src/internal';
 import { isRelativePath } from 'nx/src/utils/fileutils';
+import { basename, dirname, join, relative } from 'path';
+import {
+  getBarrelEntryPointByImportScope,
+  getBarrelEntryPointProjectNode,
+  getRelativeImportPath,
+} from '../utils/ast-utils';
 import {
   checkCircularPath,
-  findFilesWithDynamicImports,
+  circularPathHasPair,
+  expandIgnoredCircularDependencies,
   findFilesInCircularPath,
+  findFilesWithDynamicImports,
 } from '../utils/graph-utils';
+import { readProjectGraph } from '../utils/project-graph-utils';
 import {
+  appIsMFERemote,
+  belongsToDifferentNgEntryPoint,
   DepConstraint,
   findConstraintsFor,
   findDependenciesWithTags,
-  findProjectUsingImport,
   findProject,
+  findProjectUsingImport,
   findTransitiveExternalDependencies,
   getSourceFilePath,
   getTargetProjectBasedOnRelativeImport,
@@ -25,23 +43,13 @@ import {
   hasBannedImport,
   hasBuildExecutor,
   hasNoneOfTheseTags,
+  hasStaticImportOfDynamicResource,
   isAbsoluteImportIntoAnotherProject,
-  isAngularSecondaryEntrypoint,
+  isComboDepConstraint,
   isDirectDependency,
   matchImportWithWildcard,
-  onlyLoadChildren,
   stringifyTags,
-  isComboDepConstraint,
 } from '../utils/runtime-lint-utils';
-import { AST_NODE_TYPES, TSESTree } from '@typescript-eslint/utils';
-import { basename, dirname, relative } from 'path';
-import {
-  getBarrelEntryPointByImportScope,
-  getBarrelEntryPointProjectNode,
-  getRelativeImportPath,
-} from '../utils/ast-utils';
-import { createESLintRule } from '../utils/create-eslint-rule';
-import { readProjectGraph } from '../utils/project-graph-utils';
 
 type Options = [
   {
@@ -50,6 +58,7 @@ type Options = [
     depConstraints: DepConstraint[];
     enforceBuildableLibDependency: boolean;
     allowCircularSelfDependency: boolean;
+    ignoredCircularDependencies: Array<[string, string]>;
     checkDynamicDependenciesExceptions: string[];
     banTransitiveDependencies: boolean;
     checkNestedExternalImports: boolean;
@@ -57,6 +66,7 @@ type Options = [
 ];
 export type MessageIds =
   | 'noRelativeOrAbsoluteImportsAcrossLibraries'
+  | 'noRelativeOrAbsoluteExternals'
   | 'noSelfCircularDependencies'
   | 'noCircularDependencies'
   | 'noImportsOfApps'
@@ -72,13 +82,15 @@ export type MessageIds =
   | 'notTagsConstraintViolation';
 export const RULE_NAME = 'enforce-module-boundaries';
 
-export default createESLintRule<Options, MessageIds>({
+export default ESLintUtils.RuleCreator(
+  () =>
+    `https://github.com/nrwl/nx/blob/${NX_VERSION}/docs/generated/packages/eslint-plugin/documents/enforce-module-boundaries.md`
+)<Options, MessageIds>({
   name: RULE_NAME,
   meta: {
     type: 'suggestion',
     docs: {
       description: `Ensure that module boundaries are respected within the monorepo`,
-      recommended: 'error',
     },
     fixable: 'code',
     schema: [
@@ -87,39 +99,87 @@ export default createESLintRule<Options, MessageIds>({
         properties: {
           enforceBuildableLibDependency: { type: 'boolean' },
           allowCircularSelfDependency: { type: 'boolean' },
-          checkDynamicDependenciesExceptions: [{ type: 'string' }],
+          checkDynamicDependenciesExceptions: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+          ignoredCircularDependencies: {
+            type: 'array',
+            items: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 2,
+              maxItems: 2,
+            },
+          },
           banTransitiveDependencies: { type: 'boolean' },
           checkNestedExternalImports: { type: 'boolean' },
-          allow: [{ type: 'string' }],
-          buildTargets: [{ type: 'string' }],
-          depConstraints: [
-            {
-              type: 'object',
-              properties: {
-                oneOf: [
-                  { sourceTag: { type: 'string' } },
-                  {
+          allow: { type: 'array', items: { type: 'string' } },
+          buildTargets: { type: 'array', items: { type: 'string' } },
+          depConstraints: {
+            type: 'array',
+            items: {
+              oneOf: [
+                {
+                  type: 'object',
+                  properties: {
+                    sourceTag: { type: 'string' },
+                    onlyDependOnLibsWithTags: {
+                      type: 'array',
+                      items: { type: 'string' },
+                    },
+                    allowedExternalImports: {
+                      type: 'array',
+                      items: { type: 'string' },
+                    },
+                    bannedExternalImports: {
+                      type: 'array',
+                      items: { type: 'string' },
+                    },
+                    notDependOnLibsWithTags: {
+                      type: 'array',
+                      items: { type: 'string' },
+                    },
+                  },
+                  additionalProperties: false,
+                },
+                {
+                  type: 'object',
+                  properties: {
                     allSourceTags: {
                       type: 'array',
                       items: { type: 'string' },
                       minItems: 2,
                     },
+                    onlyDependOnLibsWithTags: {
+                      type: 'array',
+                      items: { type: 'string' },
+                    },
+                    allowedExternalImports: {
+                      type: 'array',
+                      items: { type: 'string' },
+                    },
+                    bannedExternalImports: {
+                      type: 'array',
+                      items: { type: 'string' },
+                    },
+                    notDependOnLibsWithTags: {
+                      type: 'array',
+                      items: { type: 'string' },
+                    },
                   },
-                ],
-                onlyDependOnLibsWithTags: [{ type: 'string' }],
-                allowedExternalImports: [{ type: 'string' }],
-                bannedExternalImports: [{ type: 'string' }],
-                notDependOnLibsWithTags: [{ type: 'string' }],
-              },
-              additionalProperties: false,
+                  additionalProperties: false,
+                },
+              ],
             },
-          ],
+          },
         },
         additionalProperties: false,
       },
     ],
     messages: {
       noRelativeOrAbsoluteImportsAcrossLibraries: `Projects cannot be imported by a relative or absolute path, and must begin with a npm scope`,
+      noRelativeOrAbsoluteExternals: `External resources cannot be imported using a relative or absolute path`,
       noCircularDependencies: `Circular dependency between "{{sourceProjectName}}" and "{{targetProjectName}}" detected: {{path}}\n\nCircular file chain:\n{{filePaths}}`,
       noSelfCircularDependencies: `Projects should use relative imports to import from other files within the same project. Use "./path/to/file" instead of import from "{{imp}}"`,
       noImportsOfApps: 'Imports of apps are forbidden',
@@ -130,7 +190,7 @@ export default createESLintRule<Options, MessageIds>({
       projectWithoutTagsCannotHaveDependencies: `A project without tags matching at least one constraint cannot depend on any libraries`,
       bannedExternalImportsViolation: `A project tagged with "{{sourceTag}}" is not allowed to import "{{imp}}"`,
       nestedBannedExternalImportsViolation: `A project tagged with "{{sourceTag}}" is not allowed to import "{{imp}}". Nested import found at {{childProjectName}}`,
-      noTransitiveDependencies: `Transitive dependencies are not allowed. Only packages defined in the "package.json" can be imported`,
+      noTransitiveDependencies: `Only packages defined in the "package.json" can be imported. Transitive or unresolvable dependencies are not allowed.`,
       onlyTagsConstraintViolation: `A project tagged with "{{sourceTag}}" can only depend on libs tagged with {{tags}}`,
       emptyOnlyTagsConstraintViolation:
         'A project tagged with "{{sourceTag}}" cannot depend on any libs with tags',
@@ -145,6 +205,7 @@ export default createESLintRule<Options, MessageIds>({
       enforceBuildableLibDependency: false,
       allowCircularSelfDependency: false,
       checkDynamicDependenciesExceptions: [],
+      ignoredCircularDependencies: [],
       banTransitiveDependencies: false,
       checkNestedExternalImports: false,
     },
@@ -159,6 +220,7 @@ export default createESLintRule<Options, MessageIds>({
         enforceBuildableLibDependency,
         allowCircularSelfDependency,
         checkDynamicDependenciesExceptions,
+        ignoredCircularDependencies,
         banTransitiveDependencies,
         checkNestedExternalImports,
       },
@@ -170,7 +232,7 @@ export default createESLintRule<Options, MessageIds>({
     const projectPath = normalizePath(
       (global as any).projectPath || workspaceRoot
     );
-    const fileName = normalizePath(context.getFilename());
+    const fileName = normalizePath(context.filename ?? context.getFilename());
 
     const {
       projectGraph,
@@ -184,6 +246,12 @@ export default createESLintRule<Options, MessageIds>({
     }
 
     const workspaceLayout = (global as any).workspaceLayout;
+
+    const expandedIgnoreCircularDependencies =
+      expandIgnoredCircularDependencies(
+        ignoredCircularDependencies,
+        projectGraph
+      );
 
     function run(
       node:
@@ -269,8 +337,7 @@ export default createESLintRule<Options, MessageIds>({
                   for (const importMember of imports) {
                     const importPath = getRelativeImportPath(
                       importMember,
-                      joinPathFragments(workspaceRoot, entryPointPath.path),
-                      sourceProject.data.sourceRoot
+                      join(workspaceRoot, entryPointPath.path)
                     );
                     // we cannot remap, so leave it as is
                     if (importPath) {
@@ -306,18 +373,45 @@ export default createESLintRule<Options, MessageIds>({
           imp
         );
 
-      // If target is not part of an nx workspace, return.
       if (!targetProject) {
+        // non-project imports cannot use relative or absolute paths
+        if (isRelativePath(imp) || imp.startsWith('/')) {
+          context.report({
+            node,
+            messageId: 'noRelativeOrAbsoluteExternals',
+          });
+        } else if (banTransitiveDependencies && !isBuiltinModuleImport(imp)) {
+          /**
+           * At this point, the target project could not be found in the project graph, and it is not a relative or absolute import.
+           * Therefore it could be an external/npm package dependency (but not a node built in module) which has not yet been installed
+           * in the workspace.
+           *
+           * If the banTransitiveDependencies option is enabled, we should flag this case as an error because the user is trying to
+           * depend on something which is not explicitly defined/resolvable on disk for their project.
+           */
+          context.report({
+            node,
+            messageId: 'noTransitiveDependencies',
+          });
+        }
+
+        // If target is not found (including node internals) we bail early
         return;
       }
 
       // we only allow relative paths within the same project
       // and if it's not a secondary entrypoint in an angular lib
-      if (sourceProject === targetProject) {
+      if (
+        sourceProject === targetProject &&
+        !circularPathHasPair(
+          [sourceProject, targetProject],
+          expandedIgnoreCircularDependencies
+        )
+      ) {
         if (
           !allowCircularSelfDependency &&
           !isRelativePath(imp) &&
-          !isAngularSecondaryEntrypoint(
+          !belongsToDifferentNgEntryPoint(
             imp,
             sourceFilePath,
             sourceProject.data.root
@@ -349,8 +443,7 @@ export default createESLintRule<Options, MessageIds>({
                   for (const importMember of imports) {
                     const importPath = getRelativeImportPath(
                       importMember,
-                      joinPathFragments(workspaceRoot, entryPointPath),
-                      sourceProject.data.sourceRoot
+                      join(workspaceRoot, entryPointPath)
                     );
                     if (importPath) {
                       // resolve the import path
@@ -439,7 +532,10 @@ export default createESLintRule<Options, MessageIds>({
         sourceProject,
         targetProject
       );
-      if (circularPath.length !== 0) {
+      if (
+        circularPath.length !== 0 &&
+        !circularPathHasPair(circularPath, expandedIgnoreCircularDependencies)
+      ) {
         const circularFilePath = findFilesInCircularPath(
           projectFileMap,
           circularPath
@@ -477,7 +573,7 @@ export default createESLintRule<Options, MessageIds>({
       }
 
       // cannot import apps
-      if (targetProject.type === 'app') {
+      if (targetProject.type === 'app' && !appIsMFERemote(targetProject)) {
         context.report({
           node,
           messageId: 'noImportsOfApps',
@@ -514,16 +610,14 @@ export default createESLintRule<Options, MessageIds>({
 
       // if we import a library using loadChildren, we should not import it using es6imports
       if (
-        node.type === AST_NODE_TYPES.ImportDeclaration &&
-        node.importKind !== 'type' &&
         !checkDynamicDependenciesExceptions.some((a) =>
           matchImportWithWildcard(a, imp)
         ) &&
-        onlyLoadChildren(
+        hasStaticImportOfDynamicResource(
+          node,
           projectGraph,
           sourceProject.name,
-          targetProject.name,
-          []
+          targetProject.name
         )
       ) {
         const filesWithLazyImports = findFilesWithDynamicImports(

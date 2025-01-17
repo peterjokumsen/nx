@@ -1,12 +1,13 @@
-import {
-  readProjectConfiguration,
-  Tree,
-  updateProjectConfiguration,
-} from '@nx/devkit';
+import 'nx/src/internal-testing-utils/mock-project-graph';
+
+import { Tree } from '@nx/devkit';
 import storiesGenerator from './stories';
 import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
-import applicationGenerator from '../application/application';
-import { Linter } from '@nx/linter';
+/* eslint-disable @nx/enforce-module-boundaries */
+// nx-ignore-next-line
+import { applicationGenerator } from '@nx/next';
+/* eslint-enable @nx/enforce-module-boundaries */
+import { Linter } from '@nx/eslint';
 
 describe('nextjs:stories for applications', () => {
   let tree: Tree;
@@ -14,7 +15,7 @@ describe('nextjs:stories for applications', () => {
   beforeEach(async () => {
     tree = await createTestUIApp('test-ui-app');
     tree.write(
-      'apps/test-ui-app/components/test.tsx',
+      'test-ui-app/components/test.tsx',
       `import './test.module.scss';
 
       export interface TestProps {
@@ -38,7 +39,7 @@ describe('nextjs:stories for applications', () => {
     });
 
     expect(
-      tree.exists('apps/test-ui-app/components/test.stories.tsx')
+      tree.exists('test-ui-app/components/test.stories.tsx')
     ).toMatchSnapshot();
 
     const packageJson = JSON.parse(tree.read('package.json', 'utf-8'));
@@ -58,7 +59,7 @@ describe('nextjs:stories for applications', () => {
     });
 
     expect(
-      tree.exists('apps/test-ui-app/components/test.stories.tsx')
+      tree.exists('test-ui-app/components/test.stories.tsx')
     ).toMatchSnapshot();
     const packageJson = JSON.parse(tree.read('package.json', 'utf-8'));
     expect(
@@ -75,32 +76,23 @@ describe('nextjs:stories for applications', () => {
   it('should ignore paths', async () => {
     await storiesGenerator(tree, {
       project: 'test-ui-app',
-      ignorePaths: ['apps/test-ui-app/components/**'],
+      ignorePaths: ['test-ui-app/components/**'],
     });
 
-    expect(
-      tree.exists('apps/test-ui-app/components/test.stories.tsx')
-    ).toBeFalsy();
+    expect(tree.exists('test-ui-app/components/test.stories.tsx')).toBeFalsy();
   });
 });
 
 export async function createTestUIApp(name: string): Promise<Tree> {
-  const tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
+  const tree = createTreeWithEmptyWorkspace();
   await applicationGenerator(tree, {
     e2eTestRunner: 'none',
     linter: Linter.EsLint,
     skipFormat: true,
     style: 'css',
     unitTestRunner: 'none',
-    name,
-    bundler: 'vite',
+    directory: name,
   });
-
-  const config = readProjectConfiguration(tree, name);
-  config.sourceRoot = config.root;
-  config.targets.build.executor = '@nx/next:build';
-  config.targets.serve.executor = '@nx/next:server';
-  updateProjectConfiguration(tree, name, config);
 
   return tree;
 }

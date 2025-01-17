@@ -32,7 +32,7 @@ Static options for a generator don't prompt the user for input. To add a static 
 
 ```json
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "id": "my-generator",
   "type": "object",
   "properties": {
@@ -61,7 +61,7 @@ Dynamic options can prompt the user to select from a list of options. To define 
 
 ```json
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "id": "my-generator",
   "type": "object",
   "properties": {
@@ -108,7 +108,7 @@ There's a special dynamic option property that populates a selection list with y
 
 ```json
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "id": "my-generator",
   "type": "object",
   "properties": {
@@ -617,7 +617,7 @@ The default value of this property. Example:
   "linter": {
     "description": "The tool to use for running lint checks.",
     "type": "string",
-    "enum": ["eslint", "tslint"],
+    "enum": ["eslint"],
     "default": "eslint"
   }
 }
@@ -752,15 +752,15 @@ Example that contains `value` and `label`:
         },
         {
           "value": "scss",
-          "label": "SASS(.scss)  [ http://sass-lang.com   ]"
+          "label": "SASS(.scss)  [ https://sass-lang.com   ]"
         },
         {
           "value": "sass",
-          "label": "SASS(.sass)  [ http://sass-lang.com   ]"
+          "label": "SASS(.sass)  [ https://sass-lang.com   ]"
         },
         {
           "value": "less",
-          "label": "LESS         [ http://lesscss.org     ]"
+          "label": "LESS         [ https://lesscss.org     ]"
         }
       ]
     }

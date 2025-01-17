@@ -2,11 +2,14 @@ import {
   checkFilesExist,
   cleanupProject,
   killPorts,
+  listFiles,
   newProject,
+  readFile,
   runCLI,
   runCommandUntil,
   tmpProjPath,
   uniq,
+  updateFile,
 } from '@nx/e2e/utils';
 import { writeFileSync } from 'fs';
 import { createFileSync } from 'fs-extra';
@@ -14,8 +17,10 @@ import { createFileSync } from 'fs-extra';
 describe('Storybook generators and executors for monorepos', () => {
   const reactStorybookApp = uniq('react-app');
   let proj;
-  beforeAll(() => {
-    proj = newProject();
+  beforeAll(async () => {
+    proj = newProject({
+      packages: ['@nx/react'],
+    });
     runCLI(
       `generate @nx/react:app ${reactStorybookApp} --bundler=webpack --no-interactive`
     );
@@ -32,7 +37,7 @@ describe('Storybook generators and executors for monorepos', () => {
   xdescribe('serve storybook', () => {
     afterEach(() => killPorts());
 
-    it('should serve a React based Storybook setup that uses Vite', async () => {
+    it('should serve a React based Storybook setup that uses webpack', async () => {
       const p = await runCommandUntil(
         `run ${reactStorybookApp}:storybook`,
         (output) => {
@@ -47,7 +52,7 @@ describe('Storybook generators and executors for monorepos', () => {
     it('should build a React based storybook setup that uses webpack', () => {
       // build
       runCLI(`run ${reactStorybookApp}:build-storybook --verbose`);
-      checkFilesExist(`dist/storybook/${reactStorybookApp}/index.html`);
+      checkFilesExist(`${reactStorybookApp}/storybook-static/index.html`);
     }, 300_000);
 
     // This test makes sure path resolution works
@@ -58,10 +63,10 @@ describe('Storybook generators and executors for monorepos', () => {
 
       // create a component in the first lib to reference the cmp from the 2nd lib
       createFileSync(
-        tmpProjPath(`apps/${reactStorybookApp}/src/app/test-button.tsx`)
+        tmpProjPath(`${reactStorybookApp}/src/app/test-button.tsx`)
       );
       writeFileSync(
-        tmpProjPath(`apps/${reactStorybookApp}/src/app/test-button.tsx`),
+        tmpProjPath(`${reactStorybookApp}/src/app/test-button.tsx`),
         `
           import { MyLib } from '@${proj}/my-lib';
 
@@ -79,12 +84,10 @@ describe('Storybook generators and executors for monorepos', () => {
 
       // create a story in the first lib to reference the cmp from the 2nd lib
       createFileSync(
-        tmpProjPath(`apps/${reactStorybookApp}/src/app/test-button.stories.tsx`)
+        tmpProjPath(`${reactStorybookApp}/src/app/test-button.stories.tsx`)
       );
       writeFileSync(
-        tmpProjPath(
-          `apps/${reactStorybookApp}/src/app/test-button.stories.tsx`
-        ),
+        tmpProjPath(`${reactStorybookApp}/src/app/test-button.stories.tsx`),
         `
               import type { Meta } from '@storybook/react';
               import { TestButton } from './test-button';
@@ -103,7 +106,34 @@ describe('Storybook generators and executors for monorepos', () => {
 
       // build React lib
       runCLI(`run ${reactStorybookApp}:build-storybook --verbose`);
-      checkFilesExist(`dist/storybook/${reactStorybookApp}/index.html`);
+      checkFilesExist(`${reactStorybookApp}/storybook-static/index.html`);
+    }, 300_000);
+
+    it('should not bundle in sensitive NX_ environment variables', () => {
+      updateFile(
+        `${reactStorybookApp}/.storybook/main.ts`,
+        (content) => `
+      ${content}
+      console.log(process.env);
+      `
+      );
+      runCLI(`run ${reactStorybookApp}:build-storybook --verbose`, {
+        env: {
+          NX_SOME_SECRET: 'MY SECRET',
+          NX_SOME_TOKEN: 'MY SECRET',
+        },
+      });
+
+      // Check all output chunks for bundled environment variables
+      const outDir = `${reactStorybookApp}/storybook-static`;
+      const files = listFiles(outDir);
+      for (const file of files) {
+        if (!file.endsWith('.js')) continue;
+        const content = readFile(`${outDir}/${file}`);
+        expect(content).not.toMatch(/NX_SOME_SECRET/);
+        expect(content).not.toMatch(/NX_SOME_TOKEN/);
+        expect(content).not.toMatch(/MY SECRET/);
+      }
     }, 300_000);
   });
 });

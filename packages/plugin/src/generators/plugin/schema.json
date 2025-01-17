@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/schema",
+  "$schema": "https://json-schema.org/schema",
   "cli": "nx",
   "$id": "NxPluginPlugin",
   "title": "Create a Plugin for Nx",
@@ -12,19 +12,19 @@
     }
   ],
   "properties": {
-    "name": {
+    "directory": {
       "type": "string",
-      "description": "Plugin name",
+      "description": "A directory where the plugin is placed.",
       "$default": {
         "$source": "argv",
         "index": 0
       },
-      "x-prompt": "What name would you like to use for the plugin?",
-      "x-priority": "important"
+      "x-prompt": "Which directory do you want to create the plugin in?"
     },
-    "directory": {
+    "name": {
       "type": "string",
-      "description": "A directory where the plugin is placed."
+      "description": "Plugin name",
+      "x-priority": "important"
     },
     "importPath": {
       "type": "string",
@@ -34,14 +34,14 @@
     "linter": {
       "description": "The tool to use for running lint checks.",
       "type": "string",
-      "enum": ["eslint"],
-      "default": "eslint"
+      "enum": ["none", "eslint"],
+      "x-priority": "important"
     },
     "unitTestRunner": {
-      "type": "string",
-      "enum": ["jest", "none"],
       "description": "Test runner to use for unit tests.",
-      "default": "jest"
+      "type": "string",
+      "enum": ["none", "jest", "vitest"],
+      "x-priority": "important"
     },
     "tags": {
       "type": "string",
@@ -92,7 +92,11 @@
       "type": "boolean",
       "description": "Generates a boilerplate for publishing the plugin to npm.",
       "default": false
+    },
+    "useProjectJson": {
+      "type": "boolean",
+      "description": "Use a `project.json` configuration file instead of inlining the Nx configuration in the `package.json` file."
     }
   },
-  "required": ["name"]
+  "required": ["directory"]
 }

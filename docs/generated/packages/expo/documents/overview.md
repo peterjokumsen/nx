@@ -4,39 +4,96 @@ Expo is a set of tools built on top of React Native. The Nx Plugin for Expo cont
 
 ## Setting Up Expo
 
-To create a new workspace with expo, run the following command:
+To create a new workspace with Expo, run the following command:
 
 ```shell
- npx create-nx-workspace --preset=expo
+ npx create-nx-workspace@latest --preset=expo --appName=your-app-name
 ```
 
-### Adding Expo to an Existing Project
+### Installation
 
-Install the expo plugin
+{% callout type="note" title="Keep Nx Package Versions In Sync" %}
+Make sure to install the `@nx/expo` version that matches the version of `nx` in your repository. If the version numbers get out of sync, you can encounter some difficult to debug errors. You can [fix Nx version mismatches with this recipe](/recipes/tips-n-tricks/keep-nx-versions-in-sync).
+{% /callout %}
+
+In any Nx workspace, you can install `@nx/expo` by running the following command:
 
 {% tabs %}
-{%tab label="npm"%}
+{% tab label="Nx 18+" %}
 
-```shell
-npm i --save-dev @nx/expo
+```shell {% skipRescope=true %}
+nx add @nx/expo
 ```
 
+This will install the correct version of `@nx/expo`.
+
 {% /tab %}
-{%tab label="yarn"%}
+{% tab label="Nx < 18" %}
+
+Install the `@nx/expo` package with your package manager.
 
 ```shell
-yarn add --dev @nx/expo
+npm add -D @nx/expo
 ```
 
 {% /tab %}
 {% /tabs %}
+
+### How @nx/expo Infers Tasks
+
+The `@nx/expo` plugin will create a task for any project that has an app configuration file present. Any of the following files will be recognized as an app configuration file:
+
+- `app.config.js`
+- `app.json`
+
+In the app config file, it needs to have key `expo`:
+
+```json
+{
+  "expo": {
+    "name": "MyProject",
+    "slug": "my-project"
+  }
+}
+```
+
+### View Inferred Tasks
+
+To view inferred tasks for a project, open the [project details view](/concepts/inferred-tasks) in Nx Console or run `nx show project my-project --web` in the command line.
+
+### @nx/expo Configuration
+
+The `@nx/expo/plugin` is configured in the `plugins` array in `nx.json`.
+
+```json {% fileName="nx.json" %}
+{
+  "plugins": [
+    {
+      "plugin": "@nx/expo/plugin",
+      "options": {
+        "startTargetName": "start",
+        "serveTargetName": "serve",
+        "runIosTargetName": "run-ios",
+        "runAndroidTargetName": "run-android",
+        "exportTargetName": "export",
+        "prebuildTargetName": "prebuild",
+        "installTargetName": "install",
+        "buildTargetName": "build",
+        "submitTargetName": "submit"
+      }
+    }
+  ]
+}
+```
+
+Once a Expo configuration file has been identified, the targets are created with the name you specify under `startTargetName`, `serveTargetName`, `runIosTargetName`, `runAndroidTargetname`, `exportTargetName`, `prebuildTargetName`, `installTargetName`, `buildTargetName` or `submitTargetName` in the `nx.json` `plugins` array. The default names for the inferred targets are `start`, `serve`, `run-ios`, `run-anroid`, `export`, `prebuild`, `install`, `build` and `submit`.
 
 ### Creating Applications
 
 Add a new application to your workspace with the following command:
 
 ```shell
-nx g @nx/expo:app my-app
+nx g @nx/expo:app apps/my-app
 ```
 
 Start the application by running:
@@ -50,7 +107,7 @@ nx start my-app
 To generate a new library run:
 
 ```shell
-npx nx g @nx/expo:lib your-lib-name
+npx nx g @nx/expo:lib libs/your-lib-name
 ```
 
 ### Generating Components
@@ -58,7 +115,7 @@ npx nx g @nx/expo:lib your-lib-name
 To generate a new component inside library run:
 
 ```shell
-npx nx g @nx/expo:component your-component-name --project=your-lib-name --export
+npx nx g @nx/expo:component libs/your-lib-name/src/your-component-name --export
 ```
 
 Replace `your-lib-name` with the app's name as defined in your `tsconfig.base.json` file or the `name` property of your `package.json`
@@ -296,5 +353,5 @@ Below table is a map between expo commands and Nx commands:
 
 ## More Documentation
 
-- [Using Detox](/packages/detox)
-- [Using Jest](/packages/jest)
+- [Using Detox](/nx-api/detox)
+- [Using Jest](/nx-api/jest)

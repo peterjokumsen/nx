@@ -5,15 +5,23 @@ import {
   readProjectConfiguration,
   runTasksInSerial,
   Tree,
-  updateJson,
 } from '@nx/devkit';
-import { Linter, lintProjectGenerator } from '@nx/linter';
-import { globalJavaScriptOverrides } from '@nx/linter/src/generators/init/global-eslint-config';
+import { Linter, LinterType, lintProjectGenerator } from '@nx/eslint';
+import { javaScriptOverride } from '@nx/eslint/src/generators/init/global-eslint-config';
 import { eslintPluginPlaywrightVersion } from './versions';
+import {
+  addExtendsToLintConfig,
+  addOverrideToLintConfig,
+  addPluginsToLintConfig,
+  addPredefinedConfigToFlatLintConfig,
+  findEslintFile,
+  isEslintConfigSupported,
+} from '@nx/eslint/src/generators/utils/eslint-file';
+import { useFlatConfig } from '@nx/eslint/src/utils/flat-config';
 
 export interface PlaywrightLinterOptions {
   project: string;
-  linter: Linter;
+  linter: Linter | LinterType;
   setParserOptionsProject: boolean;
   skipPackageJson: boolean;
   rootProject: boolean;
@@ -22,6 +30,7 @@ export interface PlaywrightLinterOptions {
    * Directory from the project root, where the playwright files will be located.
    **/
   directory: string;
+  addPlugin?: boolean;
 }
 
 export async function addLinterToPlaywrightProject(
@@ -35,19 +44,18 @@ export async function addLinterToPlaywrightProject(
   const tasks: GeneratorCallback[] = [];
   const projectConfig = readProjectConfiguration(tree, options.project);
 
-  if (!tree.exists(joinPathFragments(projectConfig.root, '.eslintrc.json'))) {
+  const eslintFile = findEslintFile(tree, projectConfig.root);
+  if (!eslintFile) {
     tasks.push(
       await lintProjectGenerator(tree, {
         project: options.project,
         linter: options.linter,
         skipFormat: true,
         tsConfigPaths: [joinPathFragments(projectConfig.root, 'tsconfig.json')],
-        eslintFilePatterns: [
-          `${projectConfig.root}/**/*.${options.js ? 'js' : '{js,ts}'}`,
-        ],
         setParserOptionsProject: options.setParserOptionsProject,
         skipPackageJson: options.skipPackageJson,
         rootProject: options.rootProject,
+        addPlugin: options.addPlugin,
       })
     );
   }
@@ -66,38 +74,47 @@ export async function addLinterToPlaywrightProject(
       : () => {}
   );
 
-  updateJson(
-    tree,
-    joinPathFragments(projectConfig.root, '.eslintrc.json'),
-    (json) => {
+  if (
+    isEslintConfigSupported(tree, projectConfig.root) ||
+    isEslintConfigSupported(tree)
+  ) {
+    if (useFlatConfig(tree)) {
+      addPredefinedConfigToFlatLintConfig(
+        tree,
+        projectConfig.root,
+        'flat/recommended',
+        'playwright',
+        'eslint-plugin-playwright',
+        false,
+        false
+      );
+      addOverrideToLintConfig(tree, projectConfig.root, {
+        files: ['*.ts', '*.js'],
+        rules: {},
+      });
+    } else {
+      const addExtendsTask = addExtendsToLintConfig(
+        tree,
+        projectConfig.root,
+        'plugin:playwright/recommended'
+      );
+      tasks.push(addExtendsTask);
+
       if (options.rootProject) {
-        json.plugins = ['@nx'];
-        json.extends = ['plugin:playwright/recommended'];
-      } else {
-        json.extends = ['plugin:playwright/recommended', ...json.extends];
+        addPluginsToLintConfig(tree, projectConfig.root, '@nx');
+        addOverrideToLintConfig(tree, projectConfig.root, javaScriptOverride);
       }
-      json.overrides ??= [];
-      const globals = options.rootProject ? [globalJavaScriptOverrides] : [];
-      const override = {
-        files: ['*.ts', '*.tsx', '*.js', '*.jsx'],
+      addOverrideToLintConfig(tree, projectConfig.root, {
+        files: [`${options.directory}/**/*.{ts,js,tsx,jsx}`],
         parserOptions: !options.setParserOptionsProject
           ? undefined
           : {
               project: `${projectConfig.root}/tsconfig.*?.json`,
             },
         rules: {},
-      };
-      const palywrightFiles = [
-        {
-          ...override,
-          files: [`${options.directory}/**/*.{ts,js,tsx,jsx}`],
-        },
-      ];
-      json.overrides.push(...globals);
-      json.overrides.push(...palywrightFiles);
-      return json;
+      });
     }
-  );
+  }
 
   return runTasksInSerial(...tasks);
 }

@@ -1,11 +1,10 @@
 import {
-  createProjectGraphAsync,
   ensurePackage,
   generateFiles,
   joinPathFragments,
   logger,
   offsetFromRoot,
-  parseTargetString,
+  readCachedProjectGraph,
   readJson,
   readNxJson,
   readProjectConfiguration,
@@ -17,8 +16,7 @@ import {
   workspaceRoot,
   writeJson,
 } from '@nx/devkit';
-import { forEachExecutorOptions } from '@nx/devkit/src/generators/executor-options-utils';
-import { Linter } from '@nx/linter';
+import { Linter } from '@nx/eslint';
 import { join, relative } from 'path';
 import {
   dedupe,
@@ -26,21 +24,23 @@ import {
   TsConfig,
 } from '../../../utils/utilities';
 import { StorybookConfigureSchema } from '../schema';
-import { UiFramework7 } from '../../../utils/models';
+import { UiFramework } from '../../../utils/models';
 import { nxVersion } from '../../../utils/versions';
-import ts = require('typescript');
+import { findEslintFile } from '@nx/eslint/src/generators/utils/eslint-file';
+import { useFlatConfig } from '@nx/eslint/src/utils/flat-config';
+import {
+  findRuntimeTsConfigName,
+  isUsingTsSolutionSetup,
+} from '@nx/js/src/utils/typescript/ts-solution-setup';
 
 const DEFAULT_PORT = 4400;
 
-export function addStorybookTask(
+export function addStorybookTarget(
   tree: Tree,
   projectName: string,
-  uiFramework: string,
+  uiFramework: UiFramework,
   interactionTests: boolean
 ) {
-  if (uiFramework === '@storybook/react-native') {
-    return;
-  }
   const projectConfig = readProjectConfiguration(tree, projectName);
   projectConfig.targets['storybook'] = {
     executor: '@nx/storybook:storybook',
@@ -81,7 +81,7 @@ export function addStorybookTask(
   updateProjectConfiguration(tree, projectName, projectConfig);
 }
 
-export function addAngularStorybookTask(
+export function addAngularStorybookTarget(
   tree: Tree,
   projectName: string,
   interactionTests: boolean
@@ -137,32 +137,41 @@ export function addAngularStorybookTask(
   updateProjectConfiguration(tree, projectName, projectConfig);
 }
 
-export function addStaticTarget(tree: Tree, opts: StorybookConfigureSchema) {
-  const nrwlWeb = ensurePackage<typeof import('@nx/web')>('@nx/web', nxVersion);
-  nrwlWeb.webStaticServeGenerator(tree, {
-    buildTarget: `${opts.name}:build-storybook`,
-    outputPath: joinPathFragments('dist/storybook', opts.name),
+export async function addStaticTarget(
+  tree: Tree,
+  opts: StorybookConfigureSchema
+) {
+  const { webStaticServeGenerator } = ensurePackage<typeof import('@nx/web')>(
+    '@nx/web',
+    nxVersion
+  );
+  await webStaticServeGenerator(tree, {
+    buildTarget: `${opts.project}:build-storybook`,
+    outputPath: joinPathFragments('dist/storybook', opts.project),
     targetName: 'static-storybook',
   });
 
-  const projectConfig = readProjectConfiguration(tree, opts.name);
+  const projectConfig = readProjectConfiguration(tree, opts.project);
 
   projectConfig.targets['static-storybook'].configurations = {
     ci: {
-      buildTarget: `${opts.name}:build-storybook:ci`,
+      buildTarget: `${opts.project}:build-storybook:ci`,
     },
   };
 
-  updateProjectConfiguration(tree, opts.name, projectConfig);
+  updateProjectConfiguration(tree, opts.project, projectConfig);
 }
 
 export function createStorybookTsconfigFile(
   tree: Tree,
   projectRoot: string,
-  uiFramework: UiFramework7,
+  uiFramework: UiFramework,
   isRootProject: boolean,
   mainDir: 'components' | 'src'
 ) {
+  const offset = offsetFromRoot(projectRoot);
+  const useTsSolution = isUsingTsSolutionSetup(tree);
+
   // First let's check if old configuration file exists
   // If it exists, let's rename it and move it to the new location
   const oldStorybookTsConfigPath = joinPathFragments(
@@ -173,7 +182,7 @@ export function createStorybookTsconfigFile(
   if (tree.exists(oldStorybookTsConfigPath)) {
     logger.warn(`.storybook/tsconfig.json already exists for this project`);
     logger.warn(
-      `It will be renamed and moved to tsconfig.storybook.json. 
+      `It will be renamed and moved to tsconfig.storybook.json.
       Please make sure all settings look correct after this change.
       Also, please make sure to use "nx migrate" to move from one version of Nx to another.
       `
@@ -182,9 +191,10 @@ export function createStorybookTsconfigFile(
     return;
   }
 
+  const storybookTsConfigName = 'tsconfig.storybook.json';
   const storybookTsConfigPath = joinPathFragments(
     projectRoot,
-    'tsconfig.storybook.json'
+    storybookTsConfigName
   );
 
   if (tree.exists(storybookTsConfigPath)) {
@@ -192,12 +202,52 @@ export function createStorybookTsconfigFile(
     return;
   }
 
-  const exclude = [`${mainDir}/**/*.spec.ts`, `${mainDir}/**/*.test.ts`];
+  const storybookTsConfig: any = {
+    extends: useTsSolution
+      ? joinPathFragments(offset, 'tsconfig.base.json')
+      : './tsconfig.json',
+    compilerOptions: {
+      emitDecoratorMetadata: useTsSolution ? undefined : true,
+      outDir: useTsSolution
+        ? 'out-tsc/storybook'
+        : uiFramework === '@storybook/react-webpack5' ||
+          uiFramework === '@storybook/react-vite'
+        ? ''
+        : undefined,
+      module: useTsSolution ? 'esnext' : undefined,
+      moduleResolution: useTsSolution ? 'bundler' : undefined,
+      jsx:
+        useTsSolution && uiFramework !== '@storybook/angular'
+          ? 'preserve'
+          : undefined,
+    },
+    exclude: [`${mainDir}/**/*.spec.ts`, `${mainDir}/**/*.test.ts`],
+    include: [
+      `${mainDir}/**/*.stories.ts`,
+      `${mainDir}/**/*.stories.js`,
+      `${mainDir}/**/*.stories.jsx`,
+      `${mainDir}/**/*.stories.tsx`,
+      `${mainDir}/**/*.stories.mdx`,
+      '.storybook/*.js',
+      '.storybook/*.ts',
+    ],
+  };
+
+  if (useTsSolution) {
+    const runtimeConfig = findRuntimeTsConfigName(tree, projectRoot);
+    if (runtimeConfig) {
+      storybookTsConfig.references ??= [];
+      storybookTsConfig.references.push({
+        path: `./${runtimeConfig}`,
+      });
+    }
+  }
+
   if (
     uiFramework === '@storybook/react-webpack5' ||
     uiFramework === '@storybook/react-vite'
   ) {
-    exclude.push(
+    storybookTsConfig.exclude.push(
       `${mainDir}/**/*.spec.js`,
       `${mainDir}/**/*.test.js`,
       `${mainDir}/**/*.spec.tsx`,
@@ -205,17 +255,7 @@ export function createStorybookTsconfigFile(
       `${mainDir}/**/*.spec.jsx`,
       `${mainDir}/**/*.test.js`
     );
-  }
-
-  let files: string[];
-
-  if (
-    uiFramework === '@storybook/react-webpack5' ||
-    uiFramework === '@storybook/react-vite'
-  ) {
-    const offset = offsetFromRoot(projectRoot);
-
-    files = [
+    storybookTsConfig.files = [
       `${
         !isRootProject ? offset : ''
       }node_modules/@nx/react/typings/styled-jsx.d.ts`,
@@ -228,34 +268,19 @@ export function createStorybookTsconfigFile(
     ];
   }
 
-  const include: string[] = [
-    `${mainDir}/**/*.stories.ts`,
-    `${mainDir}/**/*.stories.js`,
-    `${mainDir}/**/*.stories.jsx`,
-    `${mainDir}/**/*.stories.tsx`,
-    `${mainDir}/**/*.stories.mdx`,
-    '.storybook/*.js',
-    '.storybook/*.ts',
-  ];
-
-  if (uiFramework === '@storybook/react-native') {
-    include.push('*.ts', '*.tsx');
+  if (useTsSolution) {
+    updateJson(
+      tree,
+      joinPathFragments(projectRoot, 'tsconfig.json'),
+      (json) => {
+        json.references ??= [];
+        json.references.push({
+          path: `./${storybookTsConfigName}`,
+        });
+        return json;
+      }
+    );
   }
-
-  const storybookTsConfig: TsConfig = {
-    extends: './tsconfig.json',
-    compilerOptions: {
-      emitDecoratorMetadata: true,
-      outDir:
-        uiFramework === '@storybook/react-webpack5' ||
-        uiFramework === '@storybook/react-vite'
-          ? ''
-          : undefined,
-    },
-    files,
-    exclude,
-    include,
-  };
 
   writeJson(tree, storybookTsConfigPath, storybookTsConfig);
 }
@@ -281,7 +306,7 @@ export function configureTsProjectConfig(
   tree: Tree,
   schema: StorybookConfigureSchema
 ) {
-  const { name: projectName } = schema;
+  const { project: projectName } = schema;
 
   let tsConfigPath: string;
   let tsConfigContent: TsConfig;
@@ -308,8 +333,7 @@ export function configureTsProjectConfig(
       ...(tsConfigContent.exclude || []),
       '**/*.stories.ts',
       '**/*.stories.js',
-      ...(schema.uiFramework === '@storybook/react-native' ||
-      schema.uiFramework?.startsWith('@storybook/react')
+      ...(schema.uiFramework?.startsWith('@storybook/react')
         ? ['**/*.stories.jsx', '**/*.stories.tsx']
         : []),
     ];
@@ -322,7 +346,7 @@ export function configureTsSolutionConfig(
   tree: Tree,
   schema: StorybookConfigureSchema
 ) {
-  const { name: projectName } = schema;
+  const { project: projectName } = schema;
 
   const { root } = readProjectConfiguration(tree, projectName);
   const tsConfigPath = join(root, 'tsconfig.json');
@@ -360,40 +384,57 @@ export function configureTsSolutionConfig(
 }
 
 /**
- * When adding storybook we need to inform TSLint or ESLint
+ * When adding storybook we need to inform ESLint
  * of the additional tsconfig.json file which will be the only tsconfig
  * which includes *.stories files.
  *
- * For TSLint this is done via the builder config, for ESLint this is
- * done within the .eslintrc.json file.
+ * This is done within the eslint config file.
  */
 export function updateLintConfig(tree: Tree, schema: StorybookConfigureSchema) {
-  const { name: projectName } = schema;
+  const { project: projectName } = schema;
 
-  const { targets, root } = readProjectConfiguration(tree, projectName);
-  const tslintTargets = Object.values(targets).filter(
-    (target) => target.executor === '@angular-devkit/build-angular:tslint'
+  const { root } = readProjectConfiguration(tree, projectName);
+
+  const eslintFile = findEslintFile(tree, root);
+  if (!eslintFile) {
+    return;
+  }
+
+  const parserConfigPath = join(
+    root,
+    schema.uiFramework === '@storybook/angular'
+      ? '.storybook/tsconfig.json'
+      : 'tsconfig.storybook.json'
   );
 
-  tslintTargets.forEach((target) => {
-    target.options.tsConfig = dedupe([
-      ...target.options.tsConfig,
-      joinPathFragments(root, './.storybook/tsconfig.json'),
-    ]);
-  });
-
-  if (tree.exists(join(root, '.eslintrc.json'))) {
-    updateJson(tree, join(root, '.eslintrc.json'), (json) => {
+  if (useFlatConfig(tree)) {
+    let config = tree.read(eslintFile, 'utf-8');
+    const projectRegex = RegExp(/project:\s?\[?['"](.*)['"]\]?/g);
+    let match;
+    while ((match = projectRegex.exec(config)) !== null) {
+      const matchSet = new Set(
+        match[1].split(',').map((p) => p.trim().replace(/['"]/g, ''))
+      );
+      matchSet.add(parserConfigPath);
+      const insert = `project: [${Array.from(matchSet)
+        .map((p) => `'${p}'`)
+        .join(', ')}]`;
+      config =
+        config.slice(0, match.index) +
+        insert +
+        config.slice(match.index + match[0].length);
+    }
+    tree.write(eslintFile, config);
+  } else {
+    updateJson(tree, join(root, eslintFile), (json) => {
       if (typeof json.parserOptions?.project === 'string') {
         json.parserOptions.project = [json.parserOptions.project];
       }
 
-      if (Array.isArray(json.parserOptions?.project)) {
+      if (json.parserOptions?.project) {
         json.parserOptions.project = dedupe([
           ...json.parserOptions.project,
-          schema.uiFramework === '@storybook/angular'
-            ? join(root, '.storybook/tsconfig.json')
-            : join(root, 'tsconfig.storybook.json'),
+          parserConfigPath,
         ]);
       }
 
@@ -402,14 +443,17 @@ export function updateLintConfig(tree: Tree, schema: StorybookConfigureSchema) {
         if (typeof o.parserOptions?.project === 'string') {
           o.parserOptions.project = [o.parserOptions.project];
         }
-        if (Array.isArray(o.parserOptions?.project)) {
+        if (o.parserOptions?.project) {
           o.parserOptions.project = dedupe([
             ...o.parserOptions.project,
-            schema.uiFramework === '@storybook/angular'
-              ? join(root, '.storybook/tsconfig.json')
-              : join(root, 'tsconfig.storybook.json'),
+            parserConfigPath,
           ]);
         }
+      }
+
+      const ignorePatterns = json.ignorePatterns || [];
+      if (!ignorePatterns.includes('storybook-static')) {
+        ignorePatterns.push('storybook-static');
       }
 
       return json;
@@ -465,51 +509,62 @@ export function addStorybookToNamedInputs(tree: Tree) {
       }
     }
 
-    nxJson.targetDefaults ??= {};
-    nxJson.targetDefaults['build-storybook'] ??= {};
-    nxJson.targetDefaults['build-storybook'].inputs ??= [
-      'default',
-      hasProductionFileset ? '^production' : '^default',
-    ];
-
-    if (
-      !nxJson.targetDefaults['build-storybook'].inputs.includes(
-        '{projectRoot}/.storybook/**/*'
-      )
-    ) {
-      nxJson.targetDefaults['build-storybook'].inputs.push(
-        '{projectRoot}/.storybook/**/*'
-      );
-    }
-
-    // Delete the !{projectRoot}/.storybook/**/* glob from build-storybook
-    // because we want to rebuild Storybook if the .storybook folder changes
-    const index = nxJson.targetDefaults['build-storybook'].inputs.indexOf(
-      '!{projectRoot}/.storybook/**/*'
-    );
-
-    if (index !== -1) {
-      nxJson.targetDefaults['build-storybook'].inputs.splice(index, 1);
-    }
-
-    if (
-      !nxJson.targetDefaults['build-storybook'].inputs.includes(
-        '{projectRoot}/tsconfig.storybook.json'
-      )
-    ) {
-      nxJson.targetDefaults['build-storybook'].inputs.push(
-        '{projectRoot}/tsconfig.storybook.json'
-      );
-    }
-
     updateNxJson(tree, nxJson);
   }
+}
+
+export function addStorybookToTargetDefaults(tree: Tree, setCache = true) {
+  const nxJson = readNxJson(tree);
+
+  nxJson.targetDefaults ??= {};
+  nxJson.targetDefaults['build-storybook'] ??= {};
+  if (setCache) {
+    nxJson.targetDefaults['build-storybook'].cache ??= true;
+  }
+  nxJson.targetDefaults['build-storybook'].inputs ??= [
+    'default',
+    nxJson.namedInputs && 'production' in nxJson.namedInputs
+      ? '^production'
+      : '^default',
+  ];
+
+  if (
+    !nxJson.targetDefaults['build-storybook'].inputs.includes(
+      '{projectRoot}/.storybook/**/*'
+    )
+  ) {
+    nxJson.targetDefaults['build-storybook'].inputs.push(
+      '{projectRoot}/.storybook/**/*'
+    );
+  }
+
+  // Delete the !{projectRoot}/.storybook/**/* glob from build-storybook
+  // because we want to rebuild Storybook if the .storybook folder changes
+  const index = nxJson.targetDefaults['build-storybook'].inputs.indexOf(
+    '!{projectRoot}/.storybook/**/*'
+  );
+
+  if (index !== -1) {
+    nxJson.targetDefaults['build-storybook'].inputs.splice(index, 1);
+  }
+
+  if (
+    !nxJson.targetDefaults['build-storybook'].inputs.includes(
+      '{projectRoot}/tsconfig.storybook.json'
+    )
+  ) {
+    nxJson.targetDefaults['build-storybook'].inputs.push(
+      '{projectRoot}/tsconfig.storybook.json'
+    );
+  }
+
+  updateNxJson(tree, nxJson);
 }
 
 export function createProjectStorybookDir(
   tree: Tree,
   projectName: string,
-  uiFramework: UiFramework7,
+  uiFramework: UiFramework,
   js: boolean,
   tsConfiguration: boolean,
   root: string,
@@ -520,14 +575,21 @@ export function createProjectStorybookDir(
   isNextJs?: boolean,
   usesSwc?: boolean,
   usesVite?: boolean,
-  viteConfigFilePath?: string
+  viteConfigFilePath?: string,
+  hasPlugin?: boolean,
+  viteConfigFileName?: string,
+  usesReactNative?: boolean
 ) {
-  const projectDirectory =
+  let projectDirectory =
     projectType === 'application'
       ? isNextJs
         ? 'components'
         : 'src/app'
       : 'src/lib';
+
+  if (uiFramework === '@storybook/vue3-vite') {
+    projectDirectory = 'src';
+  }
 
   const storybookConfigExists = projectIsRootProjectInStandaloneWorkspace
     ? tree.exists('.storybook/main.js') || tree.exists('.storybook/main.ts')
@@ -559,6 +621,9 @@ export function createProjectStorybookDir(
     usesVite,
     isRootProject: projectIsRootProjectInStandaloneWorkspace,
     viteConfigFilePath,
+    hasPlugin,
+    viteConfigFileName,
+    usesReactNative,
   });
 
   if (js) {
@@ -593,25 +658,20 @@ export function getTsConfigPath(
 }
 
 export function addBuildStorybookToCacheableOperations(tree: Tree) {
-  updateJson(tree, 'nx.json', (json) => ({
-    ...json,
-    tasksRunnerOptions: {
-      ...(json.tasksRunnerOptions ?? {}),
-      default: {
-        ...(json.tasksRunnerOptions?.default ?? {}),
-        options: {
-          ...(json.tasksRunnerOptions?.default?.options ?? {}),
-          cacheableOperations: Array.from(
-            new Set([
-              ...(json.tasksRunnerOptions?.default?.options
-                ?.cacheableOperations ?? []),
-              'build-storybook',
-            ])
-          ),
-        },
-      },
-    },
-  }));
+  const nxJson = readNxJson(tree);
+
+  if (
+    nxJson.tasksRunnerOptions?.default?.options?.cacheableOperations &&
+    !nxJson.tasksRunnerOptions.default.options.cacheableOperations.includes(
+      'build-storybook'
+    )
+  ) {
+    nxJson.tasksRunnerOptions.default.options.cacheableOperations.push(
+      'build-storybook'
+    );
+
+    updateNxJson(tree, nxJson);
+  }
 }
 
 export function projectIsRootProjectInStandaloneWorkspace(projectRoot: string) {
@@ -629,15 +689,15 @@ export function rootFileIsTs(
 ): boolean {
   if (tree.exists(`.storybook/${rootFileName}.ts`) && !tsConfiguration) {
     logger.info(
-      `The root Storybook configuration is in TypeScript, 
-      so Nx will generate TypeScript Storybook configuration files 
+      `The root Storybook configuration is in TypeScript,
+      so Nx will generate TypeScript Storybook configuration files
       in this project's .storybook folder as well.`
     );
     return true;
   } else if (tree.exists(`.storybook/${rootFileName}.js`) && tsConfiguration) {
     logger.info(
-      `The root Storybook configuration is in JavaScript, 
-        so Nx will generate JavaScript Storybook configuration files 
+      `The root Storybook configuration is in JavaScript,
+        so Nx will generate JavaScript Storybook configuration files
         in this project's .storybook folder as well.`
     );
     return false;
@@ -646,48 +706,49 @@ export function rootFileIsTs(
   }
 }
 
-export async function getE2EProjectName(
+export function findViteConfig(
   tree: Tree,
-  mainProject: string
-): Promise<string | undefined> {
-  let e2eProject: string;
-  const graph = await createProjectGraphAsync();
-  forEachExecutorOptions(
-    tree,
-    '@nx/cypress:cypress',
-    (options, projectName) => {
-      if (e2eProject) {
-        return;
-      }
-      if (options['devServerTarget']) {
-        const { project, target } = parseTargetString(
-          options['devServerTarget'],
-          graph
-        );
-        if (
-          (project === mainProject && target === 'serve') ||
-          (project === mainProject && target === 'storybook')
-        ) {
-          e2eProject = projectName;
-        }
-      }
+  projectRoot: string
+): {
+  fullConfigPath: string | undefined;
+  viteConfigFileName: string | undefined;
+} {
+  const allowsExt = ['js', 'mjs', 'ts', 'cjs', 'mts', 'cts'];
+
+  for (const ext of allowsExt) {
+    const viteConfigPath = joinPathFragments(projectRoot, `vite.config.${ext}`);
+    if (tree.exists(viteConfigPath)) {
+      return {
+        fullConfigPath: viteConfigPath,
+        viteConfigFileName: `vite.config.${ext}`,
+      };
     }
-  );
-  return e2eProject;
+  }
 }
 
-export function getViteConfigFilePath(
+export function findNextConfig(
   tree: Tree,
-  projectRoot: string,
-  configFile?: string
+  projectRoot: string
 ): string | undefined {
-  return configFile && tree.exists(configFile)
-    ? configFile
-    : tree.exists(joinPathFragments(`${projectRoot}/vite.config.ts`))
-    ? joinPathFragments(`${projectRoot}/vite.config.ts`)
-    : tree.exists(joinPathFragments(`${projectRoot}/vite.config.js`))
-    ? joinPathFragments(`${projectRoot}/vite.config.js`)
-    : undefined;
+  const allowsExt = ['js', 'mjs', 'cjs'];
+
+  for (const ext of allowsExt) {
+    const nextConfigPath = joinPathFragments(projectRoot, `next.config.${ext}`);
+    if (tree.exists(nextConfigPath)) {
+      return nextConfigPath;
+    }
+  }
+}
+
+export function isUsingReactNative(projectName: string): boolean {
+  try {
+    const projectGraph = readCachedProjectGraph();
+    return projectGraph?.dependencies?.[projectName]?.some(
+      (dep) => dep.target === 'npm:react-native'
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function renameAndMoveOldTsConfig(
@@ -751,17 +812,13 @@ export function renameAndMoveOldTsConfig(
     });
   }
 
-  const projectEsLintFile = joinPathFragments(projectRoot, '.eslintrc.json');
-
-  if (tree.exists(projectEsLintFile)) {
-    updateJson(tree, projectEsLintFile, (json) => {
-      const jsonString = JSON.stringify(json);
-      const newJsonString = jsonString.replace(
-        /\.storybook\/tsconfig\.json/g,
-        'tsconfig.storybook.json'
-      );
-      json = JSON.parse(newJsonString);
-      return json;
-    });
+  const eslintFile = findEslintFile(tree, projectRoot);
+  if (eslintFile) {
+    const fileName = joinPathFragments(projectRoot, eslintFile);
+    const config = tree.read(fileName, 'utf-8');
+    tree.write(
+      fileName,
+      config.replace(/\.storybook\/tsconfig\.json/g, 'tsconfig.storybook.json')
+    );
   }
 }

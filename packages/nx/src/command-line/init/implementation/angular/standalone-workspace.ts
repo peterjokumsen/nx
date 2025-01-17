@@ -90,38 +90,54 @@ function createNxJson(
             karmaProjectConfigFile ? '!{projectRoot}/karma.conf.js' : undefined,
           ].filter(Boolean)
         : []),
-      eslintProjectConfigFile ? '!{projectRoot}/.eslintrc.json' : undefined,
+      ...(eslintProjectConfigFile
+        ? ['!{projectRoot}/.eslintrc.json', '!{projectRoot}/eslint.config.cjs']
+        : []),
     ].filter(Boolean),
   };
-  nxJson.targetDefaults = {};
+  nxJson.targetDefaults ??= {};
   if (workspaceTargets.includes('build')) {
     nxJson.targetDefaults.build = {
+      ...nxJson.targetDefaults.build,
       dependsOn: ['^build'],
       inputs: ['production', '^production'],
     };
   }
   if (workspaceTargets.includes('server')) {
-    nxJson.targetDefaults.server = { inputs: ['production', '^production'] };
+    nxJson.targetDefaults.server = {
+      ...nxJson.targetDefaults.server,
+      inputs: ['production', '^production'],
+    };
   }
   if (workspaceTargets.includes('test')) {
     const inputs = ['default', '^production'];
     if (fileExists(join(repoRoot, 'karma.conf.js'))) {
       inputs.push('{workspaceRoot}/karma.conf.js');
     }
-    nxJson.targetDefaults.test = { inputs };
+    nxJson.targetDefaults.test = {
+      ...nxJson.targetDefaults.test,
+      inputs,
+    };
   }
   if (workspaceTargets.includes('lint')) {
     const inputs = ['default'];
     if (fileExists(join(repoRoot, '.eslintrc.json'))) {
       inputs.push('{workspaceRoot}/.eslintrc.json');
     }
-    nxJson.targetDefaults.lint = { inputs };
+    if (fileExists(join(repoRoot, 'eslint.config.cjs'))) {
+      inputs.push('{workspaceRoot}/eslint.config.cjs');
+    }
+    nxJson.targetDefaults.lint = {
+      ...nxJson.targetDefaults.lint,
+      inputs,
+    };
   }
   if (workspaceTargets.includes('e2e')) {
-    nxJson.targetDefaults.e2e = { inputs: ['default', '^production'] };
+    nxJson.targetDefaults.e2e = {
+      ...nxJson.targetDefaults.e2e,
+      inputs: ['default', '^production'],
+    };
   }
-  // Angular 14 workspaces support defaultProject, keep it until we drop support
-  nxJson.defaultProject = angularJson.defaultProject;
   writeJsonFile(join(repoRoot, 'nx.json'), nxJson);
 }
 
@@ -143,7 +159,10 @@ function updateProjectOutputs(
       target.outputs = ['{options.outputPath}'];
     } else if (target.executor === '@angular-eslint/builder:lint') {
       target.outputs = ['{options.outputFile}'];
-    } else if (target.executor === '@angular-devkit/build-angular:ng-packagr') {
+    } else if (
+      target.executor === '@angular-devkit/build-angular:ng-packagr' ||
+      target.executor === '@angular/build:ng-packagr'
+    ) {
       try {
         const ngPackageJsonPath = join(repoRoot, target.options.project);
         const ngPackageJson = readJsonFile(ngPackageJsonPath);
@@ -212,7 +231,12 @@ function projectHasKarmaConfig(
 function projectHasEslintConfig(
   project: AngularJsonProjectConfiguration
 ): boolean {
-  return fileExists(join(project.root, '.eslintrc.json'));
+  return (
+    fileExists(join(project.root, '.eslintrc.json')) ||
+    fileExists(join(project.root, 'eslint.config.js')) ||
+    fileExists(join(project.root, 'eslint.config.mjs')) ||
+    fileExists(join(project.root, 'eslint.config.cjs'))
+  );
 }
 
 function replaceNgWithNxInPackageJsonScripts(repoRoot: string): void {

@@ -1,3 +1,5 @@
+import 'nx/src/internal-testing-utils/mock-project-graph';
+
 import { createTreeWithEmptyWorkspace } from '@nx/devkit/testing';
 import { Tree, readProjectConfiguration, readJson } from '@nx/devkit';
 
@@ -19,6 +21,5 @@ describe('preset generator', () => {
     expect(config).toBeDefined();
     const packageJson = readJson<PackageJson>(tree, 'package.json');
     expect(packageJson.dependencies).toHaveProperty('@nx/devkit');
-    expect(readJson(tree, 'nx.json').npmScope).not.toBeDefined();
   });
 });

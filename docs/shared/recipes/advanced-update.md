@@ -1,10 +1,10 @@
 # Advanced update process
 
-This guide describes advanced scenarios when it comes to updating Nx and the workspaces dependencies. It starts with a summary of the [standard update process](/core-features/automate-updating-dependencies) and continues with those advanced use cases.
+This guide describes advanced scenarios when it comes to updating Nx and the workspaces dependencies. It starts with a summary of the [standard update process](/features/automate-updating-dependencies) and continues with those advanced use cases.
 
 ## Updating to the latest Nx version
 
-The following steps are a summary of the [standard update process](/core-features/automate-updating-dependencies). For more information on each step, please visit that page.
+The following steps are a summary of the [standard update process](/features/automate-updating-dependencies). For more information on each step, please visit that page.
 
 ### Step 1: Updating dependencies and generating migrations
 
@@ -32,6 +32,23 @@ All changes to your source code will be unstaged and ready for you to review and
 ### Step 3: Cleaning up
 
 After you run all the migrations, you can remove `migrations.json` and commit any outstanding changes.
+
+## Recommendations
+
+### One major version at a time, small steps
+
+Migrating Jest, Cypress, ESLint, React, Angular, Next, and more is a difficult task. All the tools change at different rates, and they can conflict with each other. In addition, every workspace is different. Even though our goal is for you to update any version of Nx to a newer version of Nx in a single go, sometimes it doesn't work. The recommended process is to update, at most, one major version at a time.
+
+Say you want to migrate from Nx 17.1.0 to Nx 18.2.4. The following steps are more likely to work comparing to `nx migrate 18.2.4`.
+
+- Run `nx migrate 17.3.2` to update the latest version in the 17.x branch.
+- Run `nx migrate --run-migrations`.
+- Next, run `nx migrate 18.2.4`.
+- Run `nx migrate --run-migrations`.
+
+{% callout type="warning" title="Angular updates" %}
+If your workspace uses Angular, this becomes a requirement rather than a recommendation. The Angular packages maintain migrations for a single major version at a time. If you try to update over multiple major versions, only the migrations for the latest major version will be applied. This can lead to issues in your workspace.
+{% /callout %}
 
 ## Managing migration steps
 
@@ -110,7 +127,7 @@ nx migrate --run-migrations=migrations.json
 
 ## Choosing optional package updates to apply
 
-While in most cases you want to be up to date with Nx and the dependencies it manages, sometimes you might need to stay on an older version of such a dependency. For example, you might want to update Nx to the latest version but keep Jest on **v27.x.x** and not update it to **v28.x.x**. For such scenarios, `nx migrate` allows you to choose what to update using the `--interactive` flag.
+While in most cases you want to be up to date with Nx and the dependencies it manages, sometimes you might need to stay on an older version of such a dependency. For example, you might want to update Nx to the latest version but keep Angular on **v15.x.x** and not update it to **v16.x.x**. For such scenarios, `nx migrate` allows you to choose what to update using the `--interactive` flag.
 
 {% callout type="note" title="Optional package updates" %}
 You can't choose to skip any arbitrary package update. To ensure that a plugin works well with older versions of a given package, the plugin must support it. Therefore, Nx plugin authors define what package updates are optional.
@@ -134,22 +151,80 @@ As the migration runs and collects the package updates, you'll be prompted to ap
 
 Once you have skipped some optional updates, there'll come a time when you'll want to update those packages. To do so, you'll need to generate the package updates and migrations from the Nx version that contained those skipped updates.
 
-Say you skipped updating Jest to **v28.x.x**. That package update was meant to happen as part of the `@nx/jest@14.6.0` update, but you decided to skip it at the time. The recommended way to collect the migrations from such an older version is to run the following:
+Say you skipped updating Angular to **v16.x.x**. That package update was meant to happen as part of the `@nx/angular@16.1.0` update, but you decided to skip it at the time. The recommended way to collect the migrations from such an older version is to run the following:
 
 ```shell
-nx migrate latest --from=nx@14.5.0 --exclude-applied-migrations
+nx migrate latest --from=nx@16.0.0 --exclude-applied-migrations
 ```
 
 A couple of things are happening there:
 
-- The `--from=nx@14.5.0` flag tells the `migrate` command to use the version **14.5.0** as the installed version for the `nx` package and all the first-party Nx plugins
-- The `--exclude-applied-migrations` flag tells the `migrate` command not to collect migrations that should have been applied on previous updates
+- The `--from=nx@16.0.0` flag tells the `migrate` command to use the version **16.0.0** as the installed version for the `nx` package and all the first-party Nx plugins. Note we use a version lower than the one where the update was meant to happen. This is to account for the fact that the update is normally targeted to a prerelease version for testing it before the final release.
+- The `--exclude-applied-migrations` flag tells the `migrate` command not to collect migrations that should have been applied on previous updates.
 
-So, the above command will effectively collect any package update and migration meant to run if your workspace had `nx@14.5.0` installed while excluding those that should have been applied before. You can provide a different older version to collect migrations from.
+So, the above command will effectively collect any package update and migration meant to run if your workspace had `nx@16.0.0` installed while excluding those that should have been applied before. You can provide a different older version to collect migrations from.
 
 {% callout type="warning" title="Automatically excluding previously applied migrations" %}
 Automatically excluding previously applied migrations doesn't consider migrations manually removed from the `migrations.json` in previous updates. If you've manually removed migrations in the past and want to run them, don't pass the `--exclude-applied-migrations` and collect all previous migrations.
 {% /callout %}
+
+### Identifying the Nx version to migrate from to collect previously skipped updates
+
+After running the migrations in interactive mode and opting-out of some package updates, a message is printed to the terminal with the command to run later to collect and apply those skipped updates. For example, if you skipped updating Angular to **v16.0.0**, this is the output you'll see (simplified for brevity):
+
+```shell
+nx migrate latest --interactive
+Fetching meta data about packages.
+It may take a few minutes.
+...
+✔ Do you want to update to TypeScript v5.0? (Y/n) · false
+✔ Do you want to update the Angular version to v16? (Y/n) · false
+
+NX   The migrate command has run successfully.
+
+- package.json has been updated.
+- migrations.json has been generated.
+
+NX   Next steps:
+
+- Make sure package.json changes make sense and then run 'pnpm install --no-frozen-lockfile',
+- Run 'pnpm exec nx migrate --run-migrations'
+- You opted out of some migrations for now. Write the following command down somewhere to apply these migrations later:
+- nx migrate 16.5.3 --from nx@16.1.0-beta.0 --exclude-applied-migrations
+- To learn more go to https://nx.dev/recipes/other/advanced-update
+```
+
+You can see in the "Next steps" section a suggested command to run to apply the skipped package updates. Make sure to store that information somewhere so you can later remember from which version you need to run the migration to apply the skipped package updates.
+
+Please note the suggested command is only based on a particular run of the `nx migrate` command. If you've skipped package updates in previous runs, you'll need to use the oldest version you've stored that you haven't yet run the migration from.
+
+If you don't have the command and need to find out from which version to run the migration, you can take a look at the `migrations.json` file of the relevant package. For example, if you skipped updating Angular to **v16.0.0**, you can take a look at the `migrations.json` file of the `@nx/angular` package and you'll find the following:
+
+```jsonc {% fileName="node_modules/@nx/angular/migrations.json" %}
+{
+  // ...
+  "packageJsonUpdates": {
+    // ...
+    "16.1.0": {
+      "version": "16.1.0-beta.1",
+      "x-prompt": "Do you want to update the Angular version to v16?",
+      "requires": {
+        "@angular/core": ">=15.2.0 <16.0.0"
+      },
+      "packages": {
+        "@angular/core": {
+          "version": "~16.0.0",
+          "alwaysAddToPackageJson": true
+        }
+        // ...
+      }
+    }
+    // ...
+  }
+}
+```
+
+You can see the `16.1.0-beta.1` version is the one that contains the update for `@angular/core` to **~16.0.0**. That's the version you need to run the migration from to apply the package update.
 
 ## Other advanced capabilities
 
@@ -185,16 +260,3 @@ git clean -fd # Delete newly added files and directories
 {% callout type="warning" title="--create-commits" %}
 If using `--create-commits`, you will need to first retrieve the SHA of the commit before your first automated migration commit in order to jump back to the point before the migrations ran, e.g. `git reset --hard YOUR_APPROPRIATE_SHA_HERE`)
 {% /callout %}
-
-## Recommendations
-
-### One major version at a time, small steps
-
-Migrating Jest, Cypress, ESLint, React, Angular, Next, and more is a difficult task. All the tools change at different rates, they can conflict with each other. In addition, every workspace is different. Even though our goal is for you to update any version of Nx to a newer version of Nx in a single go, sometimes it doesn't work. The following process is better for large workspaces.
-
-Say you want to migrate from Nx 10.1.0 to Nx 11.0.1. The following steps are more likely to work comparing to `nx migrate 11.0.1`.
-
-- Run `nx migrate 10.4.5` to update the latest version in the 10.x branch.
-- Run `nx migrate --run-migrations`.
-- Next, run `nx migrate 11.0.1`.
-- Run `nx migrate --run-migrations`.

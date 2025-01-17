@@ -1,9 +1,5 @@
-import { buildTargetFromScript, PackageJson } from './package-json';
-import { join } from 'path';
 import { ProjectGraph, ProjectGraphProjectNode } from '../config/project-graph';
-import { readJsonFile } from './fileutils';
 import { readCachedProjectGraph } from '../project-graph/project-graph';
-import { TargetConfiguration } from '../config/workspace-json-project-json';
 
 export function projectHasTarget(
   project: ProjectGraphProjectNode,
@@ -26,27 +22,6 @@ export function projectHasTargetAndConfiguration(
     project.data.targets[target].configurations &&
     project.data.targets[target].configurations[configuration]
   );
-}
-
-export function mergeNpmScriptsWithTargets(
-  projectRoot: string,
-  targets
-): Record<string, TargetConfiguration> {
-  try {
-    const { scripts, nx }: PackageJson = readJsonFile(
-      join(projectRoot, 'package.json')
-    );
-    const res: Record<string, TargetConfiguration> = {};
-    // handle no scripts
-    Object.keys(scripts || {}).forEach((script) => {
-      if (!nx?.includedScripts || nx?.includedScripts.includes(script)) {
-        res[script] = buildTargetFromScript(script, nx);
-      }
-    });
-    return { ...res, ...(targets || {}) };
-  } catch (e) {
-    return targets;
-  }
 }
 
 export function getSourceDirOfDependentProjects(

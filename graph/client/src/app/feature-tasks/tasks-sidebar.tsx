@@ -1,10 +1,10 @@
-import { TaskList } from './task-list';
 import {
   useNavigate,
   useParams,
   useRouteLoaderData,
   useSearchParams,
 } from 'react-router-dom';
+import { TaskList } from './task-list';
 /* eslint-disable @nx/enforce-module-boundaries */
 // nx-ignore-next-line
 import type {
@@ -12,14 +12,15 @@ import type {
   TaskGraphClientResponse,
 } from 'nx/src/command-line/graph/graph';
 /* eslint-enable @nx/enforce-module-boundaries */
-import { getGraphService } from '../machines/graph.service';
 import { useEffect, useMemo } from 'react';
+import { getGraphService } from '../machines/graph.service';
 import { CheckboxPanel } from '../ui-components/checkbox-panel';
 
+import { useRouteConstructor } from '@nx/graph/shared';
 import { Dropdown } from '@nx/graph/ui-components';
-import { ShowHideAll } from '../ui-components/show-hide-all';
 import { useCurrentPath } from '../hooks/use-current-path';
-import { createTaskName, useRouteConstructor } from '../util';
+import { ShowHideAll } from '../ui-components/show-hide-all';
+import { createTaskName } from '../util';
 
 export function TasksSidebar() {
   const graphService = getGraphService();

@@ -12,7 +12,7 @@ interface PluginRegistry {
   url: string;
 }
 
-const packagesJson = require('../../nx-dev/nx-dev/public/documentation/generated/manifests/packages.json');
+const packagesJson = require('../../nx-dev/nx-dev/public/documentation/generated/manifests/nx-api.json');
 const officialPlugins = Object.keys(packagesJson)
   .filter(
     (m: any) =>
@@ -33,42 +33,56 @@ const plugins =
   require('../../community/approved-plugins.json') as PluginRegistry[];
 
 async function main() {
-  const qualityIndicators: any = {};
-  const { data } = await axios.get(`https://api.github.com/repos/nrwl/nx`, {
-    headers: {
-      Authorization: `Bearer ${process.env.GITHUB_PAT}`,
-    },
-  });
-  const nxGithubStars = data.stargazers_count;
-  for (let i = 0; i < officialPlugins.length; i++) {
-    const plugin = officialPlugins[i];
-    console.log(`Fetching data for ${plugin.name}`);
-    const npmData = await getNpmData(plugin, true);
-    const npmDownloads = await getNpmDownloads(plugin);
-    qualityIndicators[plugin.name] = {
-      lastPublishedDate: npmData.lastPublishedDate,
-      npmDownloads,
-      githubStars: nxGithubStars,
-    };
-  }
-  for (let i = 0; i < plugins.length; i++) {
-    const plugin = plugins[i];
-    console.log(`Fetching data for ${plugin.name}`);
-    const npmData = await getNpmData(plugin);
-    const npmDownloads = await getNpmDownloads(plugin);
-    const githubStars = await getGithubStars(npmData.githubRepo);
-    qualityIndicators[plugin.name] = {
-      lastPublishedDate: npmData.lastPublishedDate,
-      npmDownloads,
-      githubStars,
-      nxVersion: npmData.nxVersion,
-    };
-  }
+  try {
+    const qualityIndicators: any = {};
+    for (let i = 0; i < officialPlugins.length; i++) {
+      const plugin = officialPlugins[i];
+      console.log(`Fetching data for ${plugin.name}`);
+      const npmData = await getNpmData(plugin, true);
+      const npmDownloads = await getNpmDownloads(plugin);
+      qualityIndicators[plugin.name] = {
+        lastPublishedDate: npmData.lastPublishedDate,
+        npmDownloads,
+        githubRepo: `nrwl/nx`,
+      };
+    }
+    for (let i = 0; i < plugins.length; i++) {
+      const plugin = plugins[i];
+      console.log(`Fetching data for ${plugin.name}`);
+      const npmData = await getNpmData(plugin);
+      const npmDownloads = await getNpmDownloads(plugin);
+      qualityIndicators[plugin.name] = {
+        lastPublishedDate: npmData.lastPublishedDate,
+        npmDownloads,
+        githubRepo: npmData.githubRepo,
+        nxVersion: npmData.nxVersion,
+      };
+    }
+    const repos = Object.keys(qualityIndicators).map((pluginName) => {
+      const [owner, repo] =
+        qualityIndicators[pluginName].githubRepo?.split('/');
+      return {
+        owner,
+        repo,
+      };
+    });
+    const starData = await getGithubStars(repos);
+    Object.keys(qualityIndicators).forEach((key) => {
+      qualityIndicators[key].githubStars =
+        starData[qualityIndicators[key].githubRepo.replace(/[\-\/#]/g, '')]
+          ?.stargazers?.totalCount || -1;
+      delete qualityIndicators[key].githubRepo;
+    });
 
-  writeFileSync(
-    './nx-dev/nx-dev/pages/extending-nx/quality-indicators.json',
-    JSON.stringify(qualityIndicators, null, 2)
-  );
+    writeFileSync(
+      './nx-dev/nx-dev/pages/quality-indicators.json',
+      JSON.stringify(qualityIndicators, null, 2)
+    );
+  } catch (ex) {
+    console.warn('Failed to load quality indicators!');
+    console.warn(ex);
+    // Don't overwrite quality-indicators.json if the script fails
+  }
 }
 main();
 
@@ -89,6 +103,7 @@ async function getNpmData(plugin: PluginRegistry, skipNxVersion = false) {
     const indexOfTree = url.indexOf('/tree/');
     const githubRepo = url
       .slice(0, indexOfTree === -1 ? undefined : indexOfTree)
+      .slice(0, url.indexOf('#') === -1 ? undefined : url.indexOf('#'))
       .slice(url.indexOf('github.com/') + 11)
       .replace('.git', '');
     return {
@@ -98,7 +113,12 @@ async function getNpmData(plugin: PluginRegistry, skipNxVersion = false) {
       // readmeContent: plugin.name
     };
   } catch (ex) {
-    return { lastPublishedDate: '', githubRepo: '' };
+    console.warn('Failed to load npm data for ' + plugin.name, ex);
+    return {
+      lastPublishedData: '',
+      githubRepo: '',
+      nxVersion: '',
+    };
   }
 }
 
@@ -114,7 +134,8 @@ async function getNpmDownloads(plugin: PluginRegistry) {
     );
     return data.downloads;
   } catch (ex) {
-    return '';
+    console.warn('Failed to load npm downloads for ' + plugin.name, ex);
+    return 0;
   }
 }
 
@@ -138,42 +159,62 @@ export function stringifyDate(date: Date) {
 }
 
 // Stars
-// i.e. https://api.github.com/repos/nxkit/nxkit
-async function getGithubStars(repo: String) {
-  try {
-    const { data } = await axios.get(`https://api.github.com/repos/${repo}`, {
-      headers: {
-        Authorization: `Bearer ${process.env.GITHUB_PAT}`,
-      },
-    });
-    return data.stargazers_count;
-  } catch (ex) {
-    console.warn('- Could not load GitHub stars!');
-    return -1;
+// i.e. https://api.github.com/graphql
+async function getGithubStars(repos: { owner: string; repo: string }[]) {
+  const query = `
+  fragment repoProperties on Repository {
+    nameWithOwner
+    stargazers {
+      totalCount
+    }
   }
+  
+  {
+    ${repos
+      .filter(({ owner, repo }) => owner && repo && !owner.includes('.'))
+      .map(
+        ({ owner, repo }, index) =>
+          `${owner.replace(/[\-#]/g, '')}${repo.replace(
+            /[\-#]/g,
+            ''
+          )}: repository(owner: "${owner}", name: "${repo}") {
+      ...repoProperties
+    }`
+      )
+      .join('\n')}
+  }`;
+
+  const result = await axios.post(
+    'https://api.github.com/graphql',
+    {
+      query,
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+      },
+    }
+  );
+
+  return result.data.data;
 }
 
 async function getNxVersion(data: any) {
   const latest = data['dist-tags'].latest;
-  const nxPackages = [
-    '@nx/devkit',
-    '@nrwl/devkit',
-    '@nx/workspace',
-    '@nrwl/workspace',
-  ];
+  const nxPackages = ['@nx/devkit', '@nx/workspace'];
   let devkitVersion = '';
   for (let i = 0; i < nxPackages.length && !devkitVersion; i++) {
     const packageName = nxPackages[i];
     if (data.versions[latest]?.dependencies) {
       devkitVersion = data.versions[latest]?.dependencies[packageName];
       if (devkitVersion) {
-        return await findNxRange(packageName, devkitVersion);
+        return await findNxRange(devkitVersion);
       }
     }
     if (!devkitVersion && data.versions[latest]?.peerDependencies) {
       devkitVersion = data.versions[latest]?.peerDependencies[packageName];
       if (devkitVersion) {
-        return await findNxRange(packageName, devkitVersion);
+        return await findNxRange(devkitVersion);
       }
     }
   }
@@ -181,20 +222,17 @@ async function getNxVersion(data: any) {
   return devkitVersion;
 }
 
-async function findNxRange(packageName: string, devkitVersion: string) {
+async function findNxRange(devkitVersion: string) {
   devkitVersion = devkitVersion
     .replace('^', '')
     .replace('>=', '')
     .replace('>', '');
-  const lookupPackage = packageName.includes('@nx')
-    ? '@nx/devkit'
-    : '@nrwl/devkit';
   const { data: devkitData } = await axios.get(
-    `https://registry.npmjs.org/${lookupPackage}`
+    `https://registry.npmjs.org/@nx/devkit`
   );
   if (!devkitData.versions[devkitVersion]?.peerDependencies) {
     const dependencies = devkitData.versions[devkitVersion]?.dependencies;
-    return dependencies && (dependencies?.nx || dependencies['@nrwl/tao']);
+    return dependencies?.nx;
   }
   return devkitData.versions[devkitVersion]?.peerDependencies.nx;
 }

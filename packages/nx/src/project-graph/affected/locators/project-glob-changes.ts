@@ -1,36 +1,34 @@
 import { TouchedProjectLocator } from '../affected-project-graph-models';
-import minimatch = require('minimatch');
-import {
-  getGlobPatternsFromPackageManagerWorkspaces,
-  getGlobPatternsFromPluginsAsync,
-} from '../../../config/workspaces';
+import { minimatch } from 'minimatch';
 import { workspaceRoot } from '../../../utils/workspace-root';
-import { getNxRequirePaths } from '../../../utils/installation-directory';
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { configurationGlobs } from '../../utils/retrieve-workspace-files';
+import { combineGlobPatterns } from '../../../utils/globs';
+import { getPlugins } from '../../plugins/get-plugins';
 
 export const getTouchedProjectsFromProjectGlobChanges: TouchedProjectLocator =
-  async (touchedFiles, projectGraphNodes, nxJson): Promise<string[]> => {
-    const pluginGlobPatterns = await getGlobPatternsFromPluginsAsync(
-      nxJson,
-      getNxRequirePaths(),
-      workspaceRoot
-    );
-    const workspacesGlobPatterns =
-      getGlobPatternsFromPackageManagerWorkspaces(workspaceRoot) || [];
+  async (touchedFiles, projectGraphNodes): Promise<string[]> => {
+    const globPattern = await (async () => {
+      // TODO: We need a quicker way to get patterns that should not
+      // require starting up plugin workers
+      if (process.env.NX_FORCE_REUSE_CACHED_GRAPH === 'true') {
+        return combineGlobPatterns([
+          '**/package.json',
+          '**/project.json',
+          'project.json',
+          'package.json',
+        ]);
+      }
+      const plugins = await getPlugins();
+      return combineGlobPatterns(configurationGlobs(plugins));
+    })();
 
-    const patterns = [
-      '**/project.json',
-      ...pluginGlobPatterns,
-      ...workspacesGlobPatterns,
-    ];
-    const combinedGlobPattern =
-      patterns.length === 1
-        ? '**/project.json'
-        : '{' + patterns.join(',') + '}';
     const touchedProjects = new Set<string>();
     for (const touchedFile of touchedFiles) {
-      const isProjectFile = minimatch(touchedFile.file, combinedGlobPattern);
+      const isProjectFile = minimatch(touchedFile.file, globPattern, {
+        dot: true,
+      });
       if (isProjectFile) {
         // If the file no longer exists on disk, then it was deleted
         if (!existsSync(join(workspaceRoot, touchedFile.file))) {

@@ -7,7 +7,7 @@ import type {
 /* eslint-enable @nx/enforce-module-boundaries */
 import { interpret } from 'xstate';
 import { projectGraphMachine } from './project-graph.machine';
-import { AppConfig } from '../../interfaces';
+import { AppConfig } from '@nx/graph/shared';
 
 export const mockProjects: ProjectGraphProjectNode[] = [
   {
@@ -106,6 +106,8 @@ const mockAppConfig: AppConfig = {
       label: 'local',
       projectGraphUrl: 'assets/project-graphs/e2e.json',
       taskGraphUrl: 'assets/task-graphs/e2e.json',
+      taskInputsUrl: '',
+      sourceMapsUrl: '',
     },
   ],
   defaultWorkspaceId: 'local',
@@ -114,6 +116,7 @@ const mockAppConfig: AppConfig = {
 describe('dep-graph machine', () => {
   beforeEach(() => {
     window.appConfig = mockAppConfig;
+    window.environment = 'release';
   });
   describe('initGraph', () => {
     it('should set projects, dependencies, and workspaceLayout', () => {

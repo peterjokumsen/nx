@@ -1,5 +1,5 @@
 import {
-  convertNxGenerator,
+  addDependenciesToPackageJson,
   formatFiles,
   GeneratorCallback,
   joinPathFragments,
@@ -8,15 +8,38 @@ import {
   updateJson,
 } from '@nx/devkit';
 import { libraryGenerator as reactLibraryGenerator } from '@nx/react/src/generators/library/library';
-import { addTsConfigPath } from '@nx/js';
+import { addTsConfigPath, initGenerator as jsInitGenerator } from '@nx/js';
+import { testingLibraryReactVersion } from '@nx/react/src/utils/versions';
 
 import { nextInitGenerator } from '../init/init';
 import { Schema } from './schema';
 import { normalizeOptions } from './lib/normalize-options';
+import { eslintConfigNextVersion, tsLibVersion } from '../../utils/versions';
+import {
+  isUsingTsSolutionSetup,
+  addProjectToTsSolutionWorkspace,
+  updateTsconfigFiles,
+} from '@nx/js/src/utils/typescript/ts-solution-setup';
+import { sortPackageJsonFields } from '@nx/js/src/utils/package-json/sort-fields';
 
 export async function libraryGenerator(host: Tree, rawOptions: Schema) {
-  const options = normalizeOptions(host, rawOptions);
+  return await libraryGeneratorInternal(host, {
+    addPlugin: false,
+    ...rawOptions,
+  });
+}
+
+export async function libraryGeneratorInternal(host: Tree, rawOptions: Schema) {
+  const options = await normalizeOptions(host, rawOptions);
   const tasks: GeneratorCallback[] = [];
+
+  const jsInitTask = await jsInitGenerator(host, {
+    js: options.js,
+    skipPackageJson: options.skipPackageJson,
+    skipFormat: true,
+  });
+  tasks.push(jsInitTask);
+
   const initTask = await nextInitGenerator(host, {
     ...options,
     skipFormat: true,
@@ -25,10 +48,29 @@ export async function libraryGenerator(host: Tree, rawOptions: Schema) {
 
   const libTask = await reactLibraryGenerator(host, {
     ...options,
-    compiler: 'swc',
+    bundler: 'none',
     skipFormat: true,
   });
   tasks.push(libTask);
+
+  if (!options.skipPackageJson) {
+    const devDependencies: Record<string, string> = {};
+    if (options.linter === 'eslint') {
+      devDependencies['eslint-config-next'] = eslintConfigNextVersion;
+    }
+
+    if (options.unitTestRunner && options.unitTestRunner !== 'none') {
+      devDependencies['@testing-library/react'] = testingLibraryReactVersion;
+    }
+
+    tasks.push(
+      addDependenciesToPackageJson(
+        host,
+        { tslib: tsLibVersion },
+        devDependencies
+      )
+    );
+  }
 
   const indexPath = joinPathFragments(
     options.projectRoot,
@@ -69,7 +111,11 @@ export async function libraryGenerator(host: Tree, rawOptions: Schema) {
       }
     `
   );
-  addTsConfigPath(host, `${options.importPath}/server`, [serverEntryPath]);
+
+  const isTsSolutionSetup = isUsingTsSolutionSetup(host);
+  if (!options.skipTsConfig && !isTsSolutionSetup) {
+    addTsConfigPath(host, `${options.importPath}/server`, [serverEntryPath]);
+  }
 
   updateJson(
     host,
@@ -103,6 +149,26 @@ export async function libraryGenerator(host: Tree, rawOptions: Schema) {
     }
   );
 
+  updateTsconfigFiles(
+    host,
+    options.projectRoot,
+    'tsconfig.lib.json',
+    {
+      jsx: 'react-jsx',
+      module: 'esnext',
+      moduleResolution: 'bundler',
+    },
+    options.linter === 'eslint'
+      ? ['eslint.config.js', 'eslint.config.cjs', 'eslint.config.mjs']
+      : undefined
+  );
+
+  if (options.isUsingTsSolutionConfig) {
+    addProjectToTsSolutionWorkspace(host, options.projectRoot);
+  }
+
+  sortPackageJsonFields(host, options.projectRoot);
+
   if (!options.skipFormat) {
     await formatFiles(host);
   }
@@ -111,4 +177,3 @@ export async function libraryGenerator(host: Tree, rawOptions: Schema) {
 }
 
 export default libraryGenerator;
-export const librarySchematic = convertNxGenerator(libraryGenerator);

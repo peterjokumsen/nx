@@ -10,28 +10,32 @@ import { webStaticServeGenerator } from './static-serve-configuration';
 describe('Static serve configuration generator', () => {
   let tree: Tree;
   beforeEach(() => {
-    tree = createTreeWithEmptyWorkspace({ layout: 'apps-libs' });
+    tree = createTreeWithEmptyWorkspace();
   });
 
-  it('should add a `serve-static` target to the project', () => {
+  it('should add a `serve-static` target to the project', async () => {
     addReactConfig(tree, 'react-app');
     addAngularConfig(tree, 'angular-app');
     addStorybookConfig(tree, 'storybook');
 
-    webStaticServeGenerator(tree, {
+    await webStaticServeGenerator(tree, {
       buildTarget: 'react-app:build',
     });
 
     expect(readProjectConfiguration(tree, 'react-app').targets['serve-static'])
       .toMatchInlineSnapshot(`
       {
+        "dependsOn": [
+          "build",
+        ],
         "executor": "@nx/web:file-server",
         "options": {
           "buildTarget": "react-app:build",
+          "spa": true,
         },
       }
     `);
-    webStaticServeGenerator(tree, {
+    await webStaticServeGenerator(tree, {
       buildTarget: 'angular-app:build',
     });
 
@@ -39,31 +43,39 @@ describe('Static serve configuration generator', () => {
       readProjectConfiguration(tree, 'angular-app').targets['serve-static']
     ).toMatchInlineSnapshot(`
       {
+        "dependsOn": [
+          "build",
+        ],
         "executor": "@nx/web:file-server",
         "options": {
           "buildTarget": "angular-app:build",
+          "spa": true,
         },
       }
     `);
 
-    webStaticServeGenerator(tree, {
+    await webStaticServeGenerator(tree, {
       buildTarget: 'storybook:build-storybook',
     });
     expect(readProjectConfiguration(tree, 'storybook').targets['serve-static'])
       .toMatchInlineSnapshot(`
       {
+        "dependsOn": [
+          "build-storybook",
+        ],
         "executor": "@nx/web:file-server",
         "options": {
           "buildTarget": "storybook:build-storybook",
-          "staticFilePath": "dist/apps/storybook/storybook",
+          "spa": true,
+          "staticFilePath": "dist/storybook/storybook",
         },
       }
     `);
   });
 
-  it('should support custom target name', () => {
+  it('should support custom target name', async () => {
     addReactConfig(tree, 'react-app');
-    webStaticServeGenerator(tree, {
+    await webStaticServeGenerator(tree, {
       buildTarget: 'react-app:build',
       targetName: 'serve-static-custom',
     });
@@ -72,24 +84,28 @@ describe('Static serve configuration generator', () => {
       readProjectConfiguration(tree, 'react-app').targets['serve-static-custom']
     ).toMatchInlineSnapshot(`
       {
+        "dependsOn": [
+          "build",
+        ],
         "executor": "@nx/web:file-server",
         "options": {
           "buildTarget": "react-app:build",
+          "spa": true,
         },
       }
     `);
   });
 
-  it('should infer outputPath via the buildTarget#outputs', () => {
+  it('should infer outputPath via the buildTarget#outputs', async () => {
     addAngularConfig(tree, 'angular-app');
     const projectConfig = readProjectConfiguration(tree, 'angular-app');
     delete projectConfig.targets.build.options.outputPath;
     projectConfig.targets.build.outputs = ['{options.myPath}'];
-    projectConfig.targets.build.options.myPath = 'dist/apps/angular-app';
+    projectConfig.targets.build.options.myPath = 'dist/angular-app';
 
     updateProjectConfiguration(tree, 'angular-app', projectConfig);
 
-    webStaticServeGenerator(tree, {
+    await webStaticServeGenerator(tree, {
       buildTarget: 'angular-app:build',
     });
 
@@ -97,16 +113,20 @@ describe('Static serve configuration generator', () => {
       readProjectConfiguration(tree, 'angular-app').targets['serve-static']
     ).toMatchInlineSnapshot(`
       {
+        "dependsOn": [
+          "build",
+        ],
         "executor": "@nx/web:file-server",
         "options": {
           "buildTarget": "angular-app:build",
-          "staticFilePath": "dist/apps/angular-app",
+          "spa": true,
+          "staticFilePath": "dist/angular-app",
         },
       }
     `);
   });
 
-  it('should not override targets', () => {
+  it('should not override targets', async () => {
     addStorybookConfig(tree, 'storybook');
 
     const pc = readProjectConfiguration(tree, 'storybook');
@@ -117,10 +137,10 @@ describe('Static serve configuration generator', () => {
     updateProjectConfiguration(tree, 'storybook', pc);
 
     expect(() => {
-      webStaticServeGenerator(tree, {
+      return webStaticServeGenerator(tree, {
         buildTarget: 'storybook:build-storybook',
       });
-    }).toThrowErrorMatchingInlineSnapshot(`
+    }).rejects.toThrowErrorMatchingInlineSnapshot(`
       "Project storybook already has a 'serve-static' target configured.
       Either rename or remove the existing 'serve-static' target and try again.
       Optionally, you can provide a different name with the --target-name option other than 'serve-static'"
@@ -132,15 +152,15 @@ function addReactConfig(tree: Tree, name: string) {
   addProjectConfiguration(tree, name, {
     name,
     projectType: 'application',
-    root: `apps/${name}`,
-    sourceRoot: `apps/${name}/src`,
+    root: `${name}`,
+    sourceRoot: `${name}/src`,
     targets: {
       build: {
         executor: '@nx/vite:build',
         outputs: ['{options.outputPath}'],
         defaultConfiguration: 'production',
         options: {
-          outputPath: `dist/apps/${name}`,
+          outputPath: `dist/${name}`,
         },
         configurations: {
           development: {
@@ -159,21 +179,21 @@ function addAngularConfig(tree: Tree, name: string) {
   addProjectConfiguration(tree, name, {
     name,
     projectType: 'application',
-    root: `apps/${name}`,
-    sourceRoot: `apps/${name}/src`,
+    root: `${name}`,
+    sourceRoot: `${name}/src`,
     targets: {
       build: {
         executor: '@angular-devkit/build-angular:browser',
         outputs: ['{options.outputPath}'],
         options: {
-          outputPath: `dist/apps/${name}`,
-          index: `apps/${name}/src/index.html`,
-          main: `apps/${name}/src/main.ts`,
+          outputPath: `dist/${name}`,
+          index: `${name}/src/index.html`,
+          main: `${name}/src/main.ts`,
           polyfills: [`zone.js`],
-          tsConfig: `apps/${name}/tsconfig.app.json`,
+          tsConfig: `${name}/tsconfig.app.json`,
           inlineStyleLanguage: `scss`,
-          assets: [`apps/${name}/src/favicon.ico`, `apps/${name}/src/assets`],
-          styles: [`apps/${name}/src/styles.scss`],
+          assets: [`${name}/src/favicon.ico`, `${name}/src/assets`],
+          styles: [`${name}/src/styles.scss`],
           scripts: [],
         },
       },
@@ -185,15 +205,15 @@ function addStorybookConfig(tree: Tree, name: string) {
   addProjectConfiguration(tree, name, {
     name,
     projectType: 'application',
-    root: `apps/${name}`,
-    sourceRoot: `apps/${name}/src`,
+    root: `${name}`,
+    sourceRoot: `${name}/src`,
     targets: {
       'build-storybook': {
         executor: '@storybook/angular:build-storybook',
         outputs: ['{options.outputDir}'],
         options: {
-          outputDir: `dist/apps/${name}/storybook`,
-          configDir: `apps/${name}/.storybook`,
+          outputDir: `dist/${name}/storybook`,
+          configDir: `${name}/.storybook`,
           browserTarget: `storybook:build-storybook`,
           compodoc: false,
         },

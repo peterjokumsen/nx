@@ -1,34 +1,38 @@
 {
   "name": "redux",
-  "factory": "./src/generators/redux/redux#reduxGenerator",
+  "factory": "./src/generators/redux/redux",
   "schema": {
-    "$schema": "http://json-schema.org/schema",
+    "$schema": "https://json-schema.org/schema",
     "cli": "nx",
     "$id": "redux",
     "title": "Create Redux state",
     "description": "Create a Redux state slice for a React project.",
     "type": "object",
+    "examples": [
+      {
+        "description": "Generate a Redux state slice with the exported symbol matching the file name. It results in the slice `fooSlice` at `mylib/src/lib/foo.slice.ts`",
+        "command": "nx g @nx/react:redux mylib/src/lib/foo.slice.ts"
+      },
+      {
+        "description": "Generate a Redux state slice with the exported symbol different from the file name. It results in the slice `customSlice` at `mylib/src/lib/foo.slice.ts`",
+        "command": "nx g @nx/react:redux mylib/src/lib/foo.slice.ts --name=custom"
+      },
+      {
+        "description": "Generate a Redux state slice without providing the \"slice\" suffix and the file extension. It results in the slice `fooSlice` at `mylib/src/lib/foo.slice.ts`",
+        "command": "nx g @nx/react:redux mylib/src/lib/foo"
+      }
+    ],
     "properties": {
+      "path": {
+        "type": "string",
+        "description": "The file path to the Redux state slice. Relative to the current working directory.",
+        "$default": { "$source": "argv", "index": 0 },
+        "x-prompt": "What is the Redux stateslice file path?",
+        "x-priority": "important"
+      },
       "name": {
         "type": "string",
-        "description": "Redux slice name.",
-        "$default": { "$source": "argv", "index": 0 },
-        "x-priority": "important"
-      },
-      "project": {
-        "type": "string",
-        "description": "The name of the project to add the slice to. If it is an application, then the store configuration will be updated too.",
-        "alias": "p",
-        "$default": { "$source": "projectName" },
-        "x-prompt": "What is the name of the project for this slice?",
-        "x-priority": "important"
-      },
-      "directory": {
-        "type": "string",
-        "alias": "dir",
-        "default": "",
-        "description": "The name of the folder used to contain/group the generated Redux files.",
-        "x-priority": "important"
+        "description": "The Redux state slice symbol name. Defaults to the last segment of the file path."
       },
       "appProject": {
         "type": "string",
@@ -38,15 +42,15 @@
       "js": {
         "type": "boolean",
         "description": "Generate JavaScript files rather than TypeScript files.",
-        "default": false
+        "x-deprecated": "Provide the full file path including the file extension in the `path` option. This option will be removed in Nx v21."
       }
     },
-    "required": ["name"],
+    "required": ["path"],
     "presets": []
   },
   "description": "Create a Redux slice for a project.",
   "aliases": ["slice"],
-  "implementation": "/packages/react/src/generators/redux/redux#reduxGenerator.ts",
+  "implementation": "/packages/react/src/generators/redux/redux.ts",
   "hidden": false,
   "path": "/packages/react/src/generators/redux/schema.json",
   "type": "generator"

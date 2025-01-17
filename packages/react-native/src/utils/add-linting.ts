@@ -1,25 +1,28 @@
-import { Linter, lintProjectGenerator } from '@nx/linter';
+import { Linter, LinterType, lintProjectGenerator } from '@nx/eslint';
 import {
   addDependenciesToPackageJson,
   GeneratorCallback,
-  joinPathFragments,
   runTasksInSerial,
   Tree,
-  updateJson,
 } from '@nx/devkit';
+import { extraEslintDependencies } from '@nx/react/src/utils/lint';
 import {
-  extendReactEslintJson,
-  extraEslintDependencies,
-} from '@nx/react/src/utils/lint';
-import type { Linter as ESLintLinter } from 'eslint';
+  addExtendsToLintConfig,
+  addIgnoresToLintConfig,
+  addOverrideToLintConfig,
+  addPredefinedConfigToFlatLintConfig,
+  isEslintConfigSupported,
+} from '@nx/eslint/src/generators/utils/eslint-file';
+import { useFlatConfig } from '@nx/eslint/src/utils/flat-config';
 
 interface NormalizedSchema {
-  linter?: Linter;
+  linter?: Linter | LinterType;
   projectName: string;
   projectRoot: string;
   setParserOptionsProject?: boolean;
   tsConfigPaths: string[];
   skipPackageJson?: boolean;
+  addPlugin?: boolean;
 }
 
 export async function addLinting(host: Tree, options: NormalizedSchema) {
@@ -32,32 +35,42 @@ export async function addLinting(host: Tree, options: NormalizedSchema) {
     linter: options.linter,
     project: options.projectName,
     tsConfigPaths: options.tsConfigPaths,
-    eslintFilePatterns: [`${options.projectRoot}/**/*.{ts,tsx,js,jsx}`],
     skipFormat: true,
     skipPackageJson: options.skipPackageJson,
+    setParserOptionsProject: options.setParserOptionsProject,
+    addPlugin: options.addPlugin,
   });
 
   tasks.push(lintTask);
 
-  updateJson(
-    host,
-    joinPathFragments(options.projectRoot, '.eslintrc.json'),
-    (json: ESLintLinter.Config) => {
-      json = extendReactEslintJson(json);
-
-      json.ignorePatterns = [
-        ...json.ignorePatterns,
-        'public',
-        '.cache',
-        'node_modules',
-      ];
-
-      return json;
+  if (isEslintConfigSupported(host)) {
+    if (useFlatConfig(host)) {
+      addPredefinedConfigToFlatLintConfig(
+        host,
+        options.projectRoot,
+        'flat/react'
+      );
+      // Add an empty rules object to users know how to add/override rules
+      addOverrideToLintConfig(host, options.projectRoot, {
+        files: ['*.ts', '*.tsx', '*.js', '*.jsx'],
+        rules: {},
+      });
+    } else {
+      const addExtendsTask = addExtendsToLintConfig(host, options.projectRoot, {
+        name: 'plugin:@nx/react',
+        needCompatFixup: true,
+      });
+      tasks.push(addExtendsTask);
     }
-  );
+    addIgnoresToLintConfig(host, options.projectRoot, [
+      'public',
+      '.cache',
+      'node_modules',
+    ]);
+  }
 
   if (!options.skipPackageJson) {
-    const installTask = await addDependenciesToPackageJson(
+    const installTask = addDependenciesToPackageJson(
       host,
       extraEslintDependencies.dependencies,
       extraEslintDependencies.devDependencies

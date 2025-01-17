@@ -30,23 +30,14 @@ There are a number of ways to use Rspack in your existing workspace.
 
 First, make sure \`@nx/rspack\` is installed.
 
-{% tabs %}
-{% tab label="npm" %}
+{% callout type="note" title="Keep Nx Package Versions In Sync" %}
+Make sure to install the \`@nx/rspack\` version that matches the version of \`nx\` in your repository.  If the version numbers get out of sync, you can encounter some difficult to debug errors.  You can [fix Nx version mismatches with this recipe](/recipes/tips-n-tricks/keep-nx-versions-in-sync).
+{% /callout %}
+
 \`\`\`bash
-npm i -D @nx/rspack@latest
+nx add @nx/rspack
 \`\`\`
-{% /tab %}
-{% tab label="yarn" %}
-\`\`\`bash
-yarn add -D @nx/rspack@latest
-\`\`\`
-{% /tab %}
-{% tab label="pnpm" %}
-\`\`\`bash
-pnpm add -D @nx/rspack@latest
-\`\`\`
-{% /tab %}
-{% /tabs %}
+
 
 ### Generate a new React project using Rspack
 
@@ -66,32 +57,18 @@ nx build my-app
 
 ### Generate a non-React project using Rspack
 
-You can generate a [Web](/packages/web) application, and then use the \`@nx/rspack:configuration\` generator to configure the build and serve targets.
+You can generate a [Web](/nx-api/web) application, and then use the \`@nx/rspack:configuration\` generator to configure the build and serve targets.
 
 Make sure you have the Web plugin installed.
 
-{% tabs %}
-{% tab label="npm" %}
 \`\`\`bash
-npm i -D @nrwl/web@latest
+nx add @nx/web
 \`\`\`
-{% /tab %}
-{% tab label="yarn" %}
-\`\`\`bash
-yarn add -D @nrwl/web@latest
-\`\`\`
-{% /tab %}
-{% tab label="pnpm" %}
-\`\`\`bash
-pnpm add -D @nrwl/web@latest
-\`\`\`
-{% /tab %}
-{% /tabs %}
 
 Then generate the application.
 
 \`\`\`bash
-nx g @nrwl/web:app my-app --style=css
+nx g @nx/web:app my-app --style=css
 \`\`\`
 
 Finally, configure Rspack for the new project.
@@ -105,7 +82,7 @@ nx g @nx/rspack:configuration --project=my-app
 You can use the \`@nx/rspack:configuration\` generator to change your React or Web project to use Rspack.
 This generator will modify your project's configuration to use Rspack, and it will also install all the necessary dependencies.
 
-You can read more about this generator on the [\`@nx/rspack:configuration\`](/packages/rspack/generators/configuration) generator page.
+You can read more about this generator on the [\`@nx/rspack:configuration\`](/nx-api/rspack/generators/configuration) generator page.
 
 ### Initialize Rspack
 

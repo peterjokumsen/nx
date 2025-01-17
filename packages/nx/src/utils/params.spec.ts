@@ -710,6 +710,28 @@ describe('params', () => {
       expect(params).toEqual({ a: './somepath' });
     });
 
+    it('should use relativeCwd to set workingDirectory', () => {
+      const params = {};
+      convertSmartDefaultsIntoNamedParams(
+        params,
+        {
+          properties: {
+            a: {
+              type: 'string',
+              $default: {
+                $source: 'workingDirectory',
+              },
+              visible: false,
+            },
+          },
+        },
+        null,
+        './somepath'
+      );
+
+      expect(params).toEqual({ a: './somepath' });
+    });
+
     it('should set unparsed overrides', () => {
       const params = { __overrides_unparsed__: ['one'] };
       convertSmartDefaultsIntoNamedParams(
@@ -804,7 +826,8 @@ describe('params', () => {
           }
         )
       ).toThrowErrorMatchingInlineSnapshot(`
-        "Options did not match schema. Please fix 1 of the following errors:
+        "Options did not match schema: {}.
+        Please fix 1 of the following errors:
          - Required property 'a' is missing
          - Required property 'b' is missing"
       `);
@@ -840,7 +863,15 @@ describe('params', () => {
             ],
           }
         )
-      ).toThrowErrorMatchingInlineSnapshot(`"Options did not match schema."`);
+      ).toThrowErrorMatchingInlineSnapshot(`
+        "Options did not match schema: {
+          "a": true,
+          "b": false
+        }.
+        Should only match one of 
+         - {"required":["a"]}
+         - {"required":["b"]}"
+      `);
     });
 
     it('should throw if none of the anyOf conditions are met', () => {
@@ -926,6 +957,82 @@ describe('params', () => {
           }
         )
       ).toThrow("'b' is not found in schema");
+    });
+
+    it('should throw if property name matching pattern is not valid', () => {
+      expect(() =>
+        validateOptsAgainstSchema(
+          { a: true, b: false },
+          {
+            properties: {
+              a: { type: 'boolean' },
+            },
+            patternProperties: {
+              '^b$': { type: 'number' },
+            },
+            additionalProperties: false,
+          }
+        )
+      ).toThrow(
+        "Property 'b' does not match the schema. 'false' should be a 'number'."
+      );
+    });
+
+    it('should handle properties matching patternProperties schema', () => {
+      expect(() =>
+        validateOptsAgainstSchema(
+          { a: true, b: false },
+          {
+            properties: {
+              a: { type: 'boolean' },
+            },
+            patternProperties: {
+              '^b$': { type: 'boolean' },
+            },
+            additionalProperties: false,
+          }
+        )
+      ).not.toThrow();
+    });
+
+    it('should throw if additional property does not match schema', () => {
+      expect(() =>
+        validateOptsAgainstSchema(
+          { a: true, b: 'b', c: 'c' },
+          {
+            properties: {
+              a: { type: 'boolean' },
+            },
+            patternProperties: {
+              '^b$': { type: 'string' },
+            },
+            additionalProperties: {
+              type: 'number',
+            },
+          }
+        )
+      ).toThrow(
+        "Property 'c' does not match the schema. 'c' should be a 'number'."
+      );
+    });
+
+    it('should handle additional properties when they match the additionalProperties schema', () => {
+      expect(() =>
+        validateOptsAgainstSchema(
+          { a: true, b: 'b', c: 1, d: 2 },
+          {
+            properties: {
+              a: { type: 'boolean' },
+            },
+            patternProperties: {
+              '^b$': { type: 'string' },
+            },
+            additionalProperties: {
+              type: 'number',
+            },
+          }
+        )
+      ).not.toThrow();
     });
 
     it('should throw if found unsupported positional property', () => {
@@ -1737,6 +1844,38 @@ describe('params', () => {
             { message: 'Dog', name: 'dog' },
             { message: 'Fish', name: 'fish' },
           ],
+          limit: expect.any(Number),
+          validate: expect.any(Function),
+        },
+      ]);
+    });
+
+    it('should use a multiselect if type is array and x-prompt uses shorthand', () => {
+      const prompts = getPromptsForSchema(
+        {},
+        {
+          properties: {
+            pets: {
+              type: 'array',
+              'x-prompt': 'What kind of pets do you have?',
+              items: {
+                enum: ['cat', 'dog', 'fish'],
+              },
+            },
+          },
+        },
+        {
+          version: 2,
+          projects: {},
+        }
+      );
+
+      expect(prompts).toEqual([
+        {
+          message: 'What kind of pets do you have?',
+          name: 'pets',
+          type: 'multiselect',
+          choices: ['cat', 'dog', 'fish'],
           limit: expect.any(Number),
           validate: expect.any(Function),
         },

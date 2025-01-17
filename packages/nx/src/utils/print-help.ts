@@ -1,12 +1,15 @@
 import * as chalk from 'chalk';
 import * as stringWidth from 'string-width';
-// cliui is the CLI layout engine developed by, and used within, yargs
-import * as cliui from 'cliui';
 import { logger } from './logger';
 import { output } from './output';
 import { Schema } from './params';
 import { nxVersion } from './versions';
 import { readModulePackageJson } from './package-json';
+
+// cliui is the CLI layout engine developed by, and used within, yargs
+// the typings for cliui do not play nice with our tsconfig, it either
+// works in build or in test but not both.
+const cliui = require('cliui') as typeof import('cliui')['default'];
 
 export function printHelp(
   header: string,
@@ -91,7 +94,7 @@ function generateGeneratorOverviewOutput({
   description: string;
   aliases: string[];
 }): string {
-  const ui = cliui();
+  const ui = cliui(null);
   const overviewItemsLabelWidth =
     // Chars in labels "From" and "Name"
     4 +
@@ -156,7 +159,7 @@ function generateExecutorOverviewOutput({
   name: string;
   description: string;
 }): string {
-  const ui = cliui();
+  const ui = cliui(null);
   const overviewItemsLeftPadding = 2;
   const overviewItemsLabelWidth = overviewItemsLeftPadding + 'Executor:'.length;
 
@@ -170,9 +173,7 @@ function generateExecutorOverviewOutput({
       {
         text:
           `${pluginName}:${name}` +
-          (pluginName.startsWith('@nrwl/')
-            ? chalk.dim(` (v${nxVersion})`)
-            : ''),
+          (pluginName.startsWith('@nx/') ? chalk.dim(` (v${nxVersion})`) : ''),
         padding: [1, 0, 0, 0],
       },
     ]
@@ -204,7 +205,7 @@ const formatOptionType = (optionConfig: Schema['properties'][0]) => {
 };
 
 function generateOptionsOutput(schema: Schema): string {
-  const ui = cliui();
+  const ui = cliui(null);
   const flagAndAliasLeftPadding = 4;
   const flagAndAliasRightPadding = 4;
 
@@ -281,7 +282,7 @@ function generateOptionsOutput(schema: Schema): string {
       {
         text: renderedTypesAndDefault,
         padding: [0, 0, 0, 0],
-        align: 'right',
+        align: 'right' as const,
       },
     ];
 
@@ -295,7 +296,7 @@ function generateExamplesOutput(schema: Schema): string {
   if (!schema.examples || schema.examples.length === 0) {
     return '';
   }
-  const ui = cliui();
+  const ui = cliui(null);
   const xPadding = 4;
 
   ui.div({
@@ -321,7 +322,7 @@ function generateExamplesOutput(schema: Schema): string {
   return ui.toString();
 }
 
-// TODO: generalize link generation so it works for non @nrwl plugins as well
+// TODO: generalize link generation so it works for non @nx plugins as well
 function generateLinkOutput({
   pluginName,
   name,
@@ -332,18 +333,12 @@ function generateLinkOutput({
   type: 'generators' | 'executors';
 }): string {
   const nxPackagePrefix = '@nx/';
-  const nrwlPackagePrefix = '@nrwl/';
-  if (
-    !pluginName.startsWith(nxPackagePrefix) &&
-    !pluginName.startsWith(nrwlPackagePrefix)
-  ) {
+  if (!pluginName.startsWith(nxPackagePrefix)) {
     return '';
   }
 
-  const link = `https://nx.dev/packages/${pluginName.substring(
-    pluginName.startsWith(nxPackagePrefix)
-      ? nxPackagePrefix.length
-      : nrwlPackagePrefix.length
+  const link = `https://nx.dev/nx-api/${pluginName.substring(
+    nxPackagePrefix.length
   )}/${type}/${name}`;
 
   return `\n\n${chalk.dim(

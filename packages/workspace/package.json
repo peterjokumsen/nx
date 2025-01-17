@@ -27,46 +27,22 @@
     "url": "https://github.com/nrwl/nx/issues"
   },
   "homepage": "https://nx.dev",
-  "schematics": "./generators.json",
-  "builders": "./executors.json",
+  "generators": "./generators.json",
+  "executors": "./executors.json",
   "ng-update": {
     "requirements": {},
     "migrations": "./migrations.json",
     "packageGroup": {
-      "@nrwl/js": "*",
-      "@nrwl/jest": "*",
-      "@nrwl/linter": "*",
-      "@nrwl/angular": "*",
-      "@nrwl/cypress": "*",
-      "@nrwl/detox": "*",
-      "@nrwl/devkit": "*",
-      "@nrwl/esbuild": "*",
-      "@nrwl/eslint-plugin-nx": "*",
-      "@nrwl/expo": "*",
-      "@nrwl/express": "*",
-      "@nrwl/nest": "*",
-      "@nrwl/next": "*",
-      "@nrwl/node": "*",
       "nx-cloud": "latest",
-      "@nrwl/nx-plugin": "*",
-      "@nrwl/react-native": "*",
-      "@nrwl/react": "*",
-      "@nrwl/rollup": "*",
-      "@nrwl/storybook": "*",
-      "@nrwl/tao": "*",
-      "@nrwl/vite": "*",
-      "@nrwl/web": "*",
-      "@nrwl/webpack": "*",
       "nx": "*"
     }
   },
   "dependencies": {
+    "@nx/devkit": "file:../devkit",
     "chalk": "^4.1.0",
-    "ignore": "^5.0.4",
-    "rxjs": "^7.8.0",
+    "enquirer": "~2.3.6",
     "tslib": "^2.3.0",
-    "yargs-parser": "21.1.1",
-    "@nx/devkit": "file:../devkit"
+    "yargs-parser": "21.1.1"
   },
   "publishConfig": {
     "access": "public"
